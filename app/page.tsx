@@ -98,7 +98,9 @@ export default function Home() {
     const loaded = await readHosted(
       supabase,
       !!profile &&
-        ["admin", "recorder", "referee", "school"].includes(profile.role),
+        ["admin", "recorder", "referee", "school", "school_admin"].includes(
+          profile.role,
+        ),
     );
     // Commit mode, permissions and data together only after every read succeeds.
     setSnapshot(loaded);
@@ -217,7 +219,7 @@ export default function Home() {
   }
   const admin = role === "admin",
     edit = admin || role === "recorder" || role === "referee",
-    register = admin || role === "school";
+    register = admin || role === "school" || role === "school_admin";
   const competition = snapshot?.rows.competitions.find(
     (c) => c.id === competitionId,
   );
@@ -389,6 +391,7 @@ export default function Home() {
                     recorder: "ผู้บันทึกผล",
                     referee: "กรรมการ",
                     school: "โรงเรียน",
+                    school_admin: "ผู้ดูแลโรงเรียน",
                     viewer: "ผู้ชม",
                   } as Record<string, string>
                 )[role]

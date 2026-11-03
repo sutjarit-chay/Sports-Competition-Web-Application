@@ -199,11 +199,140 @@ async function enter(page: Page) {
     page.getByText("Supabase · ข้อมูลจริง", { exact: true }),
   ).toBeVisible();
 }
-async function login(page: Page) {
+async function login(page: Page, label = "ผู้ดูแลระบบ") {
   await page.getByLabel("อีเมล", { exact: true }).fill("test@example.invalid");
   await page.getByLabel("รหัสผ่าน", { exact: true }).fill("fixture-only");
   await page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).click();
-  await expect(page.locator(".role")).toContainText("ผู้ดูแลระบบ");
+  await expect(page.locator(".role")).toContainText(label);
+}
+for (const role of ["school_admin", "school"]) {
+  test(`${role} reads registrations, registers only its school and has no result/admin controls`, async ({
+    page,
+  }) => {
+    const { db, writes } = await fixture(page);
+    db.profiles[0].role = role;
+    db.profiles[0].school_id = sid;
+    db.registrations.push({
+      id: "existing-registration",
+      school_id: sid,
+      competition_id: football,
+      athlete_name: "นักกีฬาเดิม",
+      bib: "101",
+    });
+    db.registrations.push({
+      id: "track-registration",
+      school_id: sid,
+      competition_id: track,
+      athlete_name: "นักวิ่งเดิม",
+      bib: "201",
+    });
+    db.matches.push({
+      id: "existing-match",
+      competition_id: football,
+      group_name: "A",
+      home_school_id: sid,
+      away_school_id: sid2,
+      starts_at: null,
+      venue: null,
+      status: "scheduled",
+      home_score: null,
+      away_score: null,
+      revision: 0,
+    });
+    db.athletics_events.push({
+      id: "existing-event",
+      competition_id: track,
+      name: "วิ่ง 100 เมตร",
+      kind: "track",
+      round: "heat",
+      heat: 1,
+      direction: "asc",
+      unit: "s",
+    });
+    db.athletics_results.push({
+      id: "existing-result",
+      event_id: "existing-event",
+      school_id: sid,
+      bib: "201",
+      value: 12.5,
+      status: "OK",
+    });
+    await enter(page);
+    await login(page, role === "school_admin" ? "ผู้ดูแลโรงเรียน" : "โรงเรียน");
+    await expect(page.getByLabel("ทดลองสิทธิ์ (เฉพาะสาธิต)")).toHaveCount(0);
+    await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
+    await expect(
+      page.getByRole("cell", { name: "นักกีฬาเดิม", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('select[name="school_id"] option')).toHaveCount(
+      1,
+    );
+    await expect(page.locator('select[name="school_id"]')).toHaveValue(sid);
+    await page.getByLabel("ชื่อ–นามสกุล", { exact: true }).fill("นักกีฬาใหม่");
+    await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
+    await expect(
+      page.getByRole("cell", { name: "นักกีฬาใหม่", exact: true }),
+    ).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({
+      table: "registrations",
+      method: "POST",
+      payload: [
+        {
+          school_id: sid,
+          competition_id: football,
+          athlete_name: "นักกีฬาใหม่",
+        },
+      ],
+    });
+    await page.getByLabel("นำเข้า CSV").setInputFiles({
+      name: "other-school.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(
+        `name,school_id,sport,gender,division,bib\nต่างโรงเรียน,${sid2},ฟุตบอล,ผสม,U12,102`,
+      ),
+    });
+    await expect(page.getByRole("status")).toContainText(
+      "นำเข้าได้เฉพาะโรงเรียนตนเอง",
+    );
+    expect(writes).toHaveLength(1);
+    await page
+      .getByRole("button", { name: "จัดสาย / ตารางแข่ง", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
+    await expect(page.getByLabel("เจ้าบ้าน", { exact: true })).toBeDisabled();
+    await expect(page.getByLabel("ทีมเยือน", { exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "ยืนยันผล" })).toHaveCount(0);
+    await page.getByRole("button", { name: "กรีฑา", exact: true }).click();
+    await page
+      .getByRole("combobox", { name: "รายการแข่งขัน", exact: true })
+      .selectOption(track);
+    await page
+      .getByLabel("รายการกรีฑาที่มีอยู่", { exact: true })
+      .selectOption("existing-event");
+    await expect(
+      page.getByRole("cell", { name: "นักวิ่งเดิม", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "บันทึกเวลา", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "ส่งเข้ารอบชิง" }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "เหรียญรางวัล", exact: true })
+      .click();
+    await expect(page.getByRole("button", { name: "เพิ่มเหรียญ" })).toHaveCount(
+      0,
+    );
+    await page
+      .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
+      .click();
+    await expect(page.locator('input[name="name"]').first()).toBeDisabled();
+  });
 }
 test("normalized hosted workflow writes only contract columns with school UUIDs and revisions", async ({
   page,
