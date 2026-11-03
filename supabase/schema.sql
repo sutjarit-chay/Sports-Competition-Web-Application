@@ -1,0 +1,32 @@
+-- Run once in the Supabase SQL editor. No credentials belong in this file.
+begin;
+create table public.schools(id text primary key, name text not null);
+insert into public.schools select i::text, 'โรงเรียน '||i from generate_series(1,10) i;
+create table public.profiles(id uuid primary key references auth.users(id) on delete cascade, role text not null check(role in ('admin','recorder','school')), school_id text references public.schools(id), check(role <> 'school' or school_id is not null));
+create function public.app_role() returns text language sql stable security definer set search_path=public as $$ select role from public.profiles where id=auth.uid() $$;
+create function public.my_school() returns text language sql stable security definer set search_path=public as $$ select school_id from public.profiles where id=auth.uid() $$;
+create table public.athletes(id uuid primary key, name text not null check(length(trim(name))>0), school_id text not null references public.schools(id), sport text not null check(sport in ('ฟุตบอล','วอลเลย์บอล','แชร์บอล','เปตอง','เซปักตะกร้อ','กรีฑา','โยนบอล','ปิงปอง')), gender text not null check(gender in ('ชาย','หญิง','ผสม')), division text not null check(length(trim(division))>0), unique(name,school_id,sport,gender,division));
+create table public.matches(id uuid primary key, sport text not null, division text not null, gender text not null, pool text not null, home text not null references public.schools(id), away text not null references public.schools(id), starts_at text not null default '', venue text not null default '', home_score integer check(home_score>=0), away_score integer check(away_score>=0), status text not null default 'scheduled' check(status in ('scheduled','finished')), check(home<>away), check(status<>'finished' or (home_score is not null and away_score is not null)));
+create table public.races(id uuid primary key, event text not null, division text not null, gender text not null, stage text not null check(stage in ('heat','final')), heat integer not null check(heat>0), athlete_id uuid not null references public.athletes(id) on delete restrict, value double precision check(value>0), status text not null check(status in ('OK','DNS','DNF','DQ')), unique(event,division,gender,stage,athlete_id));
+create table public.awards(id uuid primary key, event text not null, division text not null, gender text not null, school_id text not null references public.schools(id), medal text not null check(medal in ('gold','silver','bronze')), unique(event,division,gender,school_id,medal));
+alter table public.schools enable row level security;
+alter table public.profiles enable row level security;
+alter table public.athletes enable row level security;
+alter table public.matches enable row level security;
+alter table public.races enable row level security;
+alter table public.awards enable row level security;
+create policy schools_read on public.schools for select using(true);
+create policy schools_admin on public.schools for all to authenticated using(public.app_role()='admin') with check(public.app_role()='admin');
+create policy profile_read on public.profiles for select to authenticated using(id=auth.uid() or public.app_role()='admin');
+-- No client profile writes: provision roles only from SQL editor / trusted backend.
+create policy athlete_read on public.athletes for select to authenticated using(public.app_role() in ('admin','recorder') or school_id=public.my_school());
+create policy athlete_write on public.athletes for all to authenticated using(public.app_role()='admin' or (public.app_role()='school' and school_id=public.my_school())) with check(public.app_role()='admin' or (public.app_role()='school' and school_id=public.my_school()));
+create policy matches_read on public.matches for select using(true);
+create policy matches_write on public.matches for all to authenticated using(public.app_role() in ('admin','recorder')) with check(public.app_role() in ('admin','recorder'));
+create policy races_read on public.races for select using(true);
+create policy races_write on public.races for all to authenticated using(public.app_role() in ('admin','recorder')) with check(public.app_role() in ('admin','recorder'));
+create policy awards_read on public.awards for select using(true);
+create policy awards_write on public.awards for all to authenticated using(public.app_role() in ('admin','recorder')) with check(public.app_role() in ('admin','recorder'));
+revoke all on public.profiles from anon, authenticated;
+grant select on public.profiles to authenticated;
+commit;
