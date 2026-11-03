@@ -1,0 +1,409 @@
+import { test, expect, type Page } from "@playwright/test";
+const sid = "20000000-0000-4000-8000-000000000001",
+  sid2 = "20000000-0000-4000-8000-000000000002";
+const football = "10000000-0000-4000-8000-000000000001",
+  track = "10000000-0000-4000-8000-000000000006";
+type Row = Record<string, unknown>;
+async function fixture(page: Page, fail = false) {
+  const db: Record<string, Row[]> = {
+    schools: [
+      { id: sid, name: "โรงเรียนจริง ก" },
+      { id: sid2, name: "โรงเรียนจริง ข" },
+    ],
+    competitions: [
+      {
+        id: football,
+        sport: "ฟุตบอล",
+        name: "ฟุตบอล U12",
+        age_group: "U12",
+        gender: "ผสม",
+        win_points: 2,
+        draw_points: 1,
+        loss_points: 0,
+      },
+      {
+        id: track,
+        sport: "กรีฑา",
+        name: "กรีฑา U12",
+        age_group: "U12",
+        gender: "ผสม",
+        win_points: 3,
+        draw_points: 1,
+        loss_points: 0,
+      },
+    ],
+    registrations: [],
+    matches: [],
+    athletics_events: [],
+    athletics_results: [],
+    medals: [],
+    profiles: [
+      {
+        id: "30000000-0000-4000-8000-000000000001",
+        role: "admin",
+        school_id: null,
+      },
+    ],
+  };
+  const columns: Record<string, string[]> = {
+    schools: ["id", "name"],
+    registrations: ["id", "school_id", "competition_id", "athlete_name", "bib"],
+    matches: [
+      "id",
+      "competition_id",
+      "group_name",
+      "home_school_id",
+      "away_school_id",
+      "starts_at",
+      "venue",
+      "status",
+      "home_score",
+      "away_score",
+      "revision",
+    ],
+    athletics_events: [
+      "id",
+      "competition_id",
+      "name",
+      "kind",
+      "round",
+      "heat",
+      "direction",
+      "unit",
+    ],
+    athletics_results: [
+      "id",
+      "event_id",
+      "school_id",
+      "bib",
+      "value",
+      "status",
+    ],
+    medals: ["id", "competition_id", "school_id", "award", "event_label"],
+  };
+  const control: { readGate?: Promise<void> } = {};
+  const writes: { table: string; method: string; payload: Row[] }[] = [];
+  const user = {
+    id: db.profiles[0].id,
+    aud: "authenticated",
+    role: "authenticated",
+    email: "test@example.invalid",
+    app_metadata: {},
+    user_metadata: {},
+    created_at: "2026-01-01T00:00:00Z",
+  };
+  await page.route("**/auth/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/token")) {
+      const token = [
+        { alg: "HS256", typ: "JWT" },
+        {
+          sub: user.id,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          role: "authenticated",
+        },
+        { fixture: true },
+      ]
+        .map((x) => Buffer.from(JSON.stringify(x)).toString("base64url"))
+        .join(".");
+      await route.fulfill({
+        json: {
+          access_token: token,
+          token_type: "bearer",
+          expires_in: 3600,
+          refresh_token: "test-fixture-only",
+          user,
+        },
+      });
+    } else if (url.pathname.endsWith("/logout"))
+      await route.fulfill({ status: 204 });
+    else await route.fulfill({ json: user });
+  });
+  await page.route("**/rest/v1/**", async (route) => {
+    const req = route.request(),
+      url = new URL(req.url()),
+      table = url.pathname.split("/").pop()!;
+    if (!(table in db)) {
+      await route.fulfill({
+        status: 404,
+        json: { message: "Unknown table: " + table },
+      });
+      return;
+    }
+    if (fail && table === "medals") {
+      await route.fulfill({
+        status: 403,
+        json: { message: "Fixture read denied" },
+      });
+      return;
+    }
+    let rows = db[table];
+    for (const [key, value] of url.searchParams)
+      if (value.startsWith("eq."))
+        rows = rows.filter((r) => String(r[key]) === value.slice(3));
+    if (req.method() === "GET") {
+      if (table === "schools" && control.readGate) await control.readGate;
+      // A small server cap intentionally exercises paginated loading.
+      const offset = Number(url.searchParams.get("offset") || 0),
+        limit = Math.min(Number(url.searchParams.get("limit") || 500), 1);
+      const result = rows.slice(offset, offset + limit);
+      await route.fulfill({
+        status: 200,
+        json: result,
+        headers: {
+          "content-range": result.length
+            ? `${offset}-${offset + result.length - 1}/${rows.length}`
+            : `*/${rows.length}`,
+        },
+      });
+      return;
+    }
+    if (req.method() === "POST" || req.method() === "PATCH") {
+      const body = req.postDataJSON(),
+        payload = (Array.isArray(body) ? body : [body]) as Row[];
+      for (const p of payload)
+        for (const k of Object.keys(p))
+          expect(columns[table], `unexpected ${table}.${k}`).toContain(k);
+      writes.push({ table, method: req.method(), payload });
+      if (req.method() === "POST")
+        for (const row of payload)
+          db[table].push({
+            ...row,
+            ...(table === "matches" ? { revision: 0 } : {}),
+          });
+      else for (const row of rows) Object.assign(row, body);
+      await route.fulfill({
+        status: 200,
+        json: req.headers().prefer?.includes("return=representation")
+          ? rows
+          : [],
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 405,
+      json: { message: "No fixture deletes" },
+    });
+  });
+  return { db, writes, control };
+}
+async function enter(page: Page) {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "เข้าสู่โหมด Supabase", exact: true })
+    .click();
+  await expect(
+    page.getByText("Supabase · ข้อมูลจริง", { exact: true }),
+  ).toBeVisible();
+}
+async function login(page: Page) {
+  await page.getByLabel("อีเมล", { exact: true }).fill("test@example.invalid");
+  await page.getByLabel("รหัสผ่าน", { exact: true }).fill("fixture-only");
+  await page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).click();
+  await expect(page.locator(".role")).toContainText("ผู้ดูแลระบบ");
+}
+test("normalized hosted workflow writes only contract columns with school UUIDs and revisions", async ({
+  page,
+}) => {
+  const { db, writes } = await fixture(page);
+  await enter(page);
+  await login(page);
+  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
+  await expect(
+    page.getByRole("combobox", { name: "รายการแข่งขัน", exact: true }),
+  ).toHaveValue(football);
+  await page.getByLabel("ชื่อ–นามสกุล").fill("นักกีฬาจริง");
+  await page.getByLabel("เลขประจำตัว (bib)").fill("101");
+  await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
+  await expect(
+    page.getByRole("cell", { name: "นักกีฬาจริง", exact: true }),
+  ).toBeVisible();
+  expect(db.registrations[0]).toMatchObject({
+    school_id: sid,
+    competition_id: football,
+    bib: "101",
+  });
+  await page
+    .getByRole("button", { name: "จัดสาย / ตารางแข่ง", exact: true })
+    .click();
+  await page
+    .getByRole("checkbox", { name: "โรงเรียนจริง ก", exact: true })
+    .check();
+  await page
+    .getByRole("checkbox", { name: "โรงเรียนจริง ข", exact: true })
+    .check();
+  await page.getByRole("button", { name: "สร้างตารางแข่งขัน" }).click();
+  await expect(
+    page.getByRole("cell", {
+      name: "โรงเรียนจริง ก — โรงเรียนจริง ข",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByLabel("วันเวลา (ประเทศไทย)").fill("2026-11-03T09:00");
+  await page.getByLabel("สนาม", { exact: true }).fill("สนามกลาง");
+  await page.getByRole("button", { name: "บันทึกเวลา", exact: true }).click();
+  await expect
+    .poll(() => db.matches[0].starts_at)
+    .toBe("2026-11-03T02:00:00.000Z");
+  await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
+  await page.getByLabel("เจ้าบ้าน").fill("2");
+  await page.getByLabel("ทีมเยือน").fill("0");
+  await page.getByRole("button", { name: "ยืนยันผล" }).click();
+  await expect(page.getByText("จบการแข่งขัน", { exact: true })).toBeVisible();
+  expect(db.matches[0].revision).toBe(2);
+  await page.getByRole("button", { name: "ตารางคะแนน", exact: true }).click();
+  await expect(
+    page
+      .getByRole("row")
+      .filter({ hasText: "โรงเรียนจริง ก" })
+      .getByRole("cell")
+      .last(),
+  ).toHaveText("2");
+  await page.getByRole("button", { name: "เหรียญรางวัล", exact: true }).click();
+  await page.getByLabel("รายการรอบชิง").fill("ฟุตบอลรอบชิง");
+  await page.getByRole("button", { name: "เพิ่มเหรียญ" }).click();
+  await expect.poll(() => db.medals.length).toBe(1);
+  expect(db.medals[0]).toMatchObject({
+    competition_id: football,
+    school_id: sid,
+    award: "gold",
+  });
+  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "รายการแข่งขัน", exact: true })
+    .selectOption(track);
+  await page.getByLabel("ชื่อ–นามสกุล").fill("นักวิ่งจริง");
+  await page.getByLabel("เลขประจำตัว (bib)").fill("201");
+  await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
+  await expect(
+    page.getByRole("cell", { name: "นักวิ่งจริง", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "กรีฑา", exact: true }).click();
+  await page.getByLabel("ผล (s)", { exact: true }).fill("12.5");
+  await page.getByRole("button", { name: "บันทึกเวลา", exact: true }).click();
+  await expect(
+    page.getByRole("cell", { name: "12.5", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "ส่งเข้ารอบชิง" }).click();
+  await expect.poll(() => db.athletics_results.length).toBe(2);
+  expect(db.athletics_events.map((e) => e.round)).toEqual(["heat", "final"]);
+  expect(db.athletics_results[0]).toMatchObject({
+    school_id: sid,
+    bib: "201",
+    value: 12.5,
+  });
+  expect(
+    writes.some((w) => ["athletes", "races", "awards"].includes(w.table)),
+  ).toBe(false);
+});
+test("failed hosted transition preserves demo storage and permissions", async ({
+  page,
+}) => {
+  await fixture(page, true);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
+    .click();
+  const before = await page.evaluate(() =>
+    localStorage.getItem("kosamphi-demo-v1"),
+  );
+  await page
+    .getByRole("button", { name: "เข้าสู่โหมด Supabase", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Fixture read denied");
+  await expect(page.getByText("โหมดสาธิต", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() => localStorage.getItem("kosamphi-demo-v1")),
+  ).toBe(before);
+});
+test("same athlete can register for distinct competition IDs with identical labels, including CSV", async ({
+  page,
+}) => {
+  const { db } = await fixture(page);
+  const second = "10000000-0000-4000-8000-000000000009";
+  db.competitions.push({
+    ...db.competitions[0],
+    id: second,
+    name: "ฟุตบอล รายการที่สอง",
+  });
+  db.registrations.push(
+    {
+      id: "existing1",
+      school_id: sid,
+      competition_id: football,
+      athlete_name: "นักกีฬาซ้ำชื่อ",
+      bib: "101",
+    },
+    {
+      id: "existing2",
+      school_id: sid,
+      competition_id: football,
+      athlete_name: "นักกีฬาจาก CSV",
+      bib: "102",
+    },
+  );
+  await enter(page);
+  await login(page);
+  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "รายการแข่งขัน", exact: true })
+    .selectOption(second);
+  await page.getByLabel("ชื่อ–นามสกุล").fill("นักกีฬาซ้ำชื่อ");
+  await page.getByLabel("เลขประจำตัว (bib)").fill("101");
+  await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
+  await expect(
+    page.getByRole("cell", { name: "นักกีฬาซ้ำชื่อ", exact: true }),
+  ).toBeVisible();
+  expect(
+    db.registrations
+      .filter((a) => a.athlete_name === "นักกีฬาซ้ำชื่อ")
+      .map((a) => a.competition_id),
+  ).toEqual([football, second]);
+  await page
+    .getByLabel("นำเข้า CSV")
+    .setInputFiles({
+      name: "athletes.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(
+        `name,school_id,sport,gender,division,bib\nนักกีฬาจาก CSV,${sid},ฟุตบอล,ผสม,U12,102`,
+      ),
+    });
+  await expect(
+    page.getByRole("cell", { name: "นักกีฬาจาก CSV", exact: true }),
+  ).toBeVisible();
+  expect(
+    db.registrations
+      .filter((a) => a.athlete_name === "นักกีฬาจาก CSV")
+      .map((a) => a.competition_id),
+  ).toEqual([football, second]);
+});
+test("account transitions are locked while a live refresh is pending", async ({
+  page,
+}) => {
+  const { control } = await fixture(page);
+  await enter(page);
+  await login(page);
+  let release!: () => void;
+  control.readGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page
+    .getByRole("button", { name: "โหลดข้อมูลใหม่", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "กลับสาธิต", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "ออกจากระบบ", exact: true }),
+  ).toBeDisabled();
+  release();
+  await expect(
+    page.getByRole("button", { name: "กลับสาธิต", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "กลับสาธิต", exact: true }).click();
+  await expect(page.getByText("โหมดสาธิต", { exact: true })).toBeVisible();
+  await expect(page.locator(".role")).toContainText("สาธิต");
+});

@@ -1,3 +1,4 @@
+-- LEGACY schema verification only. Use inspect-hosted.sql for the normalized hosted database.
 -- Run after schema installation. This verifies anonymous access and RLS activation.
 -- Transaction rolls back. Run as postgres in SQL editor.
 begin;

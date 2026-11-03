@@ -16,6 +16,8 @@ export type Athlete = {
   sport: string;
   gender: string;
   division: string;
+  bib?: string;
+  competition_id?: string;
 };
 export type Match = {
   id: string;
@@ -30,6 +32,8 @@ export type Match = {
   home_score?: number;
   away_score?: number;
   status: string;
+  competition_id?: string;
+  revision?: number;
 };
 export type Race = {
   id: string;
@@ -41,6 +45,13 @@ export type Race = {
   athlete_id: string;
   value: number | null;
   status: string;
+  competition_id?: string;
+  event_id?: string;
+  school_id?: string;
+  bib?: string;
+  direction?: string;
+  unit?: string;
+  kind?: string;
 };
 export type Award = {
   id: string;
@@ -49,6 +60,7 @@ export type Award = {
   gender: string;
   school_id: string;
   medal: string;
+  competition_id?: string;
 };
 export type State = {
   schools: { id: string; name: string }[];
@@ -70,6 +82,7 @@ export function standings(
     awayScore?: number;
     status: string;
   }[],
+  points = { win: 3, draw: 1, loss: 0 },
 ) {
   const rows = new Map<
     string,
@@ -113,11 +126,14 @@ export function standings(
       r.ga += b;
       if (a > b) {
         r.won++;
-        r.points += 3;
+        r.points += points.win;
       } else if (a === b) {
         r.drawn++;
-        r.points++;
-      } else r.lost++;
+        r.points += points.draw;
+      } else {
+        r.lost++;
+        r.points += points.loss;
+      }
     }
   }
   return [...rows.values()].sort(
@@ -128,7 +144,7 @@ export function standings(
       a.school.localeCompare(b.school),
   );
 }
-export function parseAthletes(csv: string) {
+export function parseAthletes(csv: string, schools = initialState().schools) {
   const p = Papa.parse<Record<string, string>>(csv.replace(/^\uFEFF/, ""), {
     header: true,
     skipEmptyLines: "greedy",
@@ -150,13 +166,21 @@ export function parseAthletes(csv: string) {
       sport: r.sport?.trim(),
       gender: r.gender?.trim(),
       division: r.division?.trim(),
+      bib: r.bib?.trim() || undefined,
     };
+    const matches = schools.filter(
+      (s) => s.id === a.school_id || s.name === a.school_id,
+    );
+    if (matches.length !== 1)
+      throw Error(
+        `โรงเรียนแถว ${i + 2} ไม่พบหรือชื่อซ้ำ ใช้รหัสโรงเรียนจากระบบ`,
+      );
+    a.school_id = matches[0].id;
     if (
       !a.name ||
       !a.division ||
       !SPORTS.includes(a.sport) ||
-      !["ชาย", "หญิง", "ผสม"].includes(a.gender) ||
-      !/^([1-9]|10)$/.test(a.school_id)
+      !["ชาย", "หญิง", "ผสม"].includes(a.gender)
     )
       throw Error(`ข้อมูลแถว ${i + 2} ไม่ถูกต้อง`);
     const key = [a.name, a.school_id, a.sport, a.gender, a.division].join("|");

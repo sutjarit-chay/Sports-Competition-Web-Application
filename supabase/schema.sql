@@ -1,3 +1,5 @@
+-- LEGACY schema for the original demo-era contract only.
+-- DO NOT run against the current normalized hosted database. See inspect-hosted.sql.
 -- Run once in the Supabase SQL editor. No credentials belong in this file.
 begin;
 create table public.schools(id text primary key, name text not null);

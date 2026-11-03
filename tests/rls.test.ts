@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
-test("PostgreSQL RLS enforces school isolation, recorder access and prevents privilege escalation", async () => {
+test("Legacy SQL regression: PostgreSQL RLS enforces school isolation and prevents privilege escalation", async () => {
   const db = new PGlite();
   await db.exec(
     `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; alter default privileges in schema public grant all on tables to anon, authenticated;`,

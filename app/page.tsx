@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   SPORTS,
   initialState,
@@ -15,6 +15,13 @@ import {
   Award,
 } from "../lib/domain";
 import { supabase } from "../lib/supabase";
+import {
+  readHosted,
+  writeHosted,
+  findCompetition,
+  type Snapshot,
+} from "../lib/hosted";
+import Papa from "papaparse";
 const tabs = [
   "ภาพรวม",
   "นักกีฬา",
@@ -38,6 +45,12 @@ export default function Home() {
     [division, setDivision] = useState("ประถม"),
     [gender, setGender] = useState("ชาย"),
     [busy, setBusy] = useState(false);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [competitionId, setCompetitionId] = useState("");
+  const [eventId, setEventId] = useState("");
+  const [eventKind, setEventKind] = useState("track");
+  const [eventDirection, setEventDirection] = useState("asc");
+  const [eventUnit, setEventUnit] = useState("s");
   const [event, setEvent] = useState("วิ่ง 100 เมตร"),
     [stage, setStage] = useState("heat"),
     [heat, setHeat] = useState(1);
@@ -54,33 +67,75 @@ export default function Home() {
     if (ready && demo)
       localStorage.setItem("kosamphi-demo-v1", JSON.stringify(data));
   }, [data, ready, demo]);
-  async function refresh() {
-    if (!supabase) return;
-    const { data: auth } = await supabase.auth.getUser();
-    const p = auth.user
-      ? await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", auth.user.id)
-          .single()
-      : null;
-    setRole(p?.data?.role || "viewer");
-    setSchool(p?.data?.school_id || "1");
-    const next = initialState();
-    for (const table of [
-      "schools",
-      "athletes",
-      "matches",
-      "races",
-      "awards",
-    ] as const) {
-      const res = await supabase.from(table).select("*");
-      if (res.error) throw Error(res.error.message);
-      (next[table] as unknown[]) = res.data;
-    }
-    setData(next);
+  function chooseCompetition(id: string, source = snapshot) {
+    const c = source?.rows.competitions.find((c) => c.id === id);
+    if (!c) return;
+    setCompetitionId(c.id);
+    setSport(c.sport);
+    setDivision(c.age_group);
+    setGender(c.gender);
+    if (id !== competitionId) setEventId("");
   }
+  async function refresh() {
+    if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
+    const { data: session, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError) throw Error(sessionError.message);
+    let profile: { role: string; school_id: string | null } | null = null;
+    if (session.session) {
+      const { data: auth, error } = await supabase.auth.getUser();
+      if (error) throw Error(error.message);
+      if (auth.user) {
+        const res = await supabase
+          .from("profiles")
+          .select("role,school_id")
+          .eq("id", auth.user.id)
+          .maybeSingle();
+        if (res.error) throw Error(res.error.message);
+        profile = res.data;
+      }
+    }
+    const loaded = await readHosted(
+      supabase,
+      !!profile &&
+        ["admin", "recorder", "referee", "school"].includes(profile.role),
+    );
+    // Commit mode, permissions and data together only after every read succeeds.
+    setSnapshot(loaded);
+    setData(loaded.state);
+    setRole(profile?.role || "viewer");
+    setSchool(
+      profile?.school_id ||
+        (profile?.role === "admin" ? loaded.state.schools[0]?.id || "" : ""),
+    );
+    setDemo(false);
+    const c =
+      loaded.rows.competitions.find((c) => c.id === competitionId) ||
+      loaded.rows.competitions[0];
+    if (c) chooseCompetition(c.id, loaded);
+    else {
+      setCompetitionId("");
+      setSport("");
+      setDivision("");
+      setGender("");
+    }
+  }
+  function downloadCsv(name: string, rows: Record<string, string>[]) {
+    const url = URL.createObjectURL(
+      new Blob(["\uFEFF" + Papa.unparse(rows)], {
+        type: "text/csv;charset=utf-8",
+      }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  const actionLock = useRef(false);
   async function run(action: () => Promise<void> | void) {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusy(true);
     try {
       await action();
@@ -88,25 +143,58 @@ export default function Home() {
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
     } finally {
+      actionLock.current = false;
       setBusy(false);
     }
   }
   async function save<K extends keyof State>(table: K, rows: State[K]) {
+    if (!demo) {
+      if (!snapshot) throw Error("กรุณาโหลดข้อมูล Supabase ใหม่");
+      const active = snapshot.rows.competitions.find(
+        (c) => c.id === competitionId,
+      );
+      rows = rows.map((row) => {
+        if (
+          table === "schools" ||
+          ("competition_id" in row && row.competition_id)
+        )
+          return row;
+        let id = competitionId;
+        if (table === "athletes" || table === "matches") {
+          const scoped = row as Athlete | Match;
+          id =
+            active &&
+            active.sport === scoped.sport &&
+            active.age_group === scoped.division &&
+            active.gender === scoped.gender
+              ? active.id
+              : findCompetition(snapshot.rows.competitions, scoped).id;
+        }
+        return { ...row, competition_id: id };
+      }) as State[K];
+    }
+
     if (table === "athletes") {
       const existing = data.athletes.filter(
         (a) => !rows.some((r) => r.id === a.id),
       );
       const seen = new Set(
         existing.map((a) =>
-          [a.name, a.school_id, a.sport, a.gender, a.division].join("|"),
+          [
+            a.name,
+            a.school_id,
+            a.competition_id || [a.sport, a.gender, a.division].join("|"),
+          ].join("|"),
         ),
       );
       for (const a of rows as Athlete[]) {
         if (!a.name.trim() || !a.division.trim())
           throw Error("กรอกชื่อและรุ่นให้ครบ");
-        const key = [a.name, a.school_id, a.sport, a.gender, a.division].join(
-          "|",
-        );
+        const key = [
+          a.name,
+          a.school_id,
+          a.competition_id || [a.sport, a.gender, a.division].join("|"),
+        ].join("|");
         if (seen.has(key)) throw Error("ข้อมูลนักกีฬาซ้ำ");
         seen.add(key);
       }
@@ -123,28 +211,82 @@ export default function Home() {
       return;
     }
     if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
-    const { error } = await supabase
-      .from(table)
-      .upsert(rows as unknown as Record<string, unknown>[]);
-    if (error) throw Error(error.message);
+    if (!snapshot) throw Error("กรุณาโหลดข้อมูล Supabase ใหม่");
+    await writeHosted(supabase, snapshot, table, rows);
     await refresh();
   }
   const admin = role === "admin",
-    edit = admin || role === "recorder",
+    edit = admin || role === "recorder" || role === "referee",
     register = admin || role === "school";
-  const selected = data.matches.filter(
-    (m) => m.sport === sport && m.division === division && m.gender === gender,
+  const competition = snapshot?.rows.competitions.find(
+    (c) => c.id === competitionId,
   );
+  const points =
+    !demo && competition
+      ? {
+          win: competition.win_points,
+          draw: competition.draw_points,
+          loss: competition.loss_points,
+        }
+      : { win: 3, draw: 1, loss: 0 };
+  const eventCandidates = !demo
+    ? snapshot?.rows.athletics_events.filter(
+        (e) =>
+          e.competition_id === competitionId &&
+          e.name === event &&
+          e.round === stage &&
+          e.heat === heat,
+      ) || []
+    : [];
+  const raceEvent = !demo
+    ? eventId
+      ? snapshot?.rows.athletics_events.find((e) => e.id === eventId)
+      : eventCandidates.length === 1
+        ? eventCandidates[0]
+        : undefined
+    : undefined;
+  const ambiguousEvent = !demo && !eventId && eventCandidates.length > 1;
+  const scopeMatch = (row: {
+    sport?: string;
+    division: string;
+    gender: string;
+    competition_id?: string;
+  }) =>
+    !demo
+      ? row.competition_id === competitionId
+      : row.sport === sport &&
+        row.division === division &&
+        row.gender === gender;
+  const selected = data.matches.filter((m) => scopeMatch(m));
   const schoolName = (id: string) =>
     data.schools.find((s) => s.id === id)?.name || id;
-  const athletes = data.athletes.filter(
-    (a) => a.sport === sport && a.division === division && a.gender === gender,
-  );
+  const athletes = data.athletes.filter((a) => scopeMatch(a));
   const fields = (f: FormData) => ({
     division: String(f.get("division") || division),
     gender: String(f.get("gender") || gender),
+    competition_id: demo ? undefined : competitionId,
   });
-  const filter = (
+  const filter = !demo ? (
+    <div className="filters">
+      <label>
+        รายการแข่งขัน
+        <select
+          aria-label="รายการแข่งขัน"
+          value={competitionId}
+          onChange={(e) => chooseCompetition(e.target.value)}
+        >
+          {snapshot?.rows.competitions.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} · {c.age_group} · {c.gender}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!snapshot?.rows.competitions.length && (
+        <p>ยังไม่มีรายการแข่งขันที่มีสิทธิ์อ่าน</p>
+      )}
+    </div>
+  ) : (
     <div className="filters">
       <label>
         กีฬา
@@ -191,9 +333,20 @@ export default function Home() {
             <button
               key={t}
               aria-label={t}
-              disabled={!ready}
+              disabled={!ready || busy}
               className={tab === i ? "active" : ""}
-              onClick={() => setTab(i)}
+              onClick={() => {
+                setTab(i);
+                if (i === 4) {
+                  setSport("กรีฑา");
+                  if (!demo) {
+                    const c = snapshot?.rows.competitions.find(
+                      (c) => c.sport === "กรีฑา",
+                    );
+                    if (c) chooseCompetition(c.id);
+                  }
+                }
+              }}
             >
               <span>{icons[i]}</span>
               {t}
@@ -234,6 +387,7 @@ export default function Home() {
                   {
                     admin: "ผู้ดูแลระบบ",
                     recorder: "ผู้บันทึกผล",
+                    referee: "กรรมการ",
                     school: "โรงเรียน",
                     viewer: "ผู้ชม",
                   } as Record<string, string>
@@ -292,6 +446,12 @@ export default function Home() {
                       key={s}
                       onClick={() => {
                         setSport(s);
+                        if (!demo) {
+                          const c = snapshot?.rows.competitions.find(
+                            (c) => c.sport === s,
+                          );
+                          if (c) chooseCompetition(c.id);
+                        }
                         setTab(s === "กรีฑา" ? 4 : 2);
                       }}
                     >
@@ -308,7 +468,9 @@ export default function Home() {
                 {demo
                   ? "ข้อมูลสาธิตเก็บในเบราว์เซอร์นี้เท่านั้น ไม่ใช่ข้อมูลการแข่งขันจริง"
                   : "เชื่อมต่อฐานข้อมูลจริง สิทธิ์บังคับใช้ด้วย Supabase RLS"}{" "}
-                · ชื่อโรงเรียนเริ่มต้นเป็นชื่อชั่วคราว
+                {demo
+                  ? " · ชื่อโรงเรียนเริ่มต้นเป็นชื่อชั่วคราว"
+                  : " · ชื่อโรงเรียนจากฐานข้อมูลจริง"}
               </div>
             </>
           )}
@@ -331,6 +493,8 @@ export default function Home() {
                               name: String(f.get("name")).trim(),
                               school_id: String(f.get("school_id")),
                               sport,
+                              bib:
+                                String(f.get("bib") || "").trim() || undefined,
                               ...fields(f),
                             },
                           ]);
@@ -341,6 +505,14 @@ export default function Home() {
                       <label>
                         ชื่อ–นามสกุล
                         <input name="name" required maxLength={120} />
+                      </label>
+                      <label>
+                        เลขประจำตัว (bib)
+                        <input
+                          name="bib"
+                          maxLength={100}
+                          placeholder="เว้นว่างเพื่อใช้รหัสอัตโนมัติ"
+                        />
                       </label>
                       <label>
                         โรงเรียน
@@ -374,58 +546,63 @@ export default function Home() {
                               run(async () => {
                                 if (file.size > 2_000_000)
                                   throw Error("ไฟล์ใหญ่เกิน 2 MB");
-                                const rows = parseAthletes(await file.text());
+                                const rows = parseAthletes(
+                                  await file.text(),
+                                  data.schools,
+                                );
                                 if (
                                   !admin &&
                                   rows.some((r) => r.school_id !== school)
                                 )
                                   throw Error("นำเข้าได้เฉพาะโรงเรียนตนเอง");
-                                const seen = new Set(
-                                  data.athletes.map((a) =>
-                                    [
-                                      a.name,
-                                      a.school_id,
-                                      a.sport,
-                                      a.gender,
-                                      a.division,
-                                    ].join("|"),
-                                  ),
-                                );
-                                if (
-                                  rows.some((a) =>
-                                    seen.has(
-                                      [
-                                        a.name,
-                                        a.school_id,
-                                        a.sport,
-                                        a.gender,
-                                        a.division,
-                                      ].join("|"),
-                                    ),
-                                  )
-                                )
-                                  throw Error("พบข้อมูลนักกีฬาซ้ำ");
                                 await save("athletes", rows);
                               });
                             e.target.value = "";
                           }}
                         />
                       </label>
-                      <a href="/athletes-template.csv" download>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadCsv("athletes-template.csv", [
+                            {
+                              name: "นักกีฬาตัวอย่าง",
+                              school_id: school || data.schools[0]?.id || "",
+                              sport,
+                              gender,
+                              division,
+                              bib: "101",
+                            },
+                          ])
+                        }
+                      >
                         ดาวน์โหลดแบบฟอร์ม CSV
-                      </a>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadCsv("schools.csv", data.schools)}
+                      >
+                        ดาวน์โหลดรหัสโรงเรียน
+                      </button>
                     </div>
                   </>
                 ) : (
                   <p>บัญชีนี้ไม่มีสิทธิ์ลงทะเบียน</p>
                 )}
                 <Table
-                  heads={["ชื่อ–นามสกุล", "โรงเรียน", "กีฬา", "รุ่น / เพศ"]}
+                  heads={[
+                    "ชื่อ–นามสกุล",
+                    "โรงเรียน",
+                    "กีฬา",
+                    "รุ่น / เพศ",
+                    "bib",
+                  ]}
                   rows={athletes.map((a) => [
                     a.name,
                     schoolName(a.school_id),
                     a.sport,
                     `${a.division} / ${a.gender}`,
+                    a.bib || "—",
                   ])}
                 />
               </section>
@@ -462,6 +639,7 @@ export default function Home() {
                             sport,
                             division,
                             gender,
+                            competition_id: demo ? undefined : competitionId,
                             pool,
                             starts_at: "",
                             venue: "",
@@ -521,7 +699,7 @@ export default function Home() {
                         {schoolName(m.home)} / {schoolName(m.away)}
                       </span>
                       <label>
-                        วันเวลา
+                        วันเวลา (ประเทศไทย)
                         <input
                           name="date"
                           type="datetime-local"
@@ -544,8 +722,8 @@ export default function Home() {
               <section className="panel">
                 <h2>บันทึกผลการแข่งขัน</h2>
                 <p className="muted">
-                  คะแนนลีก: ชนะ 3 · เสมอ 1 · แพ้ 0 |
-                  เหรียญรางวัลบันทึกแยกหลังยืนยันรอบชิง
+                  คะแนนลีก: ชนะ {points.win} · เสมอ {points.draw} · แพ้{" "}
+                  {points.loss} | เหรียญรางวัลบันทึกแยกหลังยืนยันรอบชิง
                 </p>
                 {selected.length === 0 && <Empty />}
                 {selected.map((m) => (
@@ -612,19 +790,58 @@ export default function Home() {
               {filter}
               <section className="panel">
                 <h2>กรีฑา · ฮีตและรอบชิง</h2>
+                {!demo && (
+                  <label>
+                    รายการกรีฑาที่มีอยู่
+                    <select
+                      aria-label="รายการกรีฑาที่มีอยู่"
+                      value={eventId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setEventId(id);
+                        const selected = snapshot?.rows.athletics_events.find(
+                          (x) => x.id === id,
+                        );
+                        if (selected) {
+                          setEvent(selected.name);
+                          setStage(selected.round);
+                          setHeat(selected.heat);
+                          setEventKind(selected.kind);
+                          setEventDirection(selected.direction);
+                          setEventUnit(selected.unit);
+                        }
+                      }}
+                    >
+                      <option value="">สร้าง/ค้นหารายการตามชื่อและรอบ</option>
+                      {snapshot?.rows.athletics_events
+                        .filter((e) => e.competition_id === competitionId)
+                        .map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.name} · {e.round} · ฮีต {e.heat}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
                 <div className="filters">
                   <label>
                     รายการ
                     <input
                       value={event}
-                      onChange={(e) => setEvent(e.target.value)}
+                      onChange={(e) => {
+                        setEvent(e.target.value);
+                        setEventId("");
+                      }}
                     />
                   </label>
                   <label>
                     รอบ
                     <select
                       value={stage}
-                      onChange={(e) => setStage(e.target.value)}
+                      onChange={(e) => {
+                        setStage(e.target.value);
+                        setEventId("");
+                      }}
                     >
                       <option value="heat">ฮีต</option>
                       <option value="final">รอบชิง</option>
@@ -636,16 +853,55 @@ export default function Home() {
                       type="number"
                       min="1"
                       value={heat}
-                      onChange={(e) =>
-                        setHeat(Math.max(1, Number(e.target.value)))
-                      }
+                      onChange={(e) => (
+                        setHeat(Math.max(1, Number(e.target.value))),
+                        setEventId("")
+                      )}
                     />
                   </label>
                 </div>
                 <p className="muted">
-                  รายการวิ่ง ใช้เวลาเป็นวินาที ค่าน้อยอันดับดีกว่า ·
-                  ผู้ได้เวลาเท่ากันได้อันดับร่วม
+                  บันทึกตามหน่วยของรายการ · ผู้ได้ผลเท่ากันได้อันดับร่วม
                 </p>
+                {ambiguousEvent && (
+                  <p role="alert">
+                    มีรายการกรีฑาชื่อและรอบซ้ำ กรุณาเลือกรายการกรีฑาที่มีอยู่
+                  </p>
+                )}
+                {!demo && !raceEvent && (
+                  <div className="filters">
+                    <label>
+                      ประเภท
+                      <select
+                        aria-label="ประเภทกรีฑา"
+                        value={eventKind}
+                        onChange={(e) => setEventKind(e.target.value)}
+                      >
+                        <option value="track">ลู่</option>
+                        <option value="field">ลาน</option>
+                      </select>
+                    </label>
+                    <label>
+                      ทิศทางอันดับ
+                      <select
+                        aria-label="ทิศทางอันดับ"
+                        value={eventDirection}
+                        onChange={(e) => setEventDirection(e.target.value)}
+                      >
+                        <option value="asc">น้อยชนะ</option>
+                        <option value="desc">มากชนะ</option>
+                      </select>
+                    </label>
+                    <label>
+                      หน่วย
+                      <input
+                        aria-label="หน่วย"
+                        value={eventUnit}
+                        onChange={(e) => setEventUnit(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
                 {edit && (
                   <form
                     onSubmit={(e) => {
@@ -659,7 +915,9 @@ export default function Home() {
                             r.division === division &&
                             r.gender === gender &&
                             r.stage === stage &&
-                            r.athlete_id === aid,
+                            r.athlete_id === aid &&
+                            (demo || r.competition_id === competitionId) &&
+                            (!eventId || r.event_id === eventId),
                         );
                         const status = String(f.get("status"));
                         const value = f.get("value")
@@ -676,6 +934,10 @@ export default function Home() {
                             stage,
                             heat,
                             athlete_id: aid,
+                            event_id: raceEvent?.id,
+                            kind: raceEvent?.kind || eventKind,
+                            direction: raceEvent?.direction || eventDirection,
+                            unit: raceEvent?.unit || eventUnit,
                             value,
                             status,
                           },
@@ -687,12 +949,7 @@ export default function Home() {
                       นักกีฬา
                       <select name="athlete" required>
                         {data.athletes
-                          .filter(
-                            (a) =>
-                              a.sport === "กรีฑา" &&
-                              a.division === division &&
-                              a.gender === gender,
-                          )
+                          .filter((a) => a.sport === "กรีฑา" && scopeMatch(a))
                           .map((a) => (
                             <option value={a.id} key={a.id}>
                               {a.name} · {schoolName(a.school_id)}
@@ -701,7 +958,9 @@ export default function Home() {
                       </select>
                     </label>
                     <label>
-                      เวลา (วินาที)
+                      {demo
+                        ? "เวลา (วินาที)"
+                        : `ผล (${raceEvent?.unit || eventUnit})`}
                       <input
                         name="value"
                         type="number"
@@ -723,7 +982,13 @@ export default function Home() {
                   </form>
                 )}
                 <Table
-                  heads={["อันดับ", "นักกีฬา", "เวลา", "สถานะ", "เข้ารอบ"]}
+                  heads={[
+                    "อันดับ",
+                    "นักกีฬา / โรงเรียน / bib",
+                    "ผล",
+                    "สถานะ",
+                    "เข้ารอบ",
+                  ]}
                   rows={rankRace(
                     data.races.filter(
                       (r) =>
@@ -731,15 +996,23 @@ export default function Home() {
                         r.division === division &&
                         r.gender === gender &&
                         r.stage === stage &&
-                        r.heat === heat,
+                        r.heat === heat &&
+                        (demo || r.competition_id === competitionId) &&
+                        !ambiguousEvent &&
+                        (!raceEvent || r.event_id === raceEvent.id),
                     ),
+                    !demo &&
+                      (raceEvent?.direction || eventDirection) === "desc",
                   ).map((r) => [
                     r.rank ?? "—",
                     data.athletes.find((a) => a.id === r.athlete_id)?.name ||
-                      r.athlete_id,
+                      `${schoolName(r.school_id || "")} · bib ${r.bib || "—"}`,
                     r.value ?? "—",
                     r.status,
-                    edit && stage === "heat" && r.rank !== null ? (
+                    edit &&
+                    stage === "heat" &&
+                    r.rank !== null &&
+                    !!r.athlete_id ? (
                       <button
                         key={r.id}
                         onClick={() =>
@@ -751,13 +1024,18 @@ export default function Home() {
                                   x.stage === "final" &&
                                   x.athlete_id === r.athlete_id &&
                                   x.division === division &&
-                                  x.gender === gender,
+                                  x.gender === gender &&
+                                  (demo || x.competition_id === competitionId),
                               )
                             )
                               throw Error("เข้ารอบชิงแล้ว");
                             await save("races", [
                               {
                                 event: r.event,
+                                competition_id: r.competition_id,
+                                direction: r.direction,
+                                unit: r.unit,
+                                kind: r.kind,
                                 division: r.division,
                                 gender: r.gender,
                                 athlete_id: r.athlete_id,
@@ -809,6 +1087,7 @@ export default function Home() {
                             homeScore: m.home_score,
                             awayScore: m.away_score,
                           })),
+                        points,
                       ).map((r, i) => [
                         i + 1,
                         schoolName(r.school),
@@ -941,6 +1220,7 @@ export default function Home() {
                     <label>
                       ทดลองสิทธิ์ (เฉพาะสาธิต)
                       <select
+                        disabled={busy}
                         value={role}
                         onChange={(e) => setRole(e.target.value)}
                       >
@@ -950,6 +1230,7 @@ export default function Home() {
                       </select>
                     </label>
                     <button
+                      disabled={busy}
                       onClick={() => {
                         if (confirm("ล้างข้อมูลสาธิตทั้งหมดในเบราว์เซอร์นี้?"))
                           setData(initialState());
@@ -989,10 +1270,18 @@ export default function Home() {
                       </label>
                       <button disabled={busy}>เข้าสู่ระบบ</button>
                     </form>
+                    <button disabled={busy} onClick={() => run(refresh)}>
+                      โหลดข้อมูลใหม่
+                    </button>
                     <button
+                      disabled={busy}
                       onClick={() =>
                         run(async () => {
-                          await supabase!.auth.signOut();
+                          const { error } = await supabase!.auth.signOut();
+                          if (error) throw Error(error.message);
+                          setRole("viewer");
+                          setSchool("");
+                          setData((d) => ({ ...d, athletes: [] }));
                           await refresh();
                         })
                       }
@@ -1000,11 +1289,19 @@ export default function Home() {
                       ออกจากระบบ
                     </button>
                     <button
+                      disabled={busy}
                       onClick={() => {
                         setDemo(true);
                         const saved = localStorage.getItem("kosamphi-demo-v1");
                         setData(saved ? JSON.parse(saved) : initialState());
                         setRole("admin");
+                        setSchool("1");
+                        setSnapshot(null);
+                        setCompetitionId("");
+                        setSport(SPORTS[0]);
+                        setDivision("ประถม");
+                        setGender("ชาย");
+                        setEventId("");
                       }}
                     >
                       กลับสาธิต
