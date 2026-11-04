@@ -87,11 +87,16 @@ test("athletics heats advance to final and mobile has no horizontal overflow", a
   await page
     .getByRole("combobox", { name: "กีฬา", exact: true })
     .selectOption("กรีฑา");
+  await page.getByText("ตั้งค่าจำนวนสำรองและโควตา (ผู้ดูแลระบบ)", {exact:true}).click();
+  await page.getByLabel("โควตา วิ่ง 100 เมตร", {exact:true}).fill("2");
+  await page.getByRole("button", {name:"บันทึกกติกาการสมัคร"}).click();
   await page.getByLabel("ชื่อ–นามสกุล").fill("นักวิ่ง ทดสอบ");
+  await page.getByRole("checkbox", {name:/วิ่ง 100 เมตร/}).check();
   await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
   await expect(
     page.getByRole("cell", { name: "นักวิ่ง ทดสอบ", exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "เมนูทั้งหมด", exact: true }).click();
   await page.getByRole("button", { name: "กรีฑา", exact: true }).click();
   await page.getByLabel("เวลา (วินาที)").fill("12.5");
   await page.getByRole("button", { name: "บันทึกเวลา", exact: true }).click();

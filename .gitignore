@@ -5,3 +5,10 @@ node_modules/
 *.tsbuildinfo
 playwright-report/
 test-results/
+.DS_Store
+
+# Generated review screenshots and PDFs
+docs/design-preview/*.png
+docs/design-review/*.png
+docs/design-review/*.pdf
+docs/registration-review/

@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Athlete, Match, Race, Award, State } from "./domain";
+import {
+  prepareRoster,
+  type RegistrationPolicy,
+  type RosterDetails,
+} from "./registration";
 export type Competition = {
   id: string;
   sport: string;
@@ -9,6 +14,7 @@ export type Competition = {
   win_points: number;
   draw_points: number;
   loss_points: number;
+  registration_policy?: RegistrationPolicy | null;
 };
 export type Registration = {
   id: string;
@@ -16,6 +22,7 @@ export type Registration = {
   competition_id: string;
   athlete_name: string;
   bib: string | null;
+  roster_details?: RosterDetails | null;
 };
 export type HostedMatch = {
   id: string;
@@ -67,7 +74,11 @@ export type HostedRows = {
   athletics_results: AthleticsResult[];
   medals: Medal[];
 };
-export type Snapshot = { rows: HostedRows; state: State };
+export type Snapshot = {
+  rows: HostedRows;
+  state: State;
+  registrationExtension?: boolean;
+};
 export const COLUMNS = {
   schools: "id,name",
   competitions:
@@ -149,6 +160,7 @@ export function decodeHosted(rows: HostedRows): State {
     name: r.athlete_name,
     school_id: r.school_id,
     bib: r.bib || undefined,
+    ...(r.roster_details ? { roster: r.roster_details } : {}),
     ...scope(r.competition_id),
   }));
   const events = new Map(rows.athletics_events.map((e) => [e.id, e]));
@@ -269,7 +281,77 @@ export async function readHosted(
     ]),
   );
   const rows = Object.fromEntries(entries) as HostedRows;
-  return { rows, state: decodeHosted(rows) };
+  const extension = await readRosterExtension(client, includeRegistrations);
+  if (extension.available) {
+    rows.competitions.forEach((c) => {
+      c.registration_policy = extension.policies.get(c.id) || null;
+    });
+    rows.registrations.forEach((r) => {
+      r.roster_details = extension.details.get(r.id) || null;
+    });
+  }
+  return {
+    rows,
+    state: decodeHosted(rows),
+    registrationExtension: extension.available,
+  };
+}
+async function readRosterExtension(
+  client: SupabaseClient,
+  includeRegistrations: boolean,
+) {
+  const policies = new Map<string, RegistrationPolicy>();
+  const details = new Map<string, RosterDetails>();
+  for (const [table, column] of [
+    ["competitions", "registration_policy"],
+    ["registrations", "roster_details"],
+  ] as const) {
+    if (table === "registrations" && !includeRegistrations) continue;
+    let offset = 0;
+    while (true) {
+      const { data, error, count } = await client
+        .from(table)
+        .select(`id,${column}`, { count: "exact" })
+        .order("id")
+        .range(offset, offset + 499);
+      if (error) {
+        if (
+          ["42703", "PGRST204"].includes(error.code) &&
+          error.message.includes(column)
+        )
+          return { available: false, policies, details };
+        throw Error(`${table}: ${error.message}`);
+      }
+      for (const row of (data || []) as unknown as Record<string, unknown>[]) {
+        // Old API fixtures/backends must never be mistaken for migrated schemas.
+        if (!(column in row)) return { available: false, policies, details };
+        if (row[column]) {
+          if (table === "competitions")
+            policies.set(String(row.id), row[column] as RegistrationPolicy);
+          else details.set(String(row.id), row[column] as RosterDetails);
+        }
+      }
+      offset += data?.length || 0;
+      if (!data?.length || (count !== null && offset >= count)) break;
+    }
+  }
+  return { available: true, policies, details };
+}
+export async function writeRegistrationPolicy(
+  client: SupabaseClient,
+  competitionId: string,
+  policy: RegistrationPolicy,
+) {
+  const { data, error } = await client
+    .from("competitions")
+    .update({ registration_policy: policy })
+    .eq("id", competitionId)
+    .select("id");
+  if (error) throw Error(`ตั้งค่ากติกาไม่สำเร็จ: ${error.message}`);
+  if (!data?.length)
+    throw Error(
+      "ไม่มีสิทธิ์ตั้งค่ารายการแข่งขันนี้ กรุณาติดต่อผู้ดูแลฐานข้อมูล",
+    );
 }
 async function checked<T>(
   request: PromiseLike<{ data: T | null; error: { message: string } | null }>,
@@ -303,7 +385,23 @@ export async function writeHosted<K extends keyof State>(
     return;
   }
   if (table === "athletes") {
-    const payload = (values as Athlete[]).map((a) => {
+    const groups = new Map<string, Athlete[]>();
+    for (const a of values as Athlete[]) {
+      const comp = findCompetition(rows.competitions, a);
+      groups.set(comp.id, [...(groups.get(comp.id) || []), a]);
+    }
+    const validated = [...groups].flatMap(([id, athletes]) => {
+      const policy = rows.competitions.find(
+        (c) => c.id === id,
+      )?.registration_policy;
+      if (policy) return prepareRoster(state.athletes, athletes, policy);
+      if (athletes.some((a) => a.roster))
+        throw Error(
+          "ผู้ดูแลยังไม่ได้ตั้งค่ากติกาของรายการนี้ หรือต้องติดตั้ง migration ก่อน",
+        );
+      return athletes;
+    });
+    const payload = validated.map((a) => {
       const comp = findCompetition(rows.competitions, a);
       const bib = a.bib?.trim() || a.id;
       if (
@@ -322,6 +420,7 @@ export async function writeHosted<K extends keyof State>(
         school_id: a.school_id,
         athlete_name: a.name,
         bib,
+        ...(a.roster ? { roster_details: a.roster } : {}),
       };
     });
     const keys = payload.map(

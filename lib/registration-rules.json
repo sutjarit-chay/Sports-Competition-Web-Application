@@ -1,0 +1,112 @@
+[
+  {
+    "id": "football-male",
+    "name": "ฟุตบอล ชาย 7 คน",
+    "sport": "ฟุตบอล",
+    "genders": ["ชาย"],
+    "levels": ["ประถมศึกษา", "มัธยมศึกษา"],
+    "starters": 7,
+    "reserves": 3,
+    "note": "จำนวนรวมสูงสุด 10 คน"
+  },
+  {
+    "id": "chairball-female",
+    "name": "แชร์บอล หญิง",
+    "sport": "แชร์บอล",
+    "genders": ["หญิง"],
+    "levels": ["ประถมศึกษา", "มัธยมศึกษา"],
+    "starters": 6,
+    "reserves": null,
+    "note": "จำนวนสำรองตามระเบียบของผู้จัดการแข่งขัน"
+  },
+  {
+    "id": "volleyball-male",
+    "name": "วอลเลย์บอล ชาย",
+    "sport": "วอลเลย์บอล",
+    "genders": ["ชาย"],
+    "levels": ["ประถมศึกษา", "มัธยมศึกษา"],
+    "starters": 6,
+    "reserves": 6,
+    "note": "จำนวนรวมสูงสุด 12 คน"
+  },
+  {
+    "id": "volleyball-female",
+    "name": "วอลเลย์บอล หญิง",
+    "sport": "วอลเลย์บอล",
+    "genders": ["หญิง"],
+    "levels": ["ประถมศึกษา", "มัธยมศึกษา"],
+    "starters": 6,
+    "reserves": 6,
+    "note": "จำนวนรวมสูงสุด 12 คน"
+  },
+  {
+    "id": "takraw-male",
+    "name": "ตะกร้อ ชาย ประเภททีมเดี่ยว",
+    "sport": "เซปักตะกร้อ",
+    "genders": ["ชาย"],
+    "levels": [],
+    "starters": 3,
+    "reserves": 2,
+    "note": "ประเภททีมเดี่ยว"
+  },
+  {
+    "id": "takraw-female",
+    "name": "ตะกร้อ หญิง ประเภททีมเดี่ยว",
+    "sport": "เซปักตะกร้อ",
+    "genders": ["หญิง"],
+    "levels": [],
+    "starters": 3,
+    "reserves": 2,
+    "note": "ประเภททีมเดี่ยว"
+  },
+  {
+    "id": "petanque-male",
+    "name": "เปตอง ทีมชาย",
+    "sport": "เปตอง",
+    "genders": ["ชาย"],
+    "levels": [],
+    "starters": 3,
+    "reserves": 0,
+    "note": "ไม่มีการเปลี่ยนตัวระหว่างเกม"
+  },
+  {
+    "id": "petanque-female",
+    "name": "เปตอง ทีมหญิง",
+    "sport": "เปตอง",
+    "genders": ["หญิง"],
+    "levels": [],
+    "starters": 3,
+    "reserves": 0,
+    "note": "ไม่มีการเปลี่ยนตัวระหว่างเกม"
+  },
+  {
+    "id": "throwball-mixed",
+    "name": "โยนบอล ทีมผสม",
+    "sport": "โยนบอล",
+    "genders": ["ผสม"],
+    "levels": ["อนุบาล"],
+    "starters": 5,
+    "reserves": null,
+    "note": "จำนวนสำรองตามระเบียบของผู้จัดการแข่งขัน"
+  },
+  {
+    "id": "athletics-individual",
+    "name": "กรีฑา ประเภทเดี่ยว",
+    "sport": "กรีฑา",
+    "genders": [],
+    "levels": [],
+    "starters": null,
+    "reserves": 0,
+    "note": "วิ่ง 60 เมตร, 80 เมตร, 100 เมตร, 200 เมตร และมินิมาราธอน ตามโควตาผู้จัด เลือกได้หลายรายการ"
+  },
+  {
+    "id": "athletics-relay",
+    "name": "กรีฑา วิ่งผลัด",
+    "sport": "กรีฑา",
+    "genders": [],
+    "levels": [],
+    "starters": 4,
+    "reserves": 4,
+    "note": "ผู้แข่งขัน 4 คน สำรองไม่เกิน 4 คน รวมไม่เกิน 8 คน"
+  }
+]

@@ -1,10 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
+import { defaultPolicy } from "../../lib/registration";
 const sid = "20000000-0000-4000-8000-000000000001",
   sid2 = "20000000-0000-4000-8000-000000000002";
 const football = "10000000-0000-4000-8000-000000000001",
   track = "10000000-0000-4000-8000-000000000006";
 type Row = Record<string, unknown>;
-async function fixture(page: Page, fail = false) {
+async function fixture(page: Page, fail = false, rosters = false) {
   const db: Record<string, Row[]> = {
     schools: [
       { id: sid, name: "โรงเรียนจริง ก" },
@@ -45,9 +46,25 @@ async function fixture(page: Page, fail = false) {
       },
     ],
   };
+  if (rosters) {
+    Object.assign(db.competitions[0], {
+      gender: "ชาย",
+      age_group: "ประถม",
+      registration_policy: defaultPolicy("football-male"),
+    });
+    db.competitions[1].registration_policy = null;
+  }
   const columns: Record<string, string[]> = {
+    competitions: ["registration_policy"],
     schools: ["id", "name"],
-    registrations: ["id", "school_id", "competition_id", "athlete_name", "bib"],
+    registrations: [
+      "id",
+      "school_id",
+      "competition_id",
+      "athlete_name",
+      "bib",
+      ...(rosters ? ["roster_details"] : []),
+    ],
     matches: [
       "id",
       "competition_id",
@@ -205,6 +222,54 @@ async function login(page: Page, label = "ผู้ดูแลระบบ") {
   await page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).click();
   await expect(page.locator(".role")).toContainText(label);
 }
+test("migrated school_admin roster keeps legacy registrations and persists starter metadata", async ({
+  page,
+}) => {
+  const { db, writes } = await fixture(page, false, true);
+  db.profiles[0].role = "school_admin";
+  db.profiles[0].school_id = sid;
+  db.registrations.push({
+    id: "legacy-registration",
+    competition_id: football,
+    school_id: sid,
+    athlete_name: "นักกีฬาเดิมก่อนย้าย",
+    bib: "001",
+    roster_details: null,
+  });
+  await enter(page);
+  await login(page, "ผู้ดูแลโรงเรียน");
+  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
+  await expect(
+    page.getByRole("cell", { name: "นักกีฬาเดิมก่อนย้าย", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("cell", {
+      name: "ข้อมูลเดิม · ยังไม่ระบุตัวจริง/สำรอง",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByLabel("ชื่อ–นามสกุล", { exact: true })
+    .fill("นักกีฬาตัวจริงใหม่");
+  await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
+  await expect(
+    page.getByRole("cell", { name: "นักกีฬาตัวจริงใหม่", exact: true }),
+  ).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0].payload[0]).toMatchObject({
+    school_id: sid,
+    competition_id: football,
+    roster_details: {
+      ruleId: "football-male",
+      position: "starter",
+      events: [],
+    },
+  });
+  expect(db.registrations[0].roster_details).toBeNull();
+  await expect(
+    page.getByRole("form", { name: "ตั้งค่ากติกาการสมัคร" }),
+  ).toHaveCount(0);
+});
 for (const role of ["school_admin", "school"]) {
   test(`${role} reads registrations, registers only its school and has no result/admin controls`, async ({
     page,
@@ -491,15 +556,13 @@ test("same athlete can register for distinct competition IDs with identical labe
       .filter((a) => a.athlete_name === "นักกีฬาซ้ำชื่อ")
       .map((a) => a.competition_id),
   ).toEqual([football, second]);
-  await page
-    .getByLabel("นำเข้า CSV")
-    .setInputFiles({
-      name: "athletes.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from(
-        `name,school_id,sport,gender,division,bib\nนักกีฬาจาก CSV,${sid},ฟุตบอล,ผสม,U12,102`,
-      ),
-    });
+  await page.getByLabel("นำเข้า CSV").setInputFiles({
+    name: "athletes.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      `name,school_id,sport,gender,division,bib\nนักกีฬาจาก CSV,${sid},ฟุตบอล,ผสม,U12,102`,
+    ),
+  });
   await expect(
     page.getByRole("cell", { name: "นักกีฬาจาก CSV", exact: true }),
   ).toBeVisible();
@@ -522,6 +585,7 @@ test("account transitions are locked while a live refresh is pending", async ({
   await page
     .getByRole("button", { name: "โหลดข้อมูลใหม่", exact: true })
     .click();
+  await expect(page.getByRole("status")).toContainText("กำลังโหลดข้อมูล");
   await expect(
     page.getByRole("button", { name: "กลับสาธิต", exact: true }),
   ).toBeDisabled();

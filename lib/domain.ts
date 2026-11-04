@@ -1,4 +1,6 @@
 import Papa from "papaparse";
+import type { RosterDetails } from "./registration";
+import { compatibleRules, ATHLETICS_EVENTS } from "./registration";
 export const SPORTS = [
   "ฟุตบอล",
   "วอลเลย์บอล",
@@ -18,6 +20,7 @@ export type Athlete = {
   division: string;
   bib?: string;
   competition_id?: string;
+  roster?: RosterDetails;
 };
 export type Match = {
   id: string;
@@ -159,7 +162,7 @@ export function parseAthletes(csv: string, schools = initialState().schools) {
     throw Error("หัว CSV ต้องเป็น name,school_id,sport,gender,division");
   const seen = new Set<string>();
   return p.data.map((r, i) => {
-    const a = {
+    const a: Athlete = {
       id: crypto.randomUUID(),
       name: r.name?.trim(),
       school_id: r.school_id?.trim(),
@@ -168,6 +171,32 @@ export function parseAthletes(csv: string, schools = initialState().schools) {
       division: r.division?.trim(),
       bib: r.bib?.trim() || undefined,
     };
+    if (a.sport === "ตะกร้อ") a.sport = "เซปักตะกร้อ";
+    if (r.rule_id?.trim() || r.position?.trim() || r.events?.trim()) {
+      const events = (r.events || "")
+        .split("|")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .map(
+          (value) =>
+            ATHLETICS_EVENTS.find((e) => e.id === value || e.name === value)
+              ?.id || value,
+        );
+      const matches = compatibleRules(a.sport, a.gender, a.division);
+      const inferred = events.includes("relay")
+        ? "athletics-relay"
+        : a.sport === "กรีฑา"
+          ? "athletics-individual"
+          : matches[0]?.id;
+      a.roster = {
+        ruleId: r.rule_id?.trim() || inferred || "",
+        position: (r.position?.trim() ||
+          (a.sport === "กรีฑา" && !events.includes("relay")
+            ? "individual"
+            : "auto")) as RosterDetails["position"],
+        events,
+      };
+    }
     const matches = schools.filter(
       (s) => s.id === a.school_id || s.name === a.school_id,
     );
@@ -183,7 +212,14 @@ export function parseAthletes(csv: string, schools = initialState().schools) {
       !["ชาย", "หญิง", "ผสม"].includes(a.gender)
     )
       throw Error(`ข้อมูลแถว ${i + 2} ไม่ถูกต้อง`);
-    const key = [a.name, a.school_id, a.sport, a.gender, a.division].join("|");
+    const key = [
+      a.name,
+      a.school_id,
+      a.sport,
+      a.gender,
+      a.division,
+      a.roster?.ruleId || "",
+    ].join("|");
     if (seen.has(key)) throw Error(`ข้อมูลซ้ำแถว ${i + 2}`);
     seen.add(key);
     return a;

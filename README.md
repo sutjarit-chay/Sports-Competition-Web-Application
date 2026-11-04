@@ -2,6 +2,16 @@
 
 Next.js App Router + TypeScript + Tailwind CSS + Supabase รองรับ 10 โรงเรียน และฟุตบอล วอลเลย์บอล แชร์บอล เปตอง เซปักตะกร้อ กรีฑา โยนบอล ปิงปอง
 
+## หน้าตาขาว–ทอง
+
+ใช้แนวทาง B ที่เลือกไว้: hero ขนาดใหญ่ ภาพกีฬา Perspective Tunnel, ฟอนต์ Sarabun ที่เก็บในโปรเจกต์ และไอคอน Lucide รองรับ reduced motion และการเลื่อนหน้าปกติ เมนูมือถือเปิดได้ครบทุกแท็บ พร้อม focus/ปุ่มปิด/Escape และปิดอัตโนมัติเมื่อเปลี่ยนเป็น desktop
+
+โครงสร้าง UI อยู่ที่ `components/ui` โดยมี `perspective-tunnel-hero.tsx`, `button.tsx`, `demo.tsx` และ `lib/utils.ts` ใช้ alias `@/*` → root ของโปรเจกต์ ตั้งค่า shadcn ไว้ใน `components.json` แล้ว จึงไม่ต้องรัน `init` ซ้ำ Styles หลักและ theme tokens อยู่ที่ `app/globals.css` ไม่ต้องติดตั้ง TypeScript หรือ Tailwind เพิ่ม
+
+dependencies ใหม่ติดตั้งพร้อม `npm ci` ได้แก่ Framer Motion, Lucide, clsx, tailwind-merge และ class-variance-authority ข้อมูลและสิทธิ์ยังใช้ระบบเดิมทั้งหมด ภาพ sports จาก Unsplash และฟอนต์ Sarabun พร้อม OFL อยู่ใน `public/` ไม่มีการเรียก CDN ระหว่างใช้งาน
+
+ถ่ายภาพตรวจแบบซ้ำได้ขณะเปิดเว็บด้วย `npx tsx scripts/capture-design.ts` (ใช้ Chrome บน macOS หรือกำหนด `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; URL เริ่มต้น `http://127.0.0.1:3000` เปลี่ยนได้ด้วย `DESIGN_PREVIEW_URL`) สคริปต์สร้างข้อมูลสาธิตใน localStorage ของ browser context แยก ไม่เขียน Supabase ผลลัพธ์อยู่ที่ `docs/design-review/`
+
 ## เริ่มใช้งาน
 
 Node.js 24, npm 11
@@ -69,7 +79,7 @@ npm run build
 npm run test:e2e
 ```
 
-E2E ใช้ `/usr/bin/chromium` ทดสอบโหมดสาธิตและ hosted API fixture รวมการเขียน normalized payload, school UUID, pagination, revision, กรีฑาฮีต/รอบชิง และการแยก localStorage ไม่มีการส่ง write ทดสอบไปฐานข้อมูลจริง การทดสอบ RLS ใน PGlite ครอบคลุม **legacy schema เท่านั้น** ไม่ใช่หลักฐานยืนยันนโยบาย hosted project ปัจจุบัน
+E2E ใช้ `/usr/bin/chromium` หากมี, Chrome บน macOS หรือกำหนด `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` ทดสอบโหมดสาธิตและ hosted API fixture รวมการเขียน normalized payload, school UUID, pagination, revision, กรีฑาฮีต/รอบชิง และการแยก localStorage พร้อม hero, reduced motion, เมนูมือถือ/การหมุนจอ, loading/success/error และ PDF ไม่มีการส่ง write ทดสอบไปฐานข้อมูลจริง การทดสอบ RLS ใน PGlite ครอบคลุม **legacy schema เท่านั้น** ไม่ใช่หลักฐานยืนยันนโยบาย hosted project ปัจจุบัน
 
 การตรวจ project จริงใช้คำขออ่านอย่างเดียว ไม่แก้ข้อมูลเพื่อทดสอบ ประเด็นที่ยังต้องตรวจด้วยบัญชีจริงคือ constraints/บทบาทที่ไม่ปรากฏใน column metadata, การเขียนตามสิทธิ์, การแก้พร้อมกัน และเวลาที่ session หมดอายุ
 
