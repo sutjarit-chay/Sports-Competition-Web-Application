@@ -78,6 +78,56 @@ test("normalized records decode, null scores stay unplayed, payload excludes UI 
   assert.ok(!("sport" in p));
   assert.ok(!("revision" in p));
 });
+
+test("public legacy medals outside readable competition scope do not break a referee snapshot", () => {
+  const state = decodeHosted({
+    ...raw,
+    medals: [
+      ...raw.medals,
+      {
+        ...raw.medals[0],
+        id: "unassigned-medal",
+        competition_id: "unassigned",
+      },
+    ],
+  });
+  assert.deepEqual(
+    state.awards.map((a) => a.id),
+    ["a1"],
+  );
+});
+
+test("editing a hosted registration updates only its existing identity", async () => {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { writeHosted } = await import("../lib/hosted");
+  const calls: { method: string; url: URL; body: Record<string, unknown> }[] =
+    [];
+  const client = createClient("https://fixture.invalid", "fixture-public", {
+    auth: { persistSession: false },
+    global: {
+      fetch: async (input, init) => {
+        calls.push({
+          method: init?.method || "GET",
+          url: new URL(String(input)),
+          body: JSON.parse(String(init?.body)),
+        });
+        return new Response(JSON.stringify([{ id: "r1" }]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    },
+  });
+  const state = decodeHosted(raw);
+  await writeHosted(client, { rows: raw, state }, "athletes", [
+    { ...state.athletes[0], name: "ชื่อใหม่" },
+  ]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "PATCH");
+  assert.equal(calls[0].url.searchParams.get("id"), "eq.r1");
+  assert.equal(calls[0].url.searchParams.get("school_id"), `eq.${school.id}`);
+  assert.deepEqual(calls[0].body, { athlete_name: "ชื่อใหม่", bib: "101" });
+});
 test("Thailand schedule conversion is independent of host timezone", () => {
   assert.equal(
     fromBangkokInput("2026-11-03T09:00"),

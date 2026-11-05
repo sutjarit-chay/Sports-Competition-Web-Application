@@ -36,6 +36,7 @@ export type HostedMatch = {
   home_score: number | null;
   away_score: number | null;
   revision: number;
+  referee_id?: string | null;
 };
 export type AthleticsEvent = {
   id: string;
@@ -85,12 +86,14 @@ export const COLUMNS = {
     "id,sport,name,age_group,gender,win_points,draw_points,loss_points",
   registrations: "id,school_id,competition_id,athlete_name,bib",
   matches:
-    "id,competition_id,group_name,home_school_id,away_school_id,starts_at,venue,status,home_score,away_score,revision",
+    "id,competition_id,group_name,home_school_id,away_school_id,starts_at,venue,status,home_score,away_score,revision,referee_id",
   athletics_events:
     "id,competition_id,name,kind,round,heat,direction,unit,starts_at,venue,referee_id",
   athletics_results: "id,event_id,school_id,bib,value,status",
   medals: "id,competition_id,school_id,award,event_label",
 } as const;
+const LEGACY_MATCH_COLUMNS =
+  "id,competition_id,group_name,home_school_id,away_school_id,starts_at,venue,status,home_score,away_score,revision";
 export function toBangkokInput(value: string | null) {
   if (!value) return "";
   const d = new Date(value);
@@ -179,6 +182,7 @@ export function decodeHosted(rows: HostedRows): State {
       home_score: m.home_score ?? undefined,
       away_score: m.away_score ?? undefined,
       revision: m.revision,
+      referee_id: m.referee_id || undefined,
     })),
     races: rows.athletics_results.map((r) => {
       const e = events.get(r.event_id);
@@ -207,13 +211,15 @@ export function decodeHosted(rows: HostedRows): State {
         kind: e.kind,
       };
     }),
-    awards: rows.medals.map((a) => ({
-      id: a.id,
-      ...scope(a.competition_id),
-      event: a.event_label,
-      school_id: a.school_id,
-      medal: a.award,
-    })),
+    awards: rows.medals
+      .filter((a) => competitions.has(a.competition_id))
+      .map((a) => ({
+        id: a.id,
+        ...scope(a.competition_id),
+        event: a.event_label,
+        school_id: a.school_id,
+        medal: a.award,
+      })),
   };
 }
 export function matchPayload(m: Match, competitionId: string) {
@@ -228,6 +234,7 @@ export function matchPayload(m: Match, competitionId: string) {
     status: m.status,
     home_score: m.home_score ?? null,
     away_score: m.away_score ?? null,
+    referee_id: m.referee_id || null,
   };
 }
 export function raceResultPayload(
@@ -261,13 +268,26 @@ export async function readHosted(
 ): Promise<Snapshot> {
   const read = async (table: keyof HostedRows) => {
     const all: unknown[] = [];
+    let columns: string = COLUMNS[table];
     while (true) {
       const { data, error, count } = await client
         .from(table)
-        .select(COLUMNS[table], { count: "exact" })
+        .select(columns, { count: "exact" })
         .order("id")
         .range(all.length, all.length + 499);
-      if (error) throw Error(`${table}: ${error.message}`);
+      if (error) {
+        if (
+          table === "matches" &&
+          columns !== LEGACY_MATCH_COLUMNS &&
+          ["42703", "PGRST204"].includes(error.code) &&
+          error.message.includes("referee_id")
+        ) {
+          columns = LEGACY_MATCH_COLUMNS;
+          all.length = 0;
+          continue;
+        }
+        throw Error(`${table}: ${error.message}`);
+      }
       if (!data) throw Error(`${table}: ไม่มีข้อมูลตอบกลับ`);
       all.push(...data);
       if ((count !== null && all.length >= count) || data.length === 0) break;
@@ -353,6 +373,19 @@ export async function writeRegistrationPolicy(
       "ไม่มีสิทธิ์ตั้งค่ารายการแข่งขันนี้ กรุณาติดต่อผู้ดูแลฐานข้อมูล",
     );
 }
+export async function writeAthleticsReferee(
+  client: SupabaseClient,
+  eventId: string,
+  refereeId: string | null,
+) {
+  const { data, error } = await client
+    .from("athletics_events")
+    .update({ referee_id: refereeId })
+    .eq("id", eventId)
+    .select("id");
+  if (error) throw Error(`มอบหมายกรรมการไม่สำเร็จ: ${error.message}`);
+  if (!data?.length) throw Error("ไม่มีสิทธิ์มอบหมายกรรมการรายการนี้");
+}
 async function checked<T>(
   request: PromiseLike<{ data: T | null; error: { message: string } | null }>,
   label: string,
@@ -427,10 +460,41 @@ export async function writeHosted<K extends keyof State>(
       (p) => `${p.school_id}|${p.competition_id}|${p.bib}`,
     );
     if (new Set(keys).size !== keys.length) throw Error("bib ซ้ำในไฟล์นำเข้า");
-    await checked(
-      client.from("registrations").insert(payload),
-      "registrations",
+    const inserts = payload.filter(
+      (p) => !rows.registrations.some((r) => r.id === p.id),
     );
+    const updates = payload.filter((p) =>
+      rows.registrations.some((r) => r.id === p.id),
+    );
+    if (updates.length && (updates.length !== 1 || inserts.length))
+      throw Error("กรุณาแก้ไขนักกีฬาทีละคน แยกจากการเพิ่มรายชื่อใหม่");
+    for (const p of updates) {
+      const original = rows.registrations.find((r) => r.id === p.id)!;
+      if (
+        original.competition_id !== p.competition_id ||
+        original.school_id !== p.school_id
+      )
+        throw Error(
+          "ไม่สามารถย้ายทะเบียนไปโรงเรียนหรือรายการอื่นผ่านการแก้ไขชื่อ",
+        );
+      const updated = await checked(
+        client
+          .from("registrations")
+          .update({ athlete_name: p.athlete_name, bib: p.bib })
+          .eq("id", p.id)
+          .eq("school_id", original.school_id)
+          .eq("competition_id", original.competition_id)
+          .select("id"),
+        "registrations",
+      );
+      if (!updated?.length)
+        throw Error("ไม่มีสิทธิ์แก้ไขทะเบียนนี้ หรือข้อมูลถูกลบแล้ว");
+    }
+    if (inserts.length)
+      await checked(
+        client.from("registrations").insert(inserts),
+        "registrations",
+      );
     return;
   }
   if (table === "matches") {
@@ -529,6 +593,7 @@ export async function writeHosted<K extends keyof State>(
           heat: r.heat,
           direction: r.direction || "asc",
           unit: r.unit || "s",
+          referee_id: r.referee_id || null,
         };
         await checked(
           client.from("athletics_events").insert(event),

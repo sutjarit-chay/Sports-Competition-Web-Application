@@ -86,7 +86,7 @@ async function capture() {
     await page.screenshot({ path: `${output}/${name}-viewport.png` });
     const tabs = [
       "นักกีฬา",
-      "จัดสาย / ตารางแข่ง",
+      "ตารางแข่งขัน",
       "บันทึกผล",
       "กรีฑา",
       "ตารางคะแนน",

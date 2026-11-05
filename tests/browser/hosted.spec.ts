@@ -77,6 +77,7 @@ async function fixture(page: Page, fail = false, rosters = false) {
       "home_score",
       "away_score",
       "revision",
+      "referee_id",
     ],
     athletics_events: [
       "id",
@@ -87,6 +88,9 @@ async function fixture(page: Page, fail = false, rosters = false) {
       "heat",
       "direction",
       "unit",
+      "starts_at",
+      "venue",
+      "referee_id",
     ],
     athletics_results: [
       "id",
@@ -206,6 +210,10 @@ async function fixture(page: Page, fail = false, rosters = false) {
 }
 async function enter(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: /โปรไฟล์/ }).click();
+  await page
+    .getByRole("menuitemradio", { name: "ผู้ดูแลระบบ", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
     .click();
@@ -237,7 +245,7 @@ test("migrated school_admin roster keeps legacy registrations and persists start
     roster_details: null,
   });
   await enter(page);
-  await login(page, "ผู้ดูแลโรงเรียน");
+  await login(page, "โรงเรียน");
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "นักกีฬาเดิมก่อนย้าย", exact: true }),
@@ -323,16 +331,13 @@ for (const role of ["school_admin", "school"]) {
       status: "OK",
     });
     await enter(page);
-    await login(page, role === "school_admin" ? "ผู้ดูแลโรงเรียน" : "โรงเรียน");
+    await login(page, "โรงเรียน");
     await expect(page.getByLabel("ทดลองสิทธิ์ (เฉพาะสาธิต)")).toHaveCount(0);
     await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
     await expect(
       page.getByRole("cell", { name: "นักกีฬาเดิม", exact: true }),
     ).toBeVisible();
-    await expect(page.locator('select[name="school_id"] option')).toHaveCount(
-      1,
-    );
-    await expect(page.locator('select[name="school_id"]')).toHaveValue(sid);
+    await expect(page.locator('select[name="school_id"]')).toHaveCount(0);
     await page.getByLabel("ชื่อ–นามสกุล", { exact: true }).fill("นักกีฬาใหม่");
     await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
     await expect(
@@ -362,30 +367,20 @@ for (const role of ["school_admin", "school"]) {
     );
     expect(writes).toHaveLength(1);
     await page
-      .getByRole("button", { name: "จัดสาย / ตารางแข่ง", exact: true })
+      .getByRole("button", { name: "ตารางแข่งขัน", exact: true })
       .click();
     await expect(
       page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
     ).toHaveCount(0);
-    await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
-    await expect(page.getByLabel("เจ้าบ้าน", { exact: true })).toBeDisabled();
-    await expect(page.getByLabel("ทีมเยือน", { exact: true })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "ยืนยันผล" })).toHaveCount(0);
-    await page.getByRole("button", { name: "กรีฑา", exact: true }).click();
-    await page
-      .getByRole("combobox", { name: "รายการแข่งขัน", exact: true })
-      .selectOption(track);
-    await page
-      .getByLabel("รายการกรีฑาที่มีอยู่", { exact: true })
-      .selectOption("existing-event");
     await expect(
-      page.getByRole("cell", { name: "นักวิ่งเดิม", exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "บันทึกเวลา", exact: true }),
+      page.getByRole("button", { name: "บันทึกผล", exact: true }),
     ).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "ส่งเข้ารอบชิง" }),
+      page.getByRole("button", { name: "กรีฑา", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.locator(".spider-edit-form")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "ยืนยันผล", exact: true }),
     ).toHaveCount(0);
     await page
       .getByRole("button", { name: "เหรียญรางวัล", exact: true })
@@ -393,16 +388,102 @@ for (const role of ["school_admin", "school"]) {
     await expect(page.getByRole("button", { name: "เพิ่มเหรียญ" })).toHaveCount(
       0,
     );
+    await expect(
+      page.getByRole("button", { name: "จัดการรายการแข่งขัน", exact: true }),
+    ).toHaveCount(0);
     await page
       .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
       .click();
-    await expect(page.locator('input[name="name"]').first()).toBeDisabled();
+    await page.getByRole("button", { name: "ออกจากระบบ", exact: true }).click();
+    await expect(page.locator(".role")).toContainText("ผู้ชม");
   });
 }
+
+test("hosted school profile keeps browser presentation fields after reopening", async ({
+  page,
+}) => {
+  const { db } = await fixture(page);
+  db.profiles[0].role = "school_admin";
+  db.profiles[0].school_id = sid;
+  await enter(page);
+  await login(page, "โรงเรียน");
+  await page
+    .getByRole("button", { name: "ข้อมูลโรงเรียน", exact: true })
+    .click();
+  await page.getByLabel("ชื่อโรงเรียนแบบย่อ").fill("รร.จริง ก");
+  await page
+    .getByRole("button", { name: "บันทึกข้อมูลโรงเรียน", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "บันทึกข้อมูลโรงเรียนแล้ว" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "นักกีฬาและครูผู้ฝึกซ้อม", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "ข้อมูลโรงเรียน", exact: true })
+    .click();
+  await expect(page.getByLabel("ชื่อโรงเรียนแบบย่อ")).toHaveValue("รร.จริง ก");
+});
+
+test("school edits a migrated hosted athlete without inserting another registration", async ({
+  page,
+}) => {
+  const { db, writes } = await fixture(page, false, true);
+  db.profiles[0].role = "school_admin";
+  db.profiles[0].school_id = sid;
+  db.registrations.push({
+    id: "editable-athlete",
+    school_id: sid,
+    competition_id: football,
+    athlete_name: "ชื่อเดิม",
+    bib: "101",
+    roster_details: {
+      ruleId: "football-male",
+      position: "starter",
+      events: [],
+    },
+  });
+  await enter(page);
+  await login(page, "โรงเรียน");
+  await page
+    .getByRole("button", { name: "นักกีฬาและครูผู้ฝึกซ้อม", exact: true })
+    .click();
+  const roster = page.locator(".school-portal-roster-list").first();
+  await roster.getByRole("button", { name: "แก้ไข", exact: true }).click();
+  await roster
+    .getByLabel("ชื่อ–นามสกุล", { exact: true })
+    .fill("ชื่อแก้ไขแล้ว");
+  await roster.getByRole("button", { name: "บันทึก", exact: true }).click();
+  await expect(roster).toContainText("ชื่อแก้ไขแล้ว");
+  expect(db.registrations).toHaveLength(1);
+  expect(writes).toMatchObject([
+    {
+      table: "registrations",
+      method: "PATCH",
+      payload: [{ athlete_name: "ชื่อแก้ไขแล้ว", bib: "101" }],
+    },
+  ]);
+});
 test("normalized hosted workflow writes only contract columns with school UUIDs and revisions", async ({
   page,
 }) => {
+  page.on("dialog", (dialog) => dialog.accept());
   const { db, writes } = await fixture(page);
+  db.matches.push({
+    id: "existing-match",
+    competition_id: football,
+    group_name: "A",
+    home_school_id: sid,
+    away_school_id: sid2,
+    starts_at: null,
+    venue: null,
+    status: "scheduled",
+    home_score: null,
+    away_score: null,
+    revision: 0,
+  });
+
   await enter(page);
   await login(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
@@ -420,23 +501,20 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
     competition_id: football,
     bib: "101",
   });
-  await page
-    .getByRole("button", { name: "จัดสาย / ตารางแข่ง", exact: true })
-    .click();
-  await page
-    .getByRole("checkbox", { name: "โรงเรียนจริง ก", exact: true })
-    .check();
-  await page
-    .getByRole("checkbox", { name: "โรงเรียนจริง ข", exact: true })
-    .check();
-  await page.getByRole("button", { name: "สร้างตารางแข่งขัน" }).click();
+  await page.getByRole("button", { name: "ตารางแข่งขัน", exact: true }).click();
   await expect(
-    page.getByRole("cell", {
-      name: "โรงเรียนจริง ก — โรงเรียนจริง ข",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await page.getByLabel("วันเวลา (ประเทศไทย)").fill("2026-11-03T09:00");
+    page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
+  ).toHaveCount(0);
+  await expect(page.locator(".spider-match-card")).toContainText(
+    "โรงเรียนจริง ก",
+  );
+  await expect(page.locator(".spider-match-card")).toContainText(
+    "โรงเรียนจริง ข",
+  );
+  await page
+    .locator(".spider-edit-form")
+    .getByLabel("วันเวลา", { exact: true })
+    .fill("2026-11-03T09:00");
   await page.getByLabel("สนาม", { exact: true }).fill("สนามกลาง");
   await page.getByRole("button", { name: "บันทึกเวลา", exact: true }).click();
   await expect
@@ -446,7 +524,7 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
   await page.getByLabel("เจ้าบ้าน").fill("2");
   await page.getByLabel("ทีมเยือน").fill("0");
   await page.getByRole("button", { name: "ยืนยันผล" }).click();
-  await expect(page.getByText("จบการแข่งขัน", { exact: true })).toBeVisible();
+  await expect(page.getByText(/ยืนยันผลแล้ว/)).toBeVisible();
   expect(db.matches[0].revision).toBe(2);
   await page.getByRole("button", { name: "ตารางคะแนน", exact: true }).click();
   await expect(
@@ -457,14 +535,16 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
       .last(),
   ).toHaveText("2");
   await page.getByRole("button", { name: "เหรียญรางวัล", exact: true }).click();
-  await page.getByLabel("รายการรอบชิง").fill("ฟุตบอลรอบชิง");
-  await page.getByRole("button", { name: "เพิ่มเหรียญ" }).click();
-  await expect.poll(() => db.medals.length).toBe(1);
-  expect(db.medals[0]).toMatchObject({
-    competition_id: football,
-    school_id: sid,
-    award: "gold",
-  });
+  await expect(page.getByRole("button", { name: "เพิ่มเหรียญ" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page
+      .getByRole("row")
+      .filter({ hasText: "โรงเรียนจริง ก" })
+      .filter({ hasText: "ฟุตบอล" }),
+  ).toContainText("ทอง");
+  expect(db.medals).toHaveLength(0);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   await page
     .getByRole("combobox", { name: "รายการแข่งขัน", exact: true })
@@ -493,6 +573,73 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
     writes.some((w) => ["athletes", "races", "awards"].includes(w.table)),
   ).toBe(false);
 });
+test("recorder sees and submits only assigned matches without schedule controls", async ({
+  page,
+}) => {
+  page.on("dialog", (dialog) => dialog.accept());
+  const { db } = await fixture(page);
+  const refereeId = String(db.profiles[0].id);
+  db.profiles[0].role = "recorder";
+  db.matches.push(
+    {
+      id: "assigned-match",
+      competition_id: football,
+      group_name: "A",
+      home_school_id: sid,
+      away_school_id: sid2,
+      starts_at: "2026-11-05T05:30:00Z",
+      venue: "สนามกลาง",
+      status: "scheduled",
+      home_score: null,
+      away_score: null,
+      revision: 0,
+      referee_id: refereeId,
+    },
+    {
+      id: "unassigned-match",
+      competition_id: football,
+      group_name: "B",
+      home_school_id: sid2,
+      away_school_id: sid,
+      starts_at: "2026-11-05T06:30:00Z",
+      venue: "สนามอื่น",
+      status: "scheduled",
+      home_score: null,
+      away_score: null,
+      revision: 0,
+      referee_id: null,
+    },
+  );
+  await enter(page);
+  await login(page, "กรรมการ");
+  await page.getByRole("button", { name: "ตารางแข่งขัน", exact: true }).click();
+  await expect(page.locator(".spider-match-card")).toHaveCount(1);
+  await expect(page.locator(".spider-match-card")).toContainText("สนามกลาง");
+  await expect(page.getByLabel("วันเวลา", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
+  await expect(page.locator(".match-form")).toHaveCount(1);
+  await expect(page.locator(".match-form")).toContainText("สนามกลาง");
+  await page.getByLabel("เจ้าบ้าน").fill("3");
+  await page.getByLabel("ทีมเยือน").fill("1");
+  await page.getByRole("button", { name: "ยืนยันผล" }).click();
+  await expect.poll(() => db.matches[0].status).toBe("finished");
+  expect(db.matches[0]).toMatchObject({
+    home_score: 3,
+    away_score: 1,
+    referee_id: refereeId,
+  });
+  await expect(
+    page.getByRole("button", { name: "นักกีฬา", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
+    .click();
+  await page.getByRole("button", { name: "ออกจากระบบ", exact: true }).click();
+  await expect(page.locator(".role")).toContainText("ผู้ชม");
+});
 test("failed hosted transition preserves demo storage and permissions", async ({
   page,
 }) => {
@@ -508,7 +655,9 @@ test("failed hosted transition preserves demo storage and permissions", async ({
     .getByRole("button", { name: "เข้าสู่โหมด Supabase", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText("Fixture read denied");
-  await expect(page.getByText("โหมดสาธิต", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".badge").getByText("โหมดสาธิต", { exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(() => localStorage.getItem("kosamphi-demo-v1")),
   ).toBe(before);
@@ -597,6 +746,8 @@ test("account transitions are locked while a live refresh is pending", async ({
     page.getByRole("button", { name: "กลับสาธิต", exact: true }),
   ).toBeEnabled();
   await page.getByRole("button", { name: "กลับสาธิต", exact: true }).click();
-  await expect(page.getByText("โหมดสาธิต", { exact: true })).toBeVisible();
-  await expect(page.locator(".role")).toContainText("สาธิต");
+  await expect(
+    page.locator(".badge").getByText("โหมดสาธิต", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".role")).toContainText("ผู้ชม");
 });

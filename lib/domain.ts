@@ -37,6 +37,9 @@ export type Match = {
   status: string;
   competition_id?: string;
   revision?: number;
+  referee_id?: string;
+  format?: "round_robin" | "knockout";
+  managed?: boolean;
 };
 export type Race = {
   id: string;
@@ -55,6 +58,7 @@ export type Race = {
   direction?: string;
   unit?: string;
   kind?: string;
+  referee_id?: string;
 };
 export type Award = {
   id: string;
@@ -66,7 +70,13 @@ export type Award = {
   competition_id?: string;
 };
 export type State = {
-  schools: { id: string; name: string }[];
+  schools: {
+    id: string;
+    name: string;
+    short_name?: string;
+    logo?: string;
+    school_type?: "ขนาดเล็ก" | "ขยายโอกาส";
+  }[];
   athletes: Athlete[];
   matches: Match[];
   races: Race[];
@@ -267,10 +277,7 @@ export function medals(awards: { school: string; medal: string }[]) {
 }
 export function initialState(): State {
   return {
-    schools: Array.from({ length: 10 }, (_, i) => ({
-      id: String(i + 1),
-      name: `โรงเรียน ${i + 1}`,
-    })),
+    schools: [],
     athletes: [],
     matches: [],
     races: [],

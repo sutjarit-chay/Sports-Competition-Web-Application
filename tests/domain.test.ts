@@ -27,17 +27,20 @@ test("CSV handles quoted names and rejects malformed and duplicate rows", () => 
   assert.equal(
     parseAthletes(
       'name,school_id,sport,gender,division\n"สมชาย, ใจดี",1,ฟุตบอล,ชาย,ประถม',
+      [{ id: "1", name: "โรงเรียนที่ลงทะเบียน" }],
     )[0].name,
     "สมชาย, ใจดี",
   );
   assert.throws(() =>
     parseAthletes(
       "name,school_id,sport,gender,division\nA,11,ฟุตบอล,ชาย,ประถม",
+      [{ id: "1", name: "โรงเรียนที่ลงทะเบียน" }],
     ),
   );
   assert.throws(() =>
     parseAthletes(
       "name,school_id,sport,gender,division\nA,1,ฟุตบอล,ชาย,ประถม\nA,1,ฟุตบอล,ชาย,ประถม",
+      [{ id: "1", name: "โรงเรียนที่ลงทะเบียน" }],
     ),
   );
 });

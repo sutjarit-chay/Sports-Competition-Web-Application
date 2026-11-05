@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { Athlete } from "@/lib/domain";
 import {
   RULES,
@@ -95,20 +96,23 @@ type Props = {
   busy: boolean;
   enabled: boolean;
   onRuleChange: (id: string) => void;
-  onSubmit: (rows: Athlete[]) => Promise<void>;
+  onSubmit: (rows: Athlete[], formData: FormData) => Promise<void>;
   onConfigure: (policy: RegistrationPolicy) => Promise<void>;
   onImport: (file: File) => Promise<void>;
   onTemplate: (school: string) => void;
   onSchoolCodes: () => void;
+  submitLabel?: string;
+  registrationFields?: ReactNode;
+  canSubmitWithoutAthletes?: (formData: FormData) => boolean;
 };
 
 export function RosterRegistrationPanel(props: Props) {
   const { ruleId, policy, admin, canRegister, busy, enabled } = props;
   const rule = getRule(ruleId),
     limits = policyLimits(policy);
-  const [extra, setExtra] = useState(1);
   const [error, setError] = useState("");
   const [selectedSchool, setSelectedSchool] = useState(props.school);
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   const school = admin ? selectedSchool : props.school;
   const existing = props.athletes.filter((a) => a.school_id === school);
   const unknown = existing.filter((a) => !a.roster).length;
@@ -122,7 +126,7 @@ export function RosterRegistrationPanel(props: Props) {
     ? [
         {
           position: "individual" as const,
-          count: extra,
+          count: 1,
           title: "นักกีฬาประเภทเดี่ยว",
         },
       ]
@@ -185,10 +189,6 @@ export function RosterRegistrationPanel(props: Props) {
               data = new FormData(form);
             setError("");
             try {
-              if (!configured)
-                throw Error("กรุณาให้ผู้ดูแลตั้งค่าโควตาให้ครบก่อนสมัคร");
-              if (!school || !props.schools.some((s) => s.id === school))
-                throw Error("บัญชีนี้ยังไม่ผูกโรงเรียน กรุณาติดต่อผู้ดูแล");
               const rows: Athlete[] = [];
               let i = -1;
               for (const group of groups)
@@ -214,17 +214,27 @@ export function RosterRegistrationPanel(props: Props) {
                       ruleId,
                       position: group.position,
                       events: individual
-                        ? data.getAll(`events_${i}`).map(String)
+                        ? data.getAll("selected_events").map(String)
                         : rule.id === "athletics-relay"
                           ? ["relay"]
                           : [],
                     },
                   });
                 }
-              if (!rows.length) throw Error("กรอกชื่อนักกีฬาอย่างน้อย 1 คน");
-              await props.onSubmit(rows);
+              const hasSupplementalData =
+                props.canSubmitWithoutAthletes?.(data) || false;
+              if (rows.length && !configured)
+                throw Error("กรุณาให้ผู้ดูแลตั้งค่าโควตาให้ครบก่อนสมัคร");
+              if (
+                rows.length &&
+                (!school || !props.schools.some((s) => s.id === school))
+              )
+                throw Error("บัญชีนี้ยังไม่ผูกโรงเรียน กรุณาติดต่อผู้ดูแล");
+              if (!rows.length && !hasSupplementalData)
+                throw Error("กรอกชื่อนักกีฬาอย่างน้อย 1 คน");
+              await props.onSubmit(rows, data);
               form.reset();
-              setExtra(1);
+              setSelectedEvents([]);
             } catch (error) {
               setError(
                 error instanceof Error
@@ -234,23 +244,58 @@ export function RosterRegistrationPanel(props: Props) {
             }
           }}
         >
-          <label>
-            โรงเรียน
-            <select
-              name="school_id"
-              value={school}
-              disabled={busy}
-              onChange={(e) => setSelectedSchool(e.target.value)}
-            >
-              {props.schools
-                .filter((s) => admin || s.id === school)
-                .map((s) => (
+          {admin && (
+            <label>
+              โรงเรียน
+              <select
+                name="school_id"
+                value={school}
+                disabled={busy}
+                onChange={(e) => setSelectedSchool(e.target.value)}
+              >
+                {props.schools.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}
-            </select>
-          </label>
+              </select>
+            </label>
+          )}
+          {individual && configured && (
+            <fieldset className="athletics-choices">
+              <legend>เลือกรายการแข่งขันกรีฑาก่อนกรอกชื่อนักกีฬา</legend>
+              {ATHLETICS_EVENTS.filter(
+                (event) =>
+                  event.id !== "relay" &&
+                  (policy.eventQuotas[event.id] || 0) > 0,
+              ).map((event) => {
+                const checked = selectedEvents.includes(event.id);
+                const atLimit =
+                  policy.maxEventsPerAthlete !== null &&
+                  selectedEvents.length >= policy.maxEventsPerAthlete;
+                return (
+                  <label className="check" key={event.id}>
+                    <input
+                      type="checkbox"
+                      name="selected_events"
+                      value={event.id}
+                      checked={checked}
+                      disabled={busy || (!checked && atLimit)}
+                      onChange={(change) =>
+                        setSelectedEvents((current) =>
+                          change.target.checked
+                            ? [...current, event.id]
+                            : current.filter((id) => id !== event.id),
+                        )
+                      }
+                    />
+                    {event.name}
+                    <small>โควตา {policy.eventQuotas[event.id]} คน</small>
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
           {groups.map((group) => (
             <fieldset key={group.position} className="roster-group">
               <legend>
@@ -283,69 +328,24 @@ export function RosterRegistrationPanel(props: Props) {
                           disabled={busy || !configured}
                         />
                       </label>
-                      {individual && (
-                        <fieldset className="athletics-choices">
-                          <legend>
-                            รายการของนักกีฬา คนที่ {i + 1} (เลือกได้หลายรายการ)
-                          </legend>
-                          {ATHLETICS_EVENTS.filter((e) => e.id !== "relay").map(
-                            (event) => (
-                              <label className="check" key={event.id}>
-                                <input
-                                  type="checkbox"
-                                  name={`events_${i}`}
-                                  value={event.id}
-                                  disabled={
-                                    busy ||
-                                    !configured ||
-                                    !policy.eventQuotas[event.id]
-                                  }
-                                />
-                                {event.name}
-                                <small>
-                                  {policy.eventQuotas[event.id] === undefined
-                                    ? "รอโควตา"
-                                    : `โควตา ${policy.eventQuotas[event.id]} คน`}
-                                </small>
-                              </label>
-                            ),
-                          )}
-                        </fieldset>
-                      )}
                     </div>
                   );
                 })}
               </div>
             </fieldset>
           ))}
-          {individual && (
-            <button
-              type="button"
-              disabled={
-                busy ||
-                !configured ||
-                extra >=
-                  Math.max(
-                    1,
-                    Object.values(policy.eventQuotas).reduce(
-                      (a, b) => a + b,
-                      0,
-                    ),
-                  )
-              }
-              onClick={() => setExtra((n) => n + 1)}
-            >
-              เพิ่มช่องนักกีฬา
-            </button>
-          )}
+          {props.registrationFields}
           <p className="registration-notice">{REGISTRATION_NOTICE}</p>
           {error && (
             <p role="alert" className="roster-error">
               {error}
             </p>
           )}
-          <button className="primary" disabled={busy || !configured}>
-            + เพิ่มนักกีฬา
+          <button
+            className="primary"
+            disabled={busy || (!configured && !props.registrationFields)}
+          >
+            {props.submitLabel || "+ เพิ่มนักกีฬา"}
           </button>
         </form>
       ) : (

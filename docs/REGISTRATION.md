@@ -2,7 +2,11 @@
 
 ## สถานะและขอบเขต
 
-ปรับโค้ดและเตรียม additive migration แล้ว **ยังไม่ได้รัน migration บน Supabase จริง** เพราะเซสชันไม่มี administrative database connection ผู้ใช้อนุญาตให้ push โค้ดแล้ว แต่การรันบนฐานข้อมูลจริงยังรอเชื่อม Supabase ผู้ดูแลฐานข้อมูลต้องตรวจ schema จริง สำรองข้อมูล และรันไฟล์ `supabase/migrations/20261104_registration_rosters.sql` บน normalized project ที่ถูกต้อง ไม่ใช้ `supabase/schema.sql` ซึ่งเป็น legacy schema
+ปรับโค้ดและเตรียม additive migration แล้ว และรัน `supabase/migrations/20261104_registration_rosters.sql` บน normalized Supabase project `Sports Project` เมื่อ 2026-11-04 หลังตรวจ schema จริงแบบ read-only ผ่าน Dashboard SQL Editor (ไม่ใช้ `supabase/schema.sql` ซึ่งเป็น legacy schema) ตาราง/คอลัมน์ที่ migration ต้องใช้ครบ; ตารางเดิมทั้ง 9 ตารางเปิด RLS อยู่ และ fingerprint ของ policies/constraints เดิมตรงกันก่อนและหลัง migration
+
+ก่อนรันมี 8 competitions และ 1 registration โดย competitions ทั้งหมดเป็นเพศผสม/U12 จึงไม่มีรายการใดถูกผูก registration policy อัตโนมัติ ข้อมูลสมัครเดิมยังอยู่ 1 แถวและ `roster_details` เป็น SQL NULL ตามเดิม หลังรันมี catalog 11 กติกา, nullable JSONB columns 2 คอลัมน์ และ validating triggers 2 ตัว โดยไม่มีการเปลี่ยนจำนวนแถวเดิมหรือ policies/constraints เดิม ตาราง `registration_rule_catalog` ตั้งใจไม่เปิด RLS เพราะมีเฉพาะกติกาสาธารณะ; `anon`/`authenticated` อ่านได้แต่เขียนไม่ได้ ตรวจสอบสิทธิ์หลังรันแล้ว
+
+ขณะตรวจไม่พบ backup ล่าสุดใน Dashboard การ migrate ทำงานภายใน transaction เดียว (`BEGIN`/`COMMIT`) และ preflight ยืนยันว่าไม่มี competition เดิมตรงกับเงื่อนไข auto-bind ก่อนเปลี่ยน schema
 
 จำนวนเป็นเพดานต่อโรงเรียนและต่อ competition (แยกกีฬา/เพศ/ระดับชั้น) สมัครทีละคนหรือเป็นชุดได้ ไม่บังคับให้ส่งทีมครบในครั้งเดียว ระดับชั้น/เพศที่ผู้ใช้ไม่ได้ระบุในกติกาให้อ้างอิงรายการแข่งขันของผู้จัด ไม่เดาข้อมูลเพิ่ม
 
@@ -101,3 +105,18 @@
 | หน้าจอ | 390/820/1440px ตารางเลื่อนภายใน ช่องแบบฟอร์มไม่ล้นจอ; keyboard ใช้งานได้; พิมพ์/PDF มีตารางและรายชื่อ ไม่มีช่องกรอก |
 
 การตรวจ live ก่อนเปิดใช้งานยังต้องครอบคลุม schema/policies จริงและ concurrent transactions บน hosted PostgreSQL โดยผู้ดูแล project เอกสารกลไกที่ใช้อ้างอิง: [PostgreSQL locking](https://www.postgresql.org/docs/current/explicit-locking.html) และ [security-definer functions](https://www.postgresql.org/docs/current/sql-createfunction.html)
+
+## สมัครโรงเรียนใหม่
+
+สถานะปัจจุบัน: UI อยู่ระหว่างตรวจแบบก่อนเชื่อม Supabase หน้า `/school-registration` แสดงตัวอย่างฟอร์มชื่อบัญชี/รหัสผ่าน ชื่อโรงเรียน ประเภท (ประถม/ขยายโอกาส) ชื่อผู้บริหาร และตราโรงเรียน รูปภาพ preview ใน browser เท่านั้น และปุ่มยืนยันแสดงสรุปโดยไม่สร้างบัญชีหรือส่งข้อมูล โค้ด backend และ migration ด้านล่างเป็นงานเชื่อมต่อเดิม แต่หน้านี้ยังไม่เรียกใช้งานจนกว่าจะมีคำสั่งให้เชื่อมต่อ
+
+หน้าแรกเริ่มต้นเป็นผู้ชม เมนูโปรไฟล์ด้านบนสลับบทบาทในโหมดสาธิตได้ทันทีโดยไม่เปิด login เพื่อให้ทดลองทุกมุมมองก่อน การสลับนี้ไม่ตรวจสอบบัญชีหรือให้สิทธิ์จริง; ระบบล็อกอินจะจัดการภายหลัง เมนู “โรงเรียน / บัญชี” ไม่มีตัวเลือกบทบาทแล้ว โรงเรียนตัวอย่างถูกเอาออกจาก initial state และข้อมูลตัวอย่างเดิมที่บันทึกใน browser จะถูกกรองชื่อ `โรงเรียน 1` ถึง `โรงเรียน 10` ออกเมื่อโหลด
+
+หน้าสาธารณะ `/school-registration` ให้สมัครด้วยชื่อบัญชีและรหัสผ่าน ไม่ใช้อีเมลหรือให้ผู้สมัครกำหนด role เอง บัญชีใหม่ยังอ่านข้อมูลในฐานะผู้ชมจน admin อนุมัติคำขอ โรงเรียนและ `school_admin` จะถูกสร้างใน transaction เดียวผ่าน `review_school_registration`; ผู้สมัครเห็นสถานะ/หมายเหตุได้เฉพาะคำขอของตน
+ถ้าคำขอถูกปฏิเสธ ผู้สมัครแก้รายละเอียดและส่งใหม่ได้ผ่าน `resubmit_school_registration` โดยตรงไม่ได้รับสิทธิ์แก้แถวคำขอหรืออนุมัติตนเอง
+
+ก่อนเปิดใช้ ให้ตรวจ `schools.id` และ `profiles.school_id` เป็น UUID, `schools.name` เป็น text, `schools.id` มี default และ constraint ของ profile รับ `school_admin` จากนั้นตรวจและรัน `supabase/migrations/20261105_school_registration.sql` กับ normalized project ที่เหมาะสม migration เพิ่มเฉพาะ request/rate-limit tables, policies และ RPC ไม่แก้ policies, constraints, rows หรือ schema ของตารางเดิม
+
+กำหนด `SUPABASE_SERVICE_ROLE_KEY` เป็น secret ฝั่ง server ใน deployment เท่านั้น ห้ามนำไปใส่ `.env.local` หรือ Git ระบบผูก username กับ alias ภายในโดเมน `.invalid` เพื่อใช้ session ของ Supabase Auth และจำกัดการสร้างบัญชี 5 ครั้งต่อชั่วโมงต่อ IP ผ่าน `x-real-ip` ที่ trusted ingress ต้องเขียนทับเอง จึงควรตรวจการตั้งค่า proxy และจำกัดการเข้าถึงก่อน deploy
+
+ตรวจ schema จริงของ project `Sports Project` วันที่ 2026-11-05 ก่อนติดตั้งแล้ว: `schools.id`/`profiles.school_id` เป็น UUID, `schools.id` มี default `gen_random_uuid()`, และ role constraint รองรับ `school_admin` จากนั้นรัน migration สำเร็จใน Supabase SQL Editor การตรวจหลังรันยืนยันว่าตารางเดิมทั้ง 9 ตารางยังเปิด RLS และจำนวน policy เดิมยัง 16; ตารางคำขอใหม่เปิด RLS พร้อม 2 policies ส่วนตาราง rate limit เปิด RLS และไม่เปิด policy ให้ client ไม่มีข้อมูลหรือ policy เดิมถูกแก้

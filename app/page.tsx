@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import Image from "next/image";
 import {
   SPORTS,
   initialState,
   parseAthletes,
-  roundRobin,
   standings,
   rankRace,
   medals,
@@ -14,6 +14,11 @@ import {
   Race,
   Award,
 } from "../lib/domain";
+import {
+  calculateMedalAwards,
+  groupSchoolsByMedalCategory,
+  hasMultiplePoolsAwaitingFinal,
+} from "../lib/medal-calculation";
 import { supabase } from "../lib/supabase";
 import {
   readHosted,
@@ -21,6 +26,7 @@ import {
   findCompetition,
   type Snapshot,
   writeRegistrationPolicy,
+  writeAthleticsReferee,
 } from "../lib/hosted";
 import Papa from "papaparse";
 import {
@@ -49,7 +55,6 @@ import {
   Medal,
   Settings2,
   Trophy,
-  Printer,
   ShieldCheck,
   ArrowRight,
   CircleDot,
@@ -66,17 +71,52 @@ import {
   Target,
   CircleDashed,
   CircleArrowUp,
+  UserRound,
+  ChevronDown,
+  Check,
+  type LucideIcon,
 } from "lucide-react";
+import AdminCompetitionManager from "@/components/admin-competition-manager";
+import SchoolPortal from "@/components/school-portal";
+import {
+  SCHOOL_PROFILE_KEY,
+  parseSchoolProfiles,
+  type SchoolProfile,
+} from "@/lib/school-profiles";
+import {
+  isManagedCompetition,
+  fixturesConflict,
+  type ManagedCompetition,
+} from "@/lib/admin-competitions";
+import {
+  createDemoCompetitionData,
+  demoFixturesAsMatches,
+  reconcileManagedMatches,
+} from "@/lib/demo-seed";
+import SpiderSchedule from "@/components/spider-schedule";
 const tabs = [
   "ภาพรวม",
   "นักกีฬา",
-  "จัดสาย / ตารางแข่ง",
+  "ตารางแข่งขัน",
   "บันทึกผล",
   "กรีฑา",
   "ตารางคะแนน",
   "เหรียญรางวัล",
   "โรงเรียน / บัญชี",
+  "จัดการรายการแข่งขัน",
+  "ข้อมูลโรงเรียน",
+  "นักกีฬาและครูผู้ฝึกซ้อม",
 ];
+const viewerTabIndices = [0, 2, 5, 6, 7];
+function availableTabIndices(role: string) {
+  if (role === "viewer") return viewerTabIndices;
+  if (role === "recorder" || role === "referee") return [0, 2, 3, 4, 7];
+  if (role === "school" || role === "school_admin")
+    return [0, 1, 2, 5, 6, 7, 9, 10];
+  return tabs.flatMap((_, index) =>
+    [8, 9, 10].includes(index) && role !== "admin" ? [] : [index],
+  );
+}
 const icons = [
   LayoutDashboard,
   Users,
@@ -86,7 +126,22 @@ const icons = [
   ChartNoAxesColumn,
   Medal,
   Settings2,
+  Trophy,
+  School,
+  Users,
 ];
+const mobileTabLabels: Record<number, string> = {
+  0: "ภาพรวม",
+  1: "นักกีฬา",
+  2: "ตารางแข่ง",
+  3: "บันทึกผล",
+  4: "กรีฑา",
+  5: "คะแนน",
+  6: "เหรียญรางวัล",
+  8: "รายการ",
+  9: "ข้อมูล",
+  10: "รายชื่อ",
+};
 const sportIcons = [
   Goal,
   Volleyball,
@@ -97,13 +152,53 @@ const sportIcons = [
   CircleArrowUp,
   CircleDot,
 ];
+const DEMO_COMPETITIONS_KEY = "kosamphi-admin-competitions-v1";
+type SchoolRegistrationRequest = {
+  id: string;
+  username: string;
+  school_name: string;
+  contact_name: string;
+  contact_phone: string | null;
+  created_at: string;
+};
+type AppRole = "admin" | "school" | "recorder" | "referee" | "viewer";
+const roleOptions: { value: AppRole; label: string }[] = [
+  { value: "viewer", label: "ผู้ชม" },
+  { value: "admin", label: "ผู้ดูแลระบบ" },
+  { value: "school", label: "โรงเรียน" },
+  { value: "recorder", label: "กรรมการ" },
+];
+const roleLabels: Record<string, string> = {
+  admin: "ผู้ดูแลระบบ",
+  school: "โรงเรียน",
+  school_admin: "โรงเรียน",
+  recorder: "กรรมการ",
+  referee: "กรรมการ",
+  viewer: "ผู้ชม",
+};
+const roleIcons: Record<string, LucideIcon> = {
+  admin: ShieldCheck,
+  school: School,
+  school_admin: School,
+  recorder: ClipboardPenLine,
+  referee: ClipboardPenLine,
+  viewer: UserRound,
+};
+function removePlaceholderSchools(state: State): State {
+  return {
+    ...state,
+    schools: state.schools.filter(
+      (school) => !/^โรงเรียน (?:[1-9]|10)$/.test(school.name),
+    ),
+  };
+}
 export default function Home() {
   const [data, setData] = useState<State>(initialState),
     [tab, setTab] = useState(0),
     [demo, setDemo] = useState(true),
     [ready, setReady] = useState(false),
-    [role, setRole] = useState("admin"),
-    [school, setSchool] = useState("1"),
+    [role, setRole] = useState("viewer"),
+    [school, setSchool] = useState(""),
     [message, setMessage] = useState(""),
     [sport, setSport] = useState(SPORTS[0]),
     [division, setDivision] = useState("ประถม"),
@@ -111,6 +206,19 @@ export default function Home() {
     [busy, setBusy] = useState(false);
   const [demoPolicies, setDemoPolicies] = useState<
     Record<string, RegistrationPolicy>
+  >({});
+  const [managedCompetitions, setManagedCompetitions] = useState<
+    ManagedCompetition[]
+  >([]);
+  const syncCompetitions = useCallback((competitions: ManagedCompetition[]) => {
+    setManagedCompetitions(competitions);
+    setData((current) => ({
+      ...current,
+      matches: reconcileManagedMatches(current.matches, competitions),
+    }));
+  }, []);
+  const [schoolProfiles, setSchoolProfiles] = useState<
+    Record<string, SchoolProfile>
   >({});
   const [registrationRuleId, setRegistrationRuleId] = useState("football-male");
   useEffect(() => {
@@ -129,7 +237,13 @@ export default function Home() {
   }, []);
   const [messageKind, setMessageKind] = useState<"success" | "error">("error");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const [schoolRequests, setSchoolRequests] = useState<
+    SchoolRegistrationRequest[]
+  >([]);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const roleMenuButton = useRef<HTMLButtonElement>(null);
+  const roleMenu = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 701px)");
     const closeOnDesktop = () => {
@@ -173,24 +287,77 @@ export default function Home() {
       document.body.style.overflow = previousOverflow;
     };
   }, [menuOpen]);
+  useEffect(() => {
+    if (!roleMenuOpen) return;
+    roleMenu.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')
+      ?.focus();
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!roleMenu.current?.contains(event.target as Node))
+        setRoleMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setRoleMenuOpen(false);
+        roleMenuButton.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [roleMenuOpen]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [profileId, setProfileId] = useState("");
   const [competitionId, setCompetitionId] = useState("");
   const [eventId, setEventId] = useState("");
   const [eventKind, setEventKind] = useState("track");
   const [eventDirection, setEventDirection] = useState("asc");
   const [eventUnit, setEventUnit] = useState("s");
+  const [eventRefereeId, setEventRefereeId] = useState("");
   const [event, setEvent] = useState("วิ่ง 100 เมตร"),
     [stage, setStage] = useState("heat"),
     [heat, setHeat] = useState(1);
   useEffect(() => {
+    let profiles: Record<string, SchoolProfile> = {};
+    try {
+      profiles = parseSchoolProfiles(localStorage.getItem(SCHOOL_PROFILE_KEY));
+      setSchoolProfiles(profiles);
+    } catch {
+      setMessage("อ่านข้อมูลโลโก้และชื่อย่อโรงเรียนไม่สำเร็จ");
+    }
     try {
       const saved = localStorage.getItem("kosamphi-demo-v1");
-      if (saved) setData(JSON.parse(saved));
+      const state = saved
+        ? removePlaceholderSchools(JSON.parse(saved))
+        : initialState();
+      const savedCompetitions = localStorage.getItem(DEMO_COMPETITIONS_KEY);
+      if (savedCompetitions) {
+        const competitions: unknown = JSON.parse(savedCompetitions);
+        if (
+          !Array.isArray(competitions) ||
+          !competitions.every(isManagedCompetition)
+        )
+          throw Error("ข้อมูลรายการแข่งขันสาธิตไม่ถูกต้อง");
+        setManagedCompetitions(competitions);
+        state.matches = reconcileManagedMatches(state.matches, competitions);
+      }
+      setData(state);
     } catch {
       setMessage("ไม่สามารถอ่านข้อมูลสาธิตเดิม");
     }
     setReady(true);
   }, []);
+  function chooseRole(nextRole: AppRole) {
+    setRole(nextRole);
+    setProfileId(
+      nextRole === "recorder" || nextRole === "referee" ? "demo-referee" : "",
+    );
+    setSchool(nextRole === "viewer" ? "" : data.schools[0]?.id || "");
+    if (!availableTabIndices(nextRole).includes(tab)) setTab(0);
+  }
   useEffect(() => {
     if (ready && demo)
       localStorage.setItem("kosamphi-demo-v1", JSON.stringify(data));
@@ -202,21 +369,28 @@ export default function Home() {
     setSport(c.sport);
     setDivision(c.age_group);
     setGender(c.gender);
-    if (id !== competitionId) setEventId("");
+    if (id !== competitionId) {
+      setEventId("");
+      setEventRefereeId("");
+    }
   }
   async function refresh() {
     if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
     const { data: session, error: sessionError } =
       await supabase.auth.getSession();
     if (sessionError) throw Error(sessionError.message);
-    let profile: { role: string; school_id: string | null } | null = null;
+    let profile: {
+      id: string;
+      role: string;
+      school_id: string | null;
+    } | null = null;
     if (session.session) {
       const { data: auth, error } = await supabase.auth.getUser();
       if (error) throw Error(error.message);
       if (auth.user) {
         const res = await supabase
           .from("profiles")
-          .select("role,school_id")
+          .select("id,role,school_id")
           .eq("id", auth.user.id)
           .maybeSingle();
         if (res.error) throw Error(res.error.message);
@@ -233,15 +407,35 @@ export default function Home() {
     // Commit mode, permissions and data together only after every read succeeds.
     setSnapshot(loaded);
     setData(loaded.state);
-    setRole(profile?.role || "viewer");
+    setProfileId(profile?.id || "");
+    const nextRole = profile?.role || "viewer";
+    setRole(nextRole);
+    if (!availableTabIndices(nextRole).includes(tab)) setTab(0);
     setSchool(
       profile?.school_id ||
         (profile?.role === "admin" ? loaded.state.schools[0]?.id || "" : ""),
     );
     setDemo(false);
+    const assignedCompetitionIds =
+      nextRole === "recorder" || nextRole === "referee"
+        ? new Set([
+            ...loaded.state.matches
+              .filter((match) => match.referee_id === profile?.id)
+              .map((match) => match.competition_id)
+              .filter((id): id is string => !!id),
+            ...loaded.rows.athletics_events
+              .filter((event) => event.referee_id === profile?.id)
+              .map((event) => event.competition_id),
+          ])
+        : undefined;
+    const availableCompetitions = assignedCompetitionIds
+      ? loaded.rows.competitions.filter((item) =>
+          assignedCompetitionIds.has(item.id),
+        )
+      : loaded.rows.competitions;
     const c =
-      loaded.rows.competitions.find((c) => c.id === competitionId) ||
-      loaded.rows.competitions[0];
+      availableCompetitions.find((item) => item.id === competitionId) ||
+      availableCompetitions[0];
     if (c) chooseCompetition(c.id, loaded);
     else {
       setCompetitionId("");
@@ -249,6 +443,35 @@ export default function Home() {
       setDivision("");
       setGender("");
     }
+  }
+  async function loadSchoolRequests() {
+    if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
+    const { data, error } = await supabase
+      .from("school_registration_requests")
+      .select("id,username,school_name,contact_name,contact_phone,created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(50);
+    if (error) throw Error(error.message);
+    setSchoolRequests((data || []) as SchoolRegistrationRequest[]);
+  }
+  async function reviewSchoolRequest(
+    id: string,
+    decision: "approved" | "rejected",
+  ) {
+    if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
+    const note =
+      decision === "rejected"
+        ? prompt("ระบุเหตุผลที่ไม่อนุมัติ (ไม่บังคับ):")
+        : null;
+    if (decision === "rejected" && note === null) return;
+    const { error } = await supabase.rpc("review_school_registration", {
+      p_request_id: id,
+      p_decision: decision,
+      p_note: note?.trim() || null,
+    });
+    if (error) throw Error(error.message);
+    await loadSchoolRequests();
   }
   function downloadCsv(name: string, rows: Record<string, string>[]) {
     const url = URL.createObjectURL(
@@ -263,7 +486,11 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
   const actionLock = useRef(false);
-  async function run(action: () => Promise<void> | void, rethrow = false) {
+  async function run(
+    action: () => Promise<void> | void,
+    rethrow = false,
+    successMessage = "บันทึกเรียบร้อย",
+  ) {
     if (actionLock.current) return;
     actionLock.current = true;
     setBusy(true);
@@ -271,7 +498,7 @@ export default function Home() {
     try {
       await action();
       setMessageKind("success");
-      setMessage("บันทึกเรียบร้อย");
+      setMessage(successMessage);
     } catch (e) {
       setMessageKind("error");
       setMessage(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
@@ -282,6 +509,45 @@ export default function Home() {
     }
   }
   async function save<K extends keyof State>(table: K, rows: State[K]) {
+    if (table === "matches") {
+      for (const match of rows as Match[]) {
+        if (
+          match.status === "finished" &&
+          (!data.schools.some((s) => s.id === match.home) ||
+            !data.schools.some((s) => s.id === match.away))
+        )
+          throw Error("รอทราบทีมผู้ชนะจากรอบก่อน จึงจะบันทึกผลคู่นี้ได้");
+        if (
+          match.format === "knockout" &&
+          match.status === "finished" &&
+          match.home_score === match.away_score
+        )
+          throw Error(
+            "รอบคัดออกต้องมีผู้ชนะ กรุณาบันทึกผลตัดสินหลังต่อเวลาหรือดวลจุดโทษ",
+          );
+        const proposed = {
+          home: match.home,
+          away: match.away,
+          startsAt: match.starts_at,
+          venue: match.venue,
+        };
+        if (
+          data.matches.some(
+            (other) =>
+              other.id !== match.id &&
+              fixturesConflict(proposed, {
+                home: other.home,
+                away: other.away,
+                startsAt: other.starts_at,
+                venue: other.venue,
+              }),
+          )
+        )
+          throw Error(
+            "เวลานี้มีโรงเรียนแข่งขันซ้อนหรือสนามถูกใช้งานในรายการอื่นแล้ว",
+          );
+      }
+    }
     if (!demo) {
       if (!snapshot) throw Error("กรุณาโหลดข้อมูล Supabase ใหม่");
       const active = snapshot.rows.competitions.find(
@@ -371,6 +637,51 @@ export default function Home() {
       ] as State[K];
     }
     if (demo) {
+      if (table === "matches") {
+        const incoming = rows as Match[];
+        const combined = [
+          ...data.matches.filter((m) => !incoming.some((r) => r.id === m.id)),
+          ...incoming,
+        ];
+        const competitions = managedCompetitions.map((c) => ({
+          ...c,
+          fixtures: c.fixtures.map((f) => {
+            const row = incoming.find(
+              (m) => m.id === f.id && m.competition_id === c.id,
+            );
+            return row
+              ? {
+                  ...f,
+                  startsAt: row.starts_at,
+                  venue: row.venue,
+                  referee_id: row.referee_id,
+                }
+              : f;
+          }),
+        }));
+        const matches = reconcileManagedMatches(combined, competitions);
+        if (
+          data.matches.some(
+            (old) =>
+              old.status === "finished" &&
+              matches.some(
+                (m) =>
+                  m.id === old.id &&
+                  (m.home !== old.home || m.away !== old.away),
+              ),
+          )
+        )
+          throw Error(
+            "รอบถัดไปยืนยันผลแล้ว กรุณาตรวจสอบผลก่อนเปลี่ยนทีมผู้เข้ารอบ",
+          );
+        localStorage.setItem(
+          DEMO_COMPETITIONS_KEY,
+          JSON.stringify(competitions),
+        );
+        setManagedCompetitions(competitions);
+        setData((current) => ({ ...current, matches }));
+        return;
+      }
       setData((d) => ({
         ...d,
         [table]: [
@@ -386,7 +697,8 @@ export default function Home() {
     await refresh();
   }
   const admin = role === "admin",
-    edit = admin || role === "recorder" || role === "referee",
+    refereeRole = role === "recorder" || role === "referee",
+    edit = admin || refereeRole,
     register = admin || role === "school" || role === "school_admin";
   const competition = snapshot?.rows.competitions.find(
     (c) => c.id === competitionId,
@@ -460,11 +772,27 @@ export default function Home() {
           draw: competition.draw_points,
           loss: competition.loss_points,
         }
-      : { win: 3, draw: 1, loss: 0 };
+      : (() => {
+          const ids = new Set(
+            data.matches
+              .filter(
+                (m) =>
+                  m.sport === sport &&
+                  m.division === division &&
+                  m.gender === gender,
+              )
+              .map((m) => m.competition_id),
+          );
+          const c = managedCompetitions.find((c) => ids.has(c.id));
+          return c
+            ? { win: c.winPoints, draw: c.drawPoints, loss: c.lossPoints }
+            : { win: 3, draw: 1, loss: 0 };
+        })();
   const eventCandidates = !demo
     ? snapshot?.rows.athletics_events.filter(
         (e) =>
           e.competition_id === competitionId &&
+          (!refereeRole || e.referee_id === profileId) &&
           e.name === event &&
           e.round === stage &&
           e.heat === heat,
@@ -472,7 +800,10 @@ export default function Home() {
     : [];
   const raceEvent = !demo
     ? eventId
-      ? snapshot?.rows.athletics_events.find((e) => e.id === eventId)
+      ? snapshot?.rows.athletics_events.find(
+          (e) =>
+            e.id === eventId && (!refereeRole || e.referee_id === profileId),
+        )
       : eventCandidates.length === 1
         ? eventCandidates[0]
         : undefined
@@ -490,9 +821,131 @@ export default function Home() {
         normalizeLevel(row.division) === normalizeLevel(division) &&
         row.gender === gender;
   const selected = data.matches.filter((m) => scopeMatch(m));
-  const schoolName = (id: string) =>
-    data.schools.find((s) => s.id === id)?.name || id;
-  const athletes = data.athletes.filter((a) => scopeMatch(a));
+  const assignedMatches = refereeRole
+    ? data.matches.filter((match) => match.referee_id === profileId)
+    : data.matches;
+  const selectedMatches = refereeRole
+    ? selected.filter((match) => match.referee_id === profileId)
+    : selected;
+  const todayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const nowParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const nowPart = (type: string) =>
+    nowParts.find((part) => part.type === type)?.value || "";
+  const nowKey = `${nowPart("year")}-${nowPart("month")}-${nowPart("day")}T${nowPart("hour")}:${nowPart("minute")}`;
+  const todayMatches = assignedMatches.filter(
+    (match) => match.starts_at.slice(0, 10) === todayKey,
+  );
+  const currentMatches = todayMatches.filter((match) => {
+    const start = match.starts_at.slice(0, 16);
+    return (
+      match.status !== "finished" &&
+      start <= nowKey &&
+      new Date(`${start}:00+07:00`).getTime() >= Date.now() - 2 * 60 * 60 * 1000
+    );
+  });
+  const nextMatches = assignedMatches
+    .filter(
+      (match) =>
+        match.status !== "finished" &&
+        match.starts_at &&
+        match.starts_at.slice(0, 16) > nowKey,
+    )
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+    .slice(0, 5);
+  const awaitingMatchResults = assignedMatches.filter(
+    (match) => match.status !== "finished",
+  );
+  const assignedEvents =
+    snapshot?.rows.athletics_events.filter((event) =>
+      refereeRole ? event.referee_id === profileId : true,
+    ) || [];
+  const assignedEventIds = new Set(assignedEvents.map((event) => event.id));
+  const assignedEventsToday = assignedEvents.filter(
+    (event) => event.starts_at?.slice(0, 10) === todayKey,
+  );
+  const displayedSchools = useMemo(
+    () =>
+      data.schools.map((item) => ({
+        ...item,
+        short_name: schoolProfiles[item.id]?.shortName || undefined,
+      })),
+    [data.schools, schoolProfiles],
+  );
+  const schoolName = (id: string) => {
+    const school = data.schools.find((item) => item.id === id);
+    return schoolProfiles[id]?.shortName || school?.name || id;
+  };
+  const schoolRole = role === "school" || role === "school_admin";
+  const schoolMatches = data.matches.filter(
+    (match) => match.home === school || match.away === school,
+  );
+  const medalMatches = schoolRole
+    ? schoolMatches
+    : refereeRole
+      ? assignedMatches
+      : data.matches;
+  const schoolAthletes = data.athletes.filter(
+    (athlete) => athlete.school_id === school,
+  );
+  const pointsByCompetition = Object.fromEntries(
+    demo
+      ? managedCompetitions.map((c) => [
+          c.id,
+          { win: c.winPoints, draw: c.drawPoints, loss: c.lossPoints },
+        ])
+      : (snapshot?.rows.competitions || []).map((item) => [
+          item.id,
+          {
+            win: item.win_points,
+            draw: item.draw_points,
+            loss: item.loss_points,
+          },
+        ]),
+  );
+  const calculatedAwards = calculateMedalAwards({
+    matches: data.matches,
+    races: data.races,
+    athletes: data.athletes,
+    pointsByCompetition,
+  });
+  const visibleAwards = schoolRole
+    ? calculatedAwards.filter((award) => award.school_id === school)
+    : calculatedAwards;
+  const schoolCategories = groupSchoolsByMedalCategory(data.schools);
+  const medalsForSchools = (schoolIds: string[]) =>
+    medals(
+      visibleAwards
+        .filter((award) => schoolIds.includes(award.school_id))
+        .map((award) => ({
+          school: award.school_id,
+          medal: award.medal,
+        })),
+    );
+  const medalSummary = (rows: ReturnType<typeof medals>) =>
+    rows.map((row, index) => [
+      index + 1,
+      schoolName(row.school),
+      row.gold,
+      row.silver,
+      row.bronze,
+      row.gold + row.silver + row.bronze,
+    ]);
+  const athletes = data.athletes.filter(
+    (a) => scopeMatch(a) && (!schoolRole || a.school_id === school),
+  );
   const fields = (f: FormData) => ({
     division: String(f.get("division") || division),
     gender: String(f.get("gender") || gender),
@@ -507,7 +960,16 @@ export default function Home() {
           value={competitionId}
           onChange={(e) => chooseCompetition(e.target.value)}
         >
-          {snapshot?.rows.competitions.map((c) => (
+          {(refereeRole
+            ? snapshot?.rows.competitions.filter(
+                (c) =>
+                  assignedMatches.some(
+                    (match) => match.competition_id === c.id,
+                  ) ||
+                  assignedEvents.some((event) => event.competition_id === c.id),
+              )
+            : snapshot?.rows.competitions
+          )?.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name} · {c.age_group} · {c.gender}
             </option>
@@ -547,6 +1009,7 @@ export default function Home() {
     </div>
   );
   function selectTab(index: number) {
+    if (!availableTabIndices(role).includes(index)) return;
     setTab(index);
     setMenuOpen(false);
     if (index === 4) {
@@ -597,24 +1060,26 @@ export default function Home() {
           <strong>ปีการศึกษา 2569</strong>
         </div>
         <nav aria-label="การจัดการแข่งขัน">
-          {tabs.map((t, i) => (
-            <button
-              key={t}
-              aria-label={t}
-              disabled={!ready || busy}
-              className={tab === i ? "active" : ""}
-              aria-current={tab === i ? "page" : undefined}
-              onClick={() => selectTab(i)}
-            >
-              <span aria-hidden="true">
-                {(() => {
-                  const Icon = icons[i];
-                  return <Icon />;
-                })()}
-              </span>
-              {t}
-            </button>
-          ))}
+          {tabs.map((t, i) =>
+            availableTabIndices(role).includes(i) ? (
+              <button
+                key={t}
+                aria-label={t}
+                disabled={!ready || busy}
+                className={tab === i ? "active" : ""}
+                aria-current={tab === i ? "page" : undefined}
+                onClick={() => selectTab(i)}
+              >
+                <span aria-hidden="true">
+                  {(() => {
+                    const Icon = icons[i];
+                    return <Icon />;
+                  })()}
+                </span>
+                {t}
+              </button>
+            ) : null,
+          )}
         </nav>
         <div className="aside-bottom">
           {data.schools.length} โรงเรียน · {SPORTS.length} ชนิดกีฬา
@@ -632,7 +1097,7 @@ export default function Home() {
           }}
         />
       )}
-      <main id="main-content" tabIndex={-1} inert={menuOpen}>
+      <main id="main-content" tabIndex={-1} inert={menuOpen || undefined}>
         <header>
           <span>
             <span className="header-desktop-title">ระบบบริหารการแข่งขัน</span>
@@ -641,11 +1106,69 @@ export default function Home() {
               {demo ? "โหมดสาธิต" : "Supabase · ข้อมูลจริง"}
             </span>
           </span>
-          <div>
-            <button onClick={() => window.print()}>
-              <Printer aria-hidden="true" />
-              พิมพ์ / บันทึก PDF
+          <div className="profile-menu" ref={roleMenu}>
+            <button
+              ref={roleMenuButton}
+              className="profile-trigger"
+              type="button"
+              aria-label={`โปรไฟล์ ${roleLabels[role] || "ผู้ชม"}`}
+              aria-haspopup="menu"
+              aria-expanded={roleMenuOpen}
+              disabled={!demo || !ready || busy}
+              onClick={() => setRoleMenuOpen((open) => !open)}
+            >
+              <span className="profile-avatar" aria-hidden="true">
+                <Image
+                  src="/assets/profile/default-avatar.svg"
+                  alt=""
+                  width={40}
+                  height={40}
+                  unoptimized
+                />
+                <span className="profile-online" />
+              </span>
+              <span className="profile-trigger-copy">
+                <strong>{roleLabels[role] || "ผู้ชม"}</strong>
+                <small>{demo ? "โหมดสาธิต" : "บัญชีที่เข้าสู่ระบบ"}</small>
+              </span>
+              <ChevronDown
+                className={
+                  roleMenuOpen ? "profile-chevron open" : "profile-chevron"
+                }
+                aria-hidden="true"
+              />
             </button>
+            {roleMenuOpen && (
+              <div
+                className="profile-dropdown"
+                role="menu"
+                aria-label="เลือกบทบาท"
+              >
+                <p>สลับบทบาทการใช้งาน</p>
+                {roleOptions.map(({ value, label }) => {
+                  const AvatarIcon = roleIcons[value] || UserRound;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={value === role}
+                      onClick={() => {
+                        setRoleMenuOpen(false);
+                        chooseRole(value);
+                      }}
+                    >
+                      <span className={`profile-option-avatar role-${value}`}>
+                        <AvatarIcon aria-hidden="true" />
+                      </span>
+                      <span>{label}</span>
+                      {value === role && <Check aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+                <small>สลับบทบาทเพื่อดูแต่ละส่วนได้ทันที (โหมดทดสอบ)</small>
+              </div>
+            )}
           </div>
         </header>
         <div className="content">
@@ -662,18 +1185,7 @@ export default function Home() {
             <span className="role">
               <ShieldCheck aria-hidden="true" />
               {demo ? "สาธิต · " : ""}
-              {
-                (
-                  {
-                    admin: "ผู้ดูแลระบบ",
-                    recorder: "ผู้บันทึกผล",
-                    referee: "กรรมการ",
-                    school: "โรงเรียน",
-                    school_admin: "ผู้ดูแลโรงเรียน",
-                    viewer: "ผู้ชม",
-                  } as Record<string, string>
-                )[role]
-              }
+              {roleLabels[role] || "ผู้ชม"}
             </span>
           </div>
           {(!ready || busy) && (
@@ -715,144 +1227,378 @@ export default function Home() {
               </button>
             </div>
           )}
+          {tab === 8 &&
+            role === "admin" &&
+            (demo ? (
+              <AdminCompetitionManager
+                schools={displayedSchools}
+                onChange={syncCompetitions}
+                hasFinishedResults={(id) =>
+                  data.matches.some(
+                    (match) =>
+                      match.competition_id === id &&
+                      match.status === "finished",
+                  )
+                }
+              />
+            ) : (
+              <section className="panel">
+                <h2>จัดการรายการแข่งขัน</h2>
+                <p role="status">
+                  หน้าจัดสายนี้ใช้เฉพาะโหมดสาธิต การสร้างรายการจริงต้องเตรียมใน
+                  Supabase ก่อน จากนั้นแก้เวลา สนาม และกรรมการได้ที่ตารางแข่งขัน
+                </p>
+              </section>
+            ))}
+          {(tab === 9 || tab === 10) && schoolRole && (
+            <SchoolPortal
+              key={tab}
+              page={tab === 9 ? "profile" : "roster"}
+              demo={demo}
+              schoolId={school}
+              schools={data.schools}
+              athletes={data.athletes}
+              competitions={snapshot?.rows.competitions || []}
+              demoPolicies={demoPolicies}
+              busy={busy}
+              onChooseSchool={setSchool}
+              onCreateDemoSchool={() => {
+                if (!demo) return;
+                const newSchool = {
+                  id: crypto.randomUUID(),
+                  name: "โรงเรียนตัวอย่าง",
+                };
+                setData((current) => ({
+                  ...current,
+                  schools: [...current.schools, newSchool],
+                }));
+                setSchool(newSchool.id);
+              }}
+              onSaveSchool={async (schoolRecord) => {
+                const { short_name, logo, ...schoolData } = schoolRecord;
+                await save("schools", [schoolData]);
+                setSchoolProfiles((current) => ({
+                  ...current,
+                  [schoolData.id]: {
+                    ...(current[schoolData.id] || {
+                      contactName: "",
+                      contactPhone: "",
+                      address: "",
+                    }),
+                    shortName: short_name || "",
+                    logo: logo || "",
+                  },
+                }));
+              }}
+              onSaveAthletes={async (rows) => save("athletes", rows)}
+              onImportAthletes={async (file, selectedCompetitionId) => {
+                if (file.size > 2_000_000) throw Error("ไฟล์ใหญ่เกิน 2 MB");
+                const rows = parseAthletes(await file.text(), data.schools);
+                if (rows.some((row) => row.school_id !== school))
+                  throw Error("นำเข้าได้เฉพาะรายชื่อนักกีฬาในโรงเรียนตนเอง");
+                await save(
+                  "athletes",
+                  rows.map((row) => ({
+                    ...row,
+                    competition_id: selectedCompetitionId,
+                  })),
+                );
+              }}
+              onDownloadAthleteTemplate={(schoolId, selectedCompetition) => {
+                const rule = compatibleRules(
+                  selectedCompetition.sport,
+                  selectedCompetition.gender,
+                  selectedCompetition.age_group,
+                )[0];
+                downloadCsv("athletes-template.csv", [
+                  {
+                    name: "นักกีฬาตัวอย่าง",
+                    school_id: schoolId,
+                    sport: selectedCompetition.sport,
+                    gender: selectedCompetition.gender,
+                    division: selectedCompetition.age_group,
+                    competition_id: selectedCompetition.id,
+                    rule_id: rule?.id || "",
+                    position: "auto",
+                  },
+                ]);
+              }}
+              onDownloadSchoolCodes={() =>
+                downloadCsv("schools.csv", data.schools)
+              }
+            />
+          )}
           {tab === 0 && (
             <>
               <PerspectiveTunnelHero
-                onRegister={() => selectTab(1)}
+                onRegister={
+                  role === "viewer" || refereeRole
+                    ? undefined
+                    : () => selectTab(1)
+                }
                 onSchedule={() => selectTab(2)}
                 disabled={!ready || busy}
               />
-              <div className="stats">
-                {[
-                  ["โรงเรียนเข้าร่วม", data.schools.length, "แห่ง"],
-                  ["นักกีฬาลงทะเบียน", data.athletes.length, "คน"],
-                  ["โปรแกรมแข่งขัน", data.matches.length, "คู่"],
-                  [
-                    "แข่งขันเสร็จแล้ว",
-                    data.matches.filter((m) => m.status === "finished").length,
-                    "คู่",
-                  ],
-                ].map(([l, n, u], i) => (
-                  <article key={l}>
-                    <p>
-                      {l}
-                      {(() => {
-                        const Icon = [School, Users, CalendarDays, CircleCheck][
-                          i
-                        ];
-                        return <Icon aria-hidden="true" />;
-                      })()}
-                    </p>
-                    <strong>{n}</strong>
-                    <small>{u}</small>
-                  </article>
-                ))}
-              </div>
-              <section className="panel">
-                <h2>
-                  ชนิดกีฬาที่เปิดแข่งขัน <small>8 ชนิดกีฬา</small>
-                </h2>
-                <div className="sports">
-                  {SPORTS.map((s, i) => (
-                    <button
-                      key={s}
-                      onClick={() => {
-                        setSport(s);
-                        if (!demo) {
-                          const c = snapshot?.rows.competitions.find(
-                            (c) => c.sport === s,
-                          );
-                          if (c) chooseCompetition(c.id);
-                        }
-                        selectTab(s === "กรีฑา" ? 4 : 2);
-                      }}
-                    >
-                      <span aria-hidden="true">
-                        {(() => {
-                          const Icon = sportIcons[i];
-                          return <Icon />;
-                        })()}
-                      </span>
-                      <b>{s}</b>
-                      <small>
-                        ดูรายการแข่งขัน <ArrowRight aria-hidden="true" />
-                      </small>
-                    </button>
-                  ))}
-                </div>
-              </section>
-              <section className="panel overview-results">
-                <div className="panel-title">
-                  <div>
-                    <p className="eyebrow">THE MOMENTS THAT MATTER</p>
-                    <h2>คะแนนและเกียรติยศ</h2>
+              {refereeRole && (
+                <section className="panel referee-dashboard">
+                  <div className="panel-title">
+                    <div>
+                      <p className="eyebrow">REFEREE DESK</p>
+                      <h2>งานกรรมการวันนี้</h2>
+                    </div>
+                    <span>{todayKey}</span>
                   </div>
-                  <button onClick={() => selectTab(6)}>
-                    เหรียญรางวัล <ChevronRight aria-hidden="true" />
-                  </button>
-                </div>
-                <div className="overview-result-grid">
-                  <div>
-                    <h3>
-                      <Medal aria-hidden="true" />
-                      ทำเนียบเหรียญรางวัล
-                    </h3>
-                    <Table
-                      heads={[
-                        "อันดับ",
-                        "โรงเรียน",
-                        "ทอง",
-                        "เงิน",
-                        "ทองแดง",
-                        "รวม",
-                      ]}
-                      rows={medals(
-                        data.awards.map((a) => ({
-                          school: a.school_id,
-                          medal: a.medal,
-                        })),
-                      )
-                        .slice(0, 5)
-                        .map((r, i) => [
-                          i + 1,
-                          schoolName(r.school),
-                          r.gold,
-                          r.silver,
-                          r.bronze,
-                          r.gold + r.silver + r.bronze,
-                        ])}
-                    />
+                  <div className="referee-work-stats">
+                    <article>
+                      <small>กำลังแข่งขัน</small>
+                      <strong>{currentMatches.length}</strong>
+                    </article>
+                    <article>
+                      <small>คู่ถัดไป</small>
+                      <strong>{nextMatches.length}</strong>
+                    </article>
+                    <article>
+                      <small>คู่รอส่งผล</small>
+                      <strong>{awaitingMatchResults.length}</strong>
+                    </article>
+                    <article>
+                      <small>รายการกรีฑาวันนี้</small>
+                      <strong>{assignedEventsToday.length}</strong>
+                    </article>
                   </div>
-                  <div>
-                    <h3>
-                      <Trophy aria-hidden="true" />
-                      ผลการแข่งขันที่จบแล้ว
-                    </h3>
-                    {data.matches
-                      .filter((m) => m.status === "finished")
-                      .slice(-3)
-                      .reverse()
-                      .map((m) => (
-                        <div className="result-card" key={m.id}>
-                          <p>
-                            {m.sport} · {m.division} · {m.gender}
-                          </p>
+                  <div className="referee-work-list">
+                    <h3>คู่แข่งขันวันนี้</h3>
+                    {todayMatches.length ? (
+                      todayMatches.map((match) => (
+                        <article key={match.id}>
                           <div>
-                            <span>{schoolName(m.home)}</span>
                             <strong>
-                              {m.home_score} : {m.away_score}
+                              {schoolName(match.home)} –{" "}
+                              {schoolName(match.away)}
                             </strong>
-                            <span>{schoolName(m.away)}</span>
+                            <small>
+                              {match.starts_at.slice(11, 16) || "ไม่ระบุเวลา"} ·{" "}
+                              {match.venue || "ไม่ระบุสนาม"}
+                            </small>
                           </div>
-                          <small>จบการแข่งขัน</small>
-                        </div>
-                      ))}
-                    {!data.matches.some((m) => m.status === "finished") && (
+                          <span>
+                            {match.status === "finished"
+                              ? "ส่งผลแล้ว"
+                              : currentMatches.some(
+                                    (current) => current.id === match.id,
+                                  )
+                                ? "กำลังแข่งขัน"
+                                : "รอส่งผล"}
+                          </span>
+                          {match.status !== "finished" && (
+                            <button onClick={() => selectTab(3)}>
+                              บันทึกผล
+                            </button>
+                          )}
+                        </article>
+                      ))
+                    ) : (
                       <Empty />
                     )}
+                    <h3>คู่ถัดไป</h3>
+                    {nextMatches.length ? (
+                      nextMatches.map((match) => (
+                        <article key={match.id}>
+                          <div>
+                            <strong>
+                              {schoolName(match.home)} –{" "}
+                              {schoolName(match.away)}
+                            </strong>
+                            <small>
+                              {match.starts_at.replace("T", " ")} ·{" "}
+                              {match.venue || "ไม่ระบุสนาม"}
+                            </small>
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="muted">ไม่มีคู่แข่งขันที่กำลังจะเริ่ม</p>
+                    )}
                   </div>
+                  <div className="referee-dashboard-actions">
+                    <button onClick={() => selectTab(2)}>ดูตารางแข่งขัน</button>
+                    <button onClick={() => selectTab(4)}>บันทึกผลกรีฑา</button>
+                  </div>
+                </section>
+              )}
+              {!refereeRole && (
+                <div className="stats">
+                  {[
+                    [
+                      "โรงเรียนเข้าร่วม",
+                      schoolRole ? (school ? 1 : 0) : data.schools.length,
+                      "แห่ง",
+                    ],
+                    [
+                      "นักกีฬาลงทะเบียน",
+                      schoolRole ? schoolAthletes.length : data.athletes.length,
+                      "คน",
+                    ],
+                    [
+                      "โปรแกรมแข่งขัน",
+                      schoolRole
+                        ? schoolMatches.length
+                        : refereeRole
+                          ? assignedMatches.length
+                          : data.matches.length,
+                      "คู่",
+                    ],
+                    [
+                      "แข่งขันเสร็จแล้ว",
+                      (schoolRole
+                        ? schoolMatches
+                        : refereeRole
+                          ? assignedMatches
+                          : data.matches
+                      ).filter((m) => m.status === "finished").length,
+                      "คู่",
+                    ],
+                  ].map(([l, n, u], i) => (
+                    <article key={l}>
+                      <p>
+                        {l}
+                        {(() => {
+                          const Icon = [
+                            School,
+                            Users,
+                            CalendarDays,
+                            CircleCheck,
+                          ][i];
+                          return <Icon aria-hidden="true" />;
+                        })()}
+                      </p>
+                      <strong>{n}</strong>
+                      <small>{u}</small>
+                    </article>
+                  ))}
                 </div>
-              </section>
+              )}
+              {!refereeRole && (
+                <section className="panel">
+                  <h2>
+                    ชนิดกีฬาที่เปิดแข่งขัน <small>8 ชนิดกีฬา</small>
+                  </h2>
+                  <div className="sports">
+                    {SPORTS.map((s, i) => (
+                      <button
+                        key={s}
+                        onClick={() => {
+                          setSport(s);
+                          if (!demo) {
+                            const c = snapshot?.rows.competitions.find(
+                              (c) => c.sport === s,
+                            );
+                            if (c) chooseCompetition(c.id);
+                          }
+                          selectTab(
+                            role === "viewer" ? 2 : s === "กรีฑา" ? 4 : 2,
+                          );
+                        }}
+                      >
+                        <span aria-hidden="true">
+                          {(() => {
+                            const Icon = sportIcons[i];
+                            return <Icon />;
+                          })()}
+                        </span>
+                        <b>{s}</b>
+                        <small>
+                          ดูรายการแข่งขัน <ArrowRight aria-hidden="true" />
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {!refereeRole && (
+                <section className="panel overview-results">
+                  <div className="panel-title">
+                    <div>
+                      <p className="eyebrow">THE MOMENTS THAT MATTER</p>
+                      <h2>คะแนนและเกียรติยศ</h2>
+                    </div>
+                    <button onClick={() => selectTab(6)}>
+                      เหรียญรางวัล <ChevronRight aria-hidden="true" />
+                    </button>
+                  </div>
+                  <div className="overview-result-grid">
+                    <div>
+                      <h3>
+                        <Medal aria-hidden="true" />
+                        ทำเนียบเหรียญรางวัล
+                      </h3>
+                      <Table
+                        heads={[
+                          "อันดับ",
+                          "โรงเรียน",
+                          "ทอง",
+                          "เงิน",
+                          "ทองแดง",
+                          "รวม",
+                        ]}
+                        rows={medalsForSchools(
+                          schoolRole
+                            ? school
+                              ? [school]
+                              : []
+                            : data.schools.map((s) => s.id),
+                        )
+                          .slice(0, 5)
+                          .map((r, i) => [
+                            i + 1,
+                            schoolName(r.school),
+                            r.gold,
+                            r.silver,
+                            r.bronze,
+                            r.gold + r.silver + r.bronze,
+                          ])}
+                      />
+                    </div>
+                    <div>
+                      <h3>
+                        <Trophy aria-hidden="true" />
+                        ผลการแข่งขันที่จบแล้ว
+                      </h3>
+                      {(schoolRole
+                        ? schoolMatches
+                        : refereeRole
+                          ? assignedMatches
+                          : data.matches
+                      )
+                        .filter((m) => m.status === "finished")
+                        .slice(-3)
+                        .reverse()
+                        .map((m) => (
+                          <div className="result-card" key={m.id}>
+                            <p>
+                              {m.sport} · {m.division} · {m.gender}
+                            </p>
+                            <div>
+                              <span>{schoolName(m.home)}</span>
+                              <strong>
+                                {m.home_score} : {m.away_score}
+                              </strong>
+                              <span>{schoolName(m.away)}</span>
+                            </div>
+                            <small>จบการแข่งขัน</small>
+                          </div>
+                        ))}
+                      {!(
+                        schoolRole
+                          ? schoolMatches
+                          : refereeRole
+                            ? assignedMatches
+                            : data.matches
+                      ).some((m) => m.status === "finished") && <Empty />}
+                    </div>
+                  </div>
+                </section>
+              )}
               <div className="notice">
                 <Info aria-hidden="true" />
                 {demo
@@ -907,7 +1653,7 @@ export default function Home() {
                   athletes={athletes.filter(
                     (a) => !a.roster || a.roster.ruleId === activeRuleId,
                   )}
-                  schools={data.schools}
+                  schools={displayedSchools}
                   school={school}
                   admin={admin}
                   canRegister={register}
@@ -1002,19 +1748,30 @@ export default function Home() {
                         </label>
                         <label>
                           โรงเรียน
-                          <select
-                            name="school_id"
-                            value={school}
-                            onChange={(e) => setSchool(e.target.value)}
-                          >
-                            {data.schools
-                              .filter((s) => admin || s.id === school)
-                              .map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.name}
-                                </option>
-                              ))}
-                          </select>
+                          {admin ? (
+                            <select
+                              name="school_id"
+                              value={school}
+                              onChange={(e) => setSchool(e.target.value)}
+                            >
+                              {data.schools
+                                .filter((s) => admin || s.id === school)
+                                .map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <>
+                              <span>{schoolName(school)}</span>
+                              <input
+                                type="hidden"
+                                name="school_id"
+                                value={school}
+                              />
+                            </>
+                          )}
                         </label>
                         <button className="primary" disabled={busy}>
                           + เพิ่มนักกีฬา
@@ -1105,107 +1862,47 @@ export default function Home() {
             <>
               {filter}
               <section className="panel">
-                <h2>จัดสายและสร้างโปรแกรมพบกันหมด</h2>
-                <p className="muted">
-                  เลือกโรงเรียนในสาย ระบบสร้างทุกคู่ในสายเดียวกัน
-                  กำหนดวันและสนามได้หลังสร้าง
-                </p>
-                {edit && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      run(async () => {
-                        const pool = String(f.get("pool"));
-                        if (selected.some((m) => m.pool === pool))
-                          throw Error(
-                            "สายนี้มีโปรแกรมแล้ว กรุณาใช้ชื่อสายใหม่",
-                          );
-                        const teams = f.getAll("teams").map(String);
-                        if (teams.length < 2)
-                          throw Error("เลือกอย่างน้อย 2 โรงเรียน");
-                        await save(
-                          "matches",
-                          roundRobin(teams).map((p) => ({
-                            ...p,
-                            id: crypto.randomUUID(),
-                            sport,
-                            division,
-                            gender,
-                            competition_id: demo ? undefined : competitionId,
-                            pool,
-                            starts_at: "",
-                            venue: "",
-                            status: "scheduled",
-                          })),
+                <h2>
+                  {schoolRole ? "ตารางแข่งขันของโรงเรียน" : "ตารางแข่งขัน"}
+                </h2>
+                <SpiderSchedule
+                  matches={
+                    schoolRole
+                      ? selected.filter(
+                          (match) =>
+                            match.home === school || match.away === school,
+                        )
+                      : refereeRole
+                        ? selectedMatches
+                        : selected
+                  }
+                  schoolName={schoolName}
+                  canEdit={admin}
+                  busy={busy}
+                  canAssign={admin}
+                  onSave={(match, startsAt, venue, refereeId) =>
+                    run(async () => {
+                      if (
+                        !demo &&
+                        refereeId &&
+                        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                          refereeId,
+                        )
+                      )
+                        throw Error(
+                          "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
                         );
-                      });
-                    }}
-                  >
-                    <label>
-                      ชื่อสาย
-                      <input name="pool" defaultValue="A" required />
-                    </label>
-                    <fieldset>
-                      <legend>โรงเรียนในสาย</legend>
-                      {data.schools.map((s) => (
-                        <label className="check" key={s.id}>
-                          <input type="checkbox" name="teams" value={s.id} />
-                          {s.name}
-                        </label>
-                      ))}
-                    </fieldset>
-                    <button className="primary" disabled={busy}>
-                      สร้างตารางแข่งขัน
-                    </button>
-                  </form>
-                )}
-                <Table
-                  heads={["สาย", "คู่แข่งขัน", "วันเวลา", "สนาม"]}
-                  rows={selected.map((m) => [
-                    m.pool,
-                    `${schoolName(m.home)} — ${schoolName(m.away)}`,
-                    m.starts_at || "รอกำหนด",
-                    m.venue || "รอกำหนด",
-                  ])}
+                      await save("matches", [
+                        {
+                          ...match,
+                          starts_at: startsAt,
+                          venue,
+                          referee_id: refereeId || undefined,
+                        },
+                      ]);
+                    })
+                  }
                 />
-                {edit &&
-                  selected.map((m) => (
-                    <form
-                      key={m.id}
-                      className="match-form"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const f = new FormData(e.currentTarget);
-                        run(() =>
-                          save("matches", [
-                            {
-                              ...m,
-                              starts_at: String(f.get("date")),
-                              venue: String(f.get("venue")),
-                            },
-                          ]),
-                        );
-                      }}
-                    >
-                      <span>
-                        {schoolName(m.home)} / {schoolName(m.away)}
-                      </span>
-                      <label>
-                        วันเวลา (ประเทศไทย)
-                        <input
-                          name="date"
-                          type="datetime-local"
-                          defaultValue={m.starts_at}
-                        />
-                      </label>
-                      <label>
-                        สนาม
-                        <input name="venue" defaultValue={m.venue} />
-                      </label>
-                      <button disabled={busy}>บันทึกเวลา</button>
-                    </form>
-                  ))}
               </section>
             </>
           )}
@@ -1216,22 +1913,35 @@ export default function Home() {
                 <h2>บันทึกผลการแข่งขัน</h2>
                 <p className="muted">
                   คะแนนลีก: ชนะ {points.win} · เสมอ {points.draw} · แพ้{" "}
-                  {points.loss} | เหรียญรางวัลบันทึกแยกหลังยืนยันรอบชิง
+                  {points.loss} | เหรียญคำนวณจากผลที่ยืนยันแล้ว
                 </p>
-                {selected.length === 0 && <Empty />}
-                {selected.map((m) => (
+                {refereeRole && (
+                  <p className="muted">
+                    แสดงเฉพาะคู่ที่มอบหมายให้บัญชีกรรมการนี้
+                  </p>
+                )}
+                {selectedMatches.length === 0 && <Empty />}
+                {selectedMatches.map((m) => (
                   <form
                     className="match-form"
                     key={m.id}
                     onSubmit={(e) => {
                       e.preventDefault();
                       const f = new FormData(e.currentTarget);
+                      const homeScore = Number(f.get("home"));
+                      const awayScore = Number(f.get("away"));
+                      if (
+                        !window.confirm(
+                          `ตรวจสอบผลก่อนยืนยัน:\n${schoolName(m.home)} ${homeScore} – ${awayScore} ${schoolName(m.away)}\n${m.starts_at || "ไม่ระบุเวลา"} · ${m.venue || "ไม่ระบุสนาม"}`,
+                        )
+                      )
+                        return;
                       run(() =>
                         save("matches", [
                           {
                             ...m,
-                            home_score: Number(f.get("home")),
-                            away_score: Number(f.get("away")),
+                            home_score: homeScore,
+                            away_score: awayScore,
                             status: "finished",
                           },
                         ]),
@@ -1241,6 +1951,10 @@ export default function Home() {
                     <b>
                       สาย {m.pool} · {schoolName(m.home)} — {schoolName(m.away)}
                     </b>
+                    <small className="muted">
+                      {m.starts_at || "ไม่ระบุเวลา"} ·{" "}
+                      {m.venue || "ไม่ระบุสนาม"}
+                    </small>
                     <label>
                       เจ้าบ้าน
                       <input
@@ -1266,7 +1980,9 @@ export default function Home() {
                       />
                     </label>
                     <span className="badge">
-                      {m.status === "finished" ? "จบการแข่งขัน" : "รอผล"}
+                      {m.status === "finished"
+                        ? `ยืนยันผลแล้ว · ${m.home_score} – ${m.away_score}`
+                        : "รอส่งผล"}
                     </span>
                     {edit && (
                       <button className="primary" disabled={busy}>
@@ -1302,12 +2018,21 @@ export default function Home() {
                           setEventKind(selected.kind);
                           setEventDirection(selected.direction);
                           setEventUnit(selected.unit);
+                          setEventRefereeId(selected.referee_id || "");
+                        } else {
+                          setEventRefereeId("");
                         }
                       }}
                     >
-                      <option value="">สร้าง/ค้นหารายการตามชื่อและรอบ</option>
+                      {!refereeRole && (
+                        <option value="">สร้าง/ค้นหารายการตามชื่อและรอบ</option>
+                      )}
                       {snapshot?.rows.athletics_events
-                        .filter((e) => e.competition_id === competitionId)
+                        .filter(
+                          (e) =>
+                            e.competition_id === competitionId &&
+                            (!refereeRole || e.referee_id === profileId),
+                        )
                         .map((e) => (
                           <option key={e.id} value={e.id}>
                             {e.name} · {e.round} · ฮีต {e.heat}
@@ -1316,11 +2041,55 @@ export default function Home() {
                     </select>
                   </label>
                 )}
+                {admin && raceEvent && !demo && (
+                  <form
+                    className="referee-assignment-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      run(async () => {
+                        const nextId = eventRefereeId.trim() || null;
+                        if (
+                          nextId &&
+                          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                            nextId,
+                          )
+                        )
+                          throw Error(
+                            "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
+                          );
+                        if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
+                        await writeAthleticsReferee(
+                          supabase,
+                          raceEvent.id,
+                          nextId,
+                        );
+                        await refresh();
+                      });
+                    }}
+                  >
+                    <label>
+                      มอบหมายกรรมการ (UUID)
+                      <input
+                        value={eventRefereeId}
+                        onChange={(e) => setEventRefereeId(e.target.value)}
+                        maxLength={36}
+                        placeholder="เว้นว่างเพื่อถอนการมอบหมาย"
+                      />
+                    </label>
+                    <button disabled={busy}>บันทึกผู้รับผิดชอบ</button>
+                  </form>
+                )}
+                {refereeRole && !raceEvent && (
+                  <p className="muted">
+                    เลือกรายการกรีฑาที่มอบหมายให้บัญชีนี้ก่อนบันทึกผล
+                  </p>
+                )}
                 <div className="filters">
                   <label>
                     รายการ
                     <input
                       value={event}
+                      disabled={refereeRole}
                       onChange={(e) => {
                         setEvent(e.target.value);
                         setEventId("");
@@ -1331,6 +2100,7 @@ export default function Home() {
                     รอบ
                     <select
                       value={stage}
+                      disabled={refereeRole}
                       onChange={(e) => {
                         setStage(e.target.value);
                         setEventId("");
@@ -1346,6 +2116,7 @@ export default function Home() {
                       type="number"
                       min="1"
                       value={heat}
+                      disabled={refereeRole}
                       onChange={(e) => (
                         setHeat(Math.max(1, Number(e.target.value))),
                         setEventId("")
@@ -1361,7 +2132,7 @@ export default function Home() {
                     มีรายการกรีฑาชื่อและรอบซ้ำ กรุณาเลือกรายการกรีฑาที่มีอยู่
                   </p>
                 )}
-                {!demo && !raceEvent && (
+                {!demo && !raceEvent && !refereeRole && (
                   <div className="filters">
                     <label>
                       ประเภท
@@ -1393,9 +2164,20 @@ export default function Home() {
                         onChange={(e) => setEventUnit(e.target.value)}
                       />
                     </label>
+                    {admin && (
+                      <label>
+                        มอบหมายกรรมการ (UUID)
+                        <input
+                          value={eventRefereeId}
+                          onChange={(e) => setEventRefereeId(e.target.value)}
+                          maxLength={36}
+                          placeholder="เว้นว่างหากยังไม่มอบหมาย"
+                        />
+                      </label>
+                    )}
                   </div>
                 )}
-                {edit && (
+                {edit && (!refereeRole || !!raceEvent) && (
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -1418,6 +2200,24 @@ export default function Home() {
                           : null;
                         if (status === "OK" && (value === null || value <= 0))
                           throw Error("กรอกเวลาที่มากกว่า 0");
+                        if (
+                          admin &&
+                          eventRefereeId &&
+                          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                            eventRefereeId,
+                          )
+                        )
+                          throw Error(
+                            "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
+                          );
+                        if (
+                          refereeRole &&
+                          (!raceEvent ||
+                            !window.confirm(
+                              `ตรวจสอบผลก่อนบันทึก:\n${event} · ${stage} ฮีต ${heat}\n${data.athletes.find((athlete) => athlete.id === aid)?.name || "นักกีฬา"} · ${status === "OK" ? value : status}`,
+                            ))
+                        )
+                          return;
                         await save("races", [
                           {
                             id: existing?.id || crypto.randomUUID(),
@@ -1433,6 +2233,9 @@ export default function Home() {
                             unit: raceEvent?.unit || eventUnit,
                             value,
                             status,
+                            referee_id: refereeRole
+                              ? profileId
+                              : eventRefereeId || undefined,
                           },
                         ]);
                       });
@@ -1491,6 +2294,8 @@ export default function Home() {
                         r.stage === stage &&
                         r.heat === heat &&
                         (demo || r.competition_id === competitionId) &&
+                        (!refereeRole ||
+                          (r.event_id && assignedEventIds.has(r.event_id))) &&
                         !ambiguousEvent &&
                         (!raceEvent || r.event_id === raceEvent.id),
                     ),
@@ -1510,6 +2315,13 @@ export default function Home() {
                         key={r.id}
                         onClick={() =>
                           run(async () => {
+                            if (
+                              refereeRole &&
+                              !window.confirm(
+                                `ยืนยันส่ง ${data.athletes.find((athlete) => athlete.id === r.athlete_id)?.name || "นักกีฬา"} เข้ารอบชิงรายการ ${r.event}?`,
+                              )
+                            )
+                              return;
                             if (
                               data.races.some(
                                 (x) =>
@@ -1537,6 +2349,9 @@ export default function Home() {
                                 heat: 1,
                                 value: null,
                                 status: "DNS",
+                                referee_id: refereeRole
+                                  ? profileId
+                                  : raceEvent?.referee_id || undefined,
                               },
                             ]);
                           })
@@ -1600,128 +2415,356 @@ export default function Home() {
             </>
           )}
           {tab === 6 && (
-            <section className="panel">
-              <h2>ทำเนียบเหรียญรางวัล</h2>
-              {edit && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const f = new FormData(e.currentTarget);
-                    run(() =>
-                      save("awards", [
-                        {
-                          id: crypto.randomUUID(),
-                          event: String(f.get("event")),
-                          division,
-                          gender,
-                          school_id: String(f.get("school")),
-                          medal: String(f.get("medal")),
-                        },
-                      ]),
-                    );
-                  }}
-                >
-                  {filter}
-                  <label>
-                    รายการรอบชิง
-                    <input name="event" required placeholder="ฟุตบอล รอบชิง" />
-                  </label>
-                  <label>
-                    โรงเรียน
-                    <select name="school">
-                      {data.schools.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    เหรียญ
-                    <select name="medal">
-                      <option value="gold">ทอง</option>
-                      <option value="silver">เงิน</option>
-                      <option value="bronze">ทองแดง</option>
-                    </select>
-                  </label>
-                  <button className="primary" disabled={busy}>
-                    เพิ่มเหรียญ
-                  </button>
-                </form>
+            <>
+              {!demo && filter}
+              <section className="panel">
+                <h2>เหรียญรางวัลจากผลการแข่งขัน</h2>
+                <p className="muted">
+                  คำนวณอัตโนมัติจากผลที่กรรมการยืนยันแล้ว: อันดับ 1 เหรียญทอง ·
+                  อันดับ 2 เหรียญเงิน · อันดับ 3 เหรียญทองแดง
+                  ไม่มีการเพิ่มหรือบันทึกเหรียญด้วยตนเอง
+                </p>
+                <p className="notice">
+                  {medalMatches.length === 0
+                    ? "ยังไม่มีตารางแข่งขันให้คำนวณเหรียญ"
+                    : medalMatches.some(
+                          (match) =>
+                            match.status !== "finished" ||
+                            match.home_score === undefined ||
+                            match.away_score === undefined,
+                        )
+                      ? `${
+                          medalMatches.filter(
+                            (match) =>
+                              match.status !== "finished" ||
+                              match.home_score === undefined ||
+                              match.away_score === undefined,
+                          ).length
+                        } คู่ยังรอกรรมการบันทึกผล`
+                      : "ผลการแข่งขันที่ยืนยันแล้วถูกนำมาคำนวณเหรียญอัตโนมัติ"}
+                  {medalMatches.some((match) =>
+                    /รอบคัดเลือก|คัดเลือก|รอบรองชนะเลิศ|รอบรอง|semi/i.test(
+                      match.pool,
+                    ),
+                  ) &&
+                    !medalMatches.some((match) =>
+                      /รอบชิง|ชิงชนะเลิศ|final/i.test(match.pool),
+                    ) &&
+                    " · รอบคัดเลือกและรอบรองชนะเลิศยังไม่คิดเป็นเหรียญ รอผลรอบชิง"}
+                  {medalMatches.some((match) =>
+                    /รอบชิง|ชิงชนะเลิศ|final/i.test(match.pool),
+                  ) &&
+                    !medalMatches.some((match) =>
+                      /ชิงอันดับ\s*3|ชิงที่\s*3|อันดับ\s*3|third/i.test(
+                        match.pool,
+                      ),
+                    ) &&
+                    " · เหรียญทองแดงรอผลการแข่งขันชิงอันดับ 3"}
+                  {hasMultiplePoolsAwaitingFinal(medalMatches) &&
+                    " · มีหลายสาย รอผลรอบชิงเพื่อสรุปเหรียญรวม"}
+                </p>
+                <h3>
+                  {schoolRole
+                    ? "เหรียญรางวัลของโรงเรียน"
+                    : "ผลรวมเหรียญทุกโรงเรียน"}
+                </h3>
+                <Table
+                  heads={[
+                    "อันดับ",
+                    "โรงเรียน",
+                    "🥇 ทอง",
+                    "🥈 เงิน",
+                    "🥉 ทองแดง",
+                    "รวม",
+                  ]}
+                  rows={medalSummary(
+                    medalsForSchools(
+                      schoolRole
+                        ? school
+                          ? [school]
+                          : []
+                        : data.schools.map((school) => school.id),
+                    ),
+                  )}
+                />
+                {!schoolRole && (
+                  <div className="medal-category-grid">
+                    {[
+                      {
+                        title: "โรงเรียนขนาดเล็ก",
+                        schools: schoolCategories.small,
+                      },
+                      {
+                        title: "โรงเรียนขยายโอกาส",
+                        schools: schoolCategories.extended,
+                      },
+                    ].map((category) => {
+                      const rows = medalsForSchools(
+                        category.schools.map((school) => school.id),
+                      );
+                      return (
+                        <section
+                          className="medal-category"
+                          key={category.title}
+                        >
+                          <h3>{category.title}</h3>
+                          {rows.length ? (
+                            <Table
+                              heads={[
+                                "อันดับ",
+                                "โรงเรียน",
+                                "ทอง",
+                                "เงิน",
+                                "ทองแดง",
+                                "รวม",
+                              ]}
+                              rows={medalSummary(rows)}
+                            />
+                          ) : (
+                            <p className="muted">
+                              ยังไม่มีผลเหรียญในกลุ่มนี้
+                              โรงเรียนเดิมที่ไม่มีประเภทจะแสดงในผลรวมทุกโรงเรียนเท่านั้น
+                            </p>
+                          )}
+                        </section>
+                      );
+                    })}
+                  </div>
+                )}
+                {!schoolRole && (
+                  <p className="muted">
+                    โรงเรียนเดิมที่ยังไม่มีประเภทจะแสดงเฉพาะผลรวม
+                    ส่วนการแยกกลุ่มจะทำได้เมื่อประเภทโรงเรียนถูกบันทึกในข้อมูลจริง
+                    (แบบลงทะเบียนปัจจุบันยังเป็นตัวอย่าง)
+                  </p>
+                )}
+                <h3>รายการผลที่คำนวณเป็นเหรียญ</h3>
+                {visibleAwards.length ? (
+                  <Table
+                    heads={["รายการ", "รุ่น / เพศ", "โรงเรียน", "เหรียญ"]}
+                    rows={visibleAwards.map((award) => [
+                      award.event,
+                      `${award.division} / ${award.gender}`,
+                      schoolName(award.school_id),
+                      award.medal === "gold"
+                        ? "ทอง"
+                        : award.medal === "silver"
+                          ? "เงิน"
+                          : "ทองแดง",
+                    ])}
+                  />
+                ) : (
+                  <Empty />
+                )}
+              </section>
+              {data.awards.filter(
+                (award) => !schoolRole || award.school_id === school,
+              ).length > 0 && (
+                <details className="panel legacy-awards">
+                  <summary>รายการเหรียญที่บันทึกไว้เดิม</summary>
+                  <p className="muted">
+                    เก็บข้อมูลเดิมไว้โดยไม่ลบ แต่ไม่นำมาคำนวณยอดเหรียญใหม่
+                  </p>
+                  <Table
+                    heads={["รายการ", "รุ่น / เพศ", "โรงเรียน", "เหรียญ"]}
+                    rows={data.awards
+                      .filter(
+                        (award) => !schoolRole || award.school_id === school,
+                      )
+                      .map((award) => [
+                        award.event,
+                        `${award.division} / ${award.gender}`,
+                        schoolName(award.school_id),
+                        award.medal,
+                      ])}
+                  />
+                </details>
               )}
-              <Table
-                heads={[
-                  "อันดับ",
-                  "โรงเรียน",
-                  "🥇 ทอง",
-                  "🥈 เงิน",
-                  "🥉 ทองแดง",
-                  "รวม",
-                ]}
-                rows={medals(
-                  data.awards.map((a) => ({
-                    school: a.school_id,
-                    medal: a.medal,
-                  })),
-                ).map((r, i) => [
-                  i + 1,
-                  schoolName(r.school),
-                  r.gold,
-                  r.silver,
-                  r.bronze,
-                  r.gold + r.silver + r.bronze,
-                ])}
-              />
-              <h3>รายการที่ได้รับเหรียญ</h3>
-              <Table
-                heads={["รายการ", "รุ่น / เพศ", "โรงเรียน", "เหรียญ"]}
-                rows={data.awards.map((a) => [
-                  a.event,
-                  `${a.division} / ${a.gender}`,
-                  schoolName(a.school_id),
-                  a.medal,
-                ])}
-              />
-            </section>
+            </>
           )}
           {tab === 7 && (
             <>
               <section className="panel">
                 <h2>บัญชีและการเชื่อมต่อ</h2>
+                <p className="muted">
+                  ขณะนี้เปิดให้ทดลองเข้าถึงทุกบทบาทโดยยังไม่ต้องเข้าสู่ระบบ
+                  การยืนยันตัวตนจะเพิ่มภายหลัง
+                </p>
                 <p>
-                  สาธิตแยกจากฐานข้อมูลจริง เปลี่ยนโหมดได้หลังตั้งค่า Supabase
+                  <a href="/school-registration">ลงทะเบียนโรงเรียนใหม่</a>
                 </p>
                 {demo ? (
                   <>
-                    <button
-                      disabled={!supabase || busy}
-                      onClick={() =>
-                        run(async () => {
-                          await refresh();
-                          setDemo(false);
-                        })
-                      }
-                    >
-                      เข้าสู่โหมด Supabase
-                    </button>
-                    {!supabase && (
+                    <div className="connection-action">
+                      <strong>ระบบแข่งขันที่เชื่อมต่ออยู่</strong>
                       <p className="muted">
-                        ยังไม่ได้ตั้งค่า Supabase — ดู README
-                        สำหรับการตั้งค่าคีย์สาธารณะและฐานข้อมูล
+                        เข้าสู่ระบบจริงสำหรับข้อมูลการแข่งขันที่มีอยู่
+                        หน้าลงทะเบียนโรงเรียนยังเป็นตัวอย่างและไม่ส่งข้อมูล
                       </p>
-                    )}
-                    <label>
-                      ทดลองสิทธิ์ (เฉพาะสาธิต)
-                      <select
-                        disabled={busy}
-                        value={role}
-                        onChange={(e) => setRole(e.target.value)}
+                      <button
+                        disabled={!supabase || busy}
+                        onClick={() =>
+                          run(async () => {
+                            await refresh();
+                            setDemo(false);
+                          })
+                        }
                       >
-                        {["admin", "recorder", "school", "viewer"].map((r) => (
-                          <option key={r}>{r}</option>
-                        ))}
-                      </select>
-                    </label>
+                        เข้าสู่โหมด Supabase
+                      </button>
+                      {!supabase && (
+                        <p className="muted">
+                          ยังไม่ได้ตั้งค่า Supabase สำหรับข้อมูลการแข่งขัน
+                        </p>
+                      )}
+                    </div>
+                    <p className="muted">
+                      เลือกบทบาทได้จากเมนูโปรไฟล์ด้านบน และเปลี่ยนกลับได้ทันที
+                    </p>
+                    {admin && (
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          run(
+                            () => {
+                              const seed = createDemoCompetitionData(
+                                data.schools,
+                              );
+                              let savedCompetitions: ManagedCompetition[] = [];
+                              const stored = localStorage.getItem(
+                                DEMO_COMPETITIONS_KEY,
+                              );
+                              if (stored) {
+                                const parsed: unknown = JSON.parse(stored);
+                                if (
+                                  !Array.isArray(parsed) ||
+                                  !parsed.every(isManagedCompetition)
+                                )
+                                  throw Error(
+                                    "ข้อมูลรายการแข่งขันสาธิตไม่ถูกต้อง",
+                                  );
+                                savedCompetitions = parsed;
+                              }
+                              const savedById = new Map(
+                                savedCompetitions.map((item) => [
+                                  item.id,
+                                  item,
+                                ]),
+                              );
+                              const seededIds = new Set(
+                                seed.competitions.map((item) => item.id),
+                              );
+                              const nextCompetitions = [
+                                ...seed.competitions.map((seeded) => {
+                                  const saved = savedById.get(seeded.id);
+                                  const savedFixtures = new Map(
+                                    saved?.fixtures.map((fixture) => [
+                                      fixture.id,
+                                      fixture,
+                                    ]),
+                                  );
+                                  const seededFixtureIds = new Set(
+                                    seeded.fixtures.map(
+                                      (fixture) => fixture.id,
+                                    ),
+                                  );
+                                  return saved
+                                    ? {
+                                        ...seeded,
+                                        ...saved,
+                                        teams: [
+                                          ...new Set([
+                                            ...seeded.teams,
+                                            ...saved.teams,
+                                          ]),
+                                        ],
+                                        fixtures: [
+                                          ...seeded.fixtures.map((fixture) => {
+                                            const previous = savedFixtures.get(
+                                              fixture.id,
+                                            );
+                                            return previous
+                                              ? {
+                                                  ...fixture,
+                                                  ...previous,
+                                                  round:
+                                                    previous.round ===
+                                                    "พบกันหมด"
+                                                      ? fixture.round
+                                                      : previous.round,
+                                                  startsAt:
+                                                    previous.startsAt ||
+                                                    fixture.startsAt,
+                                                  venue:
+                                                    previous.venue ||
+                                                    fixture.venue,
+                                                }
+                                              : fixture;
+                                          }),
+                                          ...saved.fixtures.filter(
+                                            (fixture) =>
+                                              !seededFixtureIds.has(fixture.id),
+                                          ),
+                                        ],
+                                      }
+                                    : seeded;
+                                }),
+                                ...savedCompetitions.filter(
+                                  (item) => !seededIds.has(item.id),
+                                ),
+                              ];
+                              const nextPolicies = {
+                                ...demoPolicies,
+                                ...seed.policies,
+                              };
+                              const demoMatches = demoFixturesAsMatches(
+                                nextCompetitions,
+                                data.matches,
+                              );
+                              localStorage.setItem(
+                                DEMO_COMPETITIONS_KEY,
+                                JSON.stringify(nextCompetitions),
+                              );
+                              localStorage.setItem(
+                                "kosamphi-registration-policies-v1",
+                                JSON.stringify(nextPolicies),
+                              );
+                              setDemoPolicies(nextPolicies);
+                              setManagedCompetitions(nextCompetitions);
+                              setData((current) => ({
+                                ...current,
+                                schools: [
+                                  ...new Map(
+                                    [...seed.schools, ...current.schools].map(
+                                      (item) => [item.id, item],
+                                    ),
+                                  ).values(),
+                                ],
+                                athletes: [
+                                  ...new Map(
+                                    [...seed.athletes, ...current.athletes].map(
+                                      (item) => [item.id, item],
+                                    ),
+                                  ).values(),
+                                ],
+                                matches: [
+                                  ...new Map(
+                                    [...current.matches, ...demoMatches].map(
+                                      (item) => [item.id, item],
+                                    ),
+                                  ).values(),
+                                ],
+                              }));
+                            },
+                            false,
+                            "เพิ่มข้อมูลจำลองครบ 10 โรงเรียน ทุกรายการแข่งขัน และโปรแกรมแข่งแล้ว",
+                          )
+                        }
+                      >
+                        สร้างข้อมูลจำลอง 10 โรงเรียน · สมัคร จัดสาย
+                        และโปรแกรมแข่งครบทุกประเภทกีฬา
+                      </button>
+                    )}
                     <button
                       disabled={busy}
                       onClick={() => {
@@ -1773,6 +2816,8 @@ export default function Home() {
                           const { error } = await supabase!.auth.signOut();
                           if (error) throw Error(error.message);
                           setRole("viewer");
+                          setProfileId("");
+                          setTab(0);
                           setSchool("");
                           setData((d) => ({ ...d, athletes: [] }));
                           await refresh();
@@ -1786,9 +2831,15 @@ export default function Home() {
                       onClick={() => {
                         setDemo(true);
                         const saved = localStorage.getItem("kosamphi-demo-v1");
-                        setData(saved ? JSON.parse(saved) : initialState());
-                        setRole("admin");
-                        setSchool("1");
+                        setData(
+                          saved
+                            ? removePlaceholderSchools(JSON.parse(saved))
+                            : initialState(),
+                        );
+                        setRole("viewer");
+                        setProfileId("");
+                        setTab(0);
+                        setSchool("");
                         setSnapshot(null);
                         setCompetitionId("");
                         setSport(SPORTS[0]);
@@ -1802,39 +2853,99 @@ export default function Home() {
                   </>
                 )}
               </section>
-              <section className="panel">
-                <h2>โรงเรียนที่เข้าร่วม</h2>
-                {data.schools.map((s) => (
-                  <form
-                    key={s.id}
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      run(() =>
-                        save("schools", [
-                          { ...s, name: String(f.get("name")) },
-                        ]),
-                      );
-                    }}
+              {!demo && admin && (
+                <section className="panel">
+                  <h2>คำขอลงทะเบียนโรงเรียน</h2>
+                  <button
+                    disabled={busy}
+                    onClick={() => run(loadSchoolRequests)}
                   >
-                    <label>
-                      โรงเรียน {s.id}
-                      <input
-                        name="name"
-                        defaultValue={s.name}
-                        required
-                        disabled={!admin}
-                      />
-                    </label>
-                    {admin && <button disabled={busy}>บันทึก</button>}
-                  </form>
-                ))}
+                    โหลดคำขอที่รอตรวจสอบ
+                  </button>
+                  {schoolRequests.length === 0 ? (
+                    <p className="muted">ยังไม่มีคำขอที่โหลดไว้</p>
+                  ) : (
+                    schoolRequests.map((request) => (
+                      <article className="school-request" key={request.id}>
+                        <strong>{request.school_name}</strong>
+                        <p>
+                          บัญชี {request.username} · ผู้ประสานงาน{" "}
+                          {request.contact_name}
+                          {request.contact_phone
+                            ? ` · ${request.contact_phone}`
+                            : ""}
+                        </p>
+                        <p className="muted">
+                          ส่งเมื่อ{" "}
+                          {new Date(request.created_at).toLocaleString("th-TH")}
+                        </p>
+                        <div>
+                          <button
+                            className="primary"
+                            disabled={busy}
+                            onClick={() =>
+                              run(() =>
+                                reviewSchoolRequest(request.id, "approved"),
+                              )
+                            }
+                          >
+                            อนุมัติและสร้างโรงเรียน
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              run(() =>
+                                reviewSchoolRequest(request.id, "rejected"),
+                              )
+                            }
+                          >
+                            ไม่อนุมัติ
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </section>
+              )}
+              <section className="panel">
+                <h2>โรงเรียนในระบบ</h2>
+                {data.schools.length ? (
+                  <ul className="registered-school-list">
+                    {data.schools.map((item) => (
+                      <li key={item.id}>
+                        <School aria-hidden="true" />
+                        <span>{item.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="empty-schools">
+                    <School aria-hidden="true" />
+                    <strong>ยังไม่มีโรงเรียนในระบบ</strong>
+                    <p>โรงเรียนที่ยื่นลงทะเบียนและผ่านการตรวจสอบจะแสดงที่นี่</p>
+                    <a href="/school-registration">ลงทะเบียนโรงเรียน</a>
+                  </div>
+                )}
               </section>
             </>
           )}
           <footer>
-            นครโกสัมพีเกมส์ • ปีการศึกษา 2569{" "}
-            <span>SPORT · UNITY · FAIR PLAY</span>
+            <span className="footer-credit">
+              ระบบจัดการและรายงานผลการแข่งขันกีฬา
+              <span>
+                พัฒนาโดย นายสุจริต แจ่มจำรัส · แจ้งข้อบกพร่อง{" "}
+                <a href="tel:0854012644">085-401-2644</a>
+                {" · "}
+                <a
+                  href="https://line.me/R/ti/p/~chayprojubjub"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  LINE: chayprojubjub
+                </a>
+              </span>
+            </span>
+            <span className="footer-tagline">SPORT · UNITY · FAIR PLAY</span>
           </footer>
         </div>
       </main>
@@ -1842,7 +2953,16 @@ export default function Home() {
         className={`mobile-nav${menuOpen ? " drawer-open" : ""}`}
         aria-label="เมนูมือถือ"
       >
-        {[0, 1, 2, 6].map((index) => {
+        {(role === "viewer"
+          ? [0, 2, 5, 6]
+          : role === "admin"
+            ? [0, 8, 2, 6]
+            : schoolRole
+              ? [0, 9, 10, 2, 6]
+              : refereeRole
+                ? [0, 2, 3, 4]
+                : [0, 1, 2, 6]
+        ).map((index) => {
           const Icon = icons[index];
           return (
             <button
@@ -1854,13 +2974,7 @@ export default function Home() {
               onClick={() => selectTab(index)}
             >
               <Icon aria-hidden="true" />
-              <span>
-                {
-                  ["ภาพรวม", "นักกีฬา", "ตารางแข่ง", "เหรียญรางวัล"][
-                    [0, 1, 2, 6].indexOf(index)
-                  ]
-                }
-              </span>
+              <span>{mobileTabLabels[index]}</span>
             </button>
           );
         })}

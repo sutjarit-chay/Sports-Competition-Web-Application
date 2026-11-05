@@ -1,9 +1,35 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function seedSchools(page: Page) {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("kosamphi-demo-v1")) {
+      localStorage.setItem(
+        "kosamphi-demo-v1",
+        JSON.stringify({
+          schools: [{ id: "1", name: "โรงเรียนทดสอบ" }],
+          athletes: [],
+          matches: [],
+          races: [],
+          awards: [],
+        }),
+      );
+    }
+  });
+}
+
+async function useDemoAdmin(page: Page) {
+  await page.getByRole("button", { name: /โปรไฟล์/ }).click();
+  await page
+    .getByRole("menuitemradio", { name: "ผู้ดูแลระบบ", exact: true })
+    .click();
+}
 
 test("catalog and roster slots match every fixed sports category", async ({
   page,
 }) => {
+  await seedSchools(page);
   await page.goto("/");
+  await useDemoAdmin(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   const catalog = page.getByRole("region", {
     name: "ตารางประเภทการแข่งขันและจำนวนผู้สมัคร",
@@ -35,7 +61,9 @@ test("catalog and roster slots match every fixed sports category", async ({
 test("full football roster is saved atomically and further names are rejected", async ({
   page,
 }) => {
+  await seedSchools(page);
   await page.goto("/");
+  await useDemoAdmin(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   const form = page.getByRole("form", { name: "แบบฟอร์มรายชื่อนักกีฬา" });
   for (let i = 0; i < 10; i++)
@@ -52,6 +80,7 @@ test("full football roster is saved atomically and further names are rejected", 
   await expect(page.getByRole("status")).toContainText("เกิน");
   await expect(summary.getByRole("row")).toHaveCount(11);
   await page.reload();
+  await useDemoAdmin(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "ทีมฟุตบอล 10", exact: true }),
@@ -61,7 +90,9 @@ test("full football roster is saved atomically and further names are rejected", 
 test("organizer reserves can be configured later and persist without touching other sports", async ({
   page,
 }) => {
+  await seedSchools(page);
   await page.goto("/");
+  await useDemoAdmin(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   await page
     .getByLabel("ประเภทการแข่งขัน", { exact: true })
@@ -76,6 +107,7 @@ test("organizer reserves can be configured later and persist without touching ot
   await page.getByRole("button", { name: "บันทึกกติกาการสมัคร" }).click();
   await expect(page.locator(".roster-panel .roster-slot")).toHaveCount(8);
   await page.reload();
+  await useDemoAdmin(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   await page
     .getByLabel("ประเภทการแข่งขัน", { exact: true })
@@ -90,23 +122,41 @@ test("organizer reserves can be configured later and persist without touching ot
 test("individual athletics accepts multiple configured events and enforces per-event quota", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedSchools(page);
   await page.goto("/");
+  await useDemoAdmin(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   await page
     .getByLabel("ประเภทการแข่งขัน", { exact: true })
     .selectOption("athletics-individual");
+  await expect(page.locator(".athletics-choices")).toHaveCount(0);
   await page
     .getByText("ตั้งค่าจำนวนสำรองและโควตา (ผู้ดูแลระบบ)", { exact: true })
     .click();
   await page.getByLabel("โควตา วิ่ง 60 เมตร", { exact: true }).fill("1");
   await page.getByLabel("โควตา วิ่ง 100 เมตร", { exact: true }).fill("2");
   await page.getByRole("button", { name: "บันทึกกติกาการสมัคร" }).click();
+  const eventPicker = page.locator(".athletics-choices");
+  await expect(eventPicker).toHaveCount(1);
+  await expect(eventPicker).toContainText(
+    "เลือกรายการแข่งขันกรีฑาก่อนกรอกชื่อนักกีฬา",
+  );
+  await expect(eventPicker.locator('input[type="checkbox"]')).toHaveCount(2);
+  await expect(page.locator(".roster-panel .roster-slot")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "เพิ่มช่องนักกีฬา", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    await eventPicker.evaluate((picker) =>
+      picker.compareDocumentPosition(document.querySelector(".roster-group")!),
+    ),
+  ).toBe(4);
+  await eventPicker.getByRole("checkbox", { name: /วิ่ง 60 เมตร/ }).check();
+  await eventPicker.getByRole("checkbox", { name: /วิ่ง 100 เมตร/ }).check();
   await page
     .getByLabel("ชื่อ–นามสกุล", { exact: true })
     .fill("นักวิ่งหลายรายการ");
-  await page.getByRole("checkbox", { name: /วิ่ง 60 เมตร/ }).check();
-  await page.getByRole("checkbox", { name: /วิ่ง 100 เมตร/ }).check();
   await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
   const summary = page.getByRole("region", {
     name: "สรุปรายชื่อและสถานะการสมัคร",
@@ -115,7 +165,7 @@ test("individual athletics accepts multiple configured events and enforces per-e
   await page
     .getByLabel("ชื่อ–นามสกุล", { exact: true })
     .fill("นักวิ่งเกินโควตา");
-  await page.getByRole("checkbox", { name: /วิ่ง 60 เมตร/ }).check();
+  await eventPicker.getByRole("checkbox", { name: /วิ่ง 60 เมตร/ }).check();
   await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
   await expect(page.getByRole("status")).toContainText("เกินโควตา");
   expect(
@@ -126,21 +176,21 @@ test("individual athletics accepts multiple configured events and enforces per-e
 });
 
 test("oversized CSV is rejected as a whole", async ({ page }) => {
+  await seedSchools(page);
   await page.goto("/");
+  await useDemoAdmin(page);
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
-  await page
-    .getByLabel("นำเข้า CSV")
-    .setInputFiles({
-      name: "oversized.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from(
-        "name,school_id,sport,gender,division\n" +
-          Array.from(
-            { length: 11 },
-            (_, i) => `นักกีฬา CSV ${i},1,ฟุตบอล,ชาย,ประถม`,
-          ).join("\n"),
-      ),
-    });
+  await page.getByLabel("นำเข้า CSV").setInputFiles({
+    name: "oversized.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      "name,school_id,sport,gender,division\n" +
+        Array.from(
+          { length: 11 },
+          (_, i) => `นักกีฬา CSV ${i},1,ฟุตบอล,ชาย,ประถม`,
+        ).join("\n"),
+    ),
+  });
   await expect(page.getByRole("status")).toContainText("เกิน");
   await expect(
     page
