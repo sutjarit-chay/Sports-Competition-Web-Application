@@ -97,6 +97,7 @@ test("mobile menu exposes only viewer pages and keyboard focus is visible", asyn
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await expect(page.locator("#page-title")).toBeFocused();
   await page.keyboard.press("Tab");
   expect(
     await page.evaluate(() => {

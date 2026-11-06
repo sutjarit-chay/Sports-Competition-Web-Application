@@ -27,6 +27,7 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_URL: "https://fixture.invalid",
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "fixture-public",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "",
+      SUPABASE_SERVICE_ROLE_KEY: "fixture-service-only",
     },
   },
   workers: 1,

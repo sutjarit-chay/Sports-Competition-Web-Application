@@ -104,7 +104,7 @@ async function fixture(page: Page, fail = false, rosters = false) {
   };
   const control: { readGate?: Promise<void> } = {};
   const writes: { table: string; method: string; payload: Row[] }[] = [];
-  const user = {
+  const user: Row = {
     id: db.profiles[0].id,
     aud: "authenticated",
     role: "authenticated",
@@ -113,30 +113,52 @@ async function fixture(page: Page, fail = false, rosters = false) {
     user_metadata: {},
     created_at: "2026-01-01T00:00:00Z",
   };
+  const sessionPayload = () => {
+    const token = [
+      { alg: "HS256", typ: "JWT" },
+      {
+        sub: user.id,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        role: "authenticated",
+      },
+      { fixture: true },
+    ]
+      .map((x) => Buffer.from(JSON.stringify(x)).toString("base64url"))
+      .join(".");
+    return {
+      access_token: token,
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: "test-fixture-only",
+      user,
+    };
+  };
+  await page.route("**/api/school-account", async (route) => {
+    const profile = db.profiles[0];
+    const registration = (user.app_metadata as Row | undefined)
+      ?.registration as Row | undefined;
+    const account =
+      profile?.role && profile.role !== "viewer"
+        ? { status: "approved", role: profile.role }
+        : {
+            status: registration?.status || "pending",
+            role: registration?.role || "referee",
+            note: registration?.note,
+          };
+    await route.fulfill({
+      json: {
+        account,
+        ...(route.request().method() === "POST"
+          ? { session: sessionPayload() }
+          : {}),
+      },
+    });
+  });
   await page.route("**/auth/v1/**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/token")) {
-      const token = [
-        { alg: "HS256", typ: "JWT" },
-        {
-          sub: user.id,
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          role: "authenticated",
-        },
-        { fixture: true },
-      ]
-        .map((x) => Buffer.from(JSON.stringify(x)).toString("base64url"))
-        .join(".");
-      await route.fulfill({
-        json: {
-          access_token: token,
-          token_type: "bearer",
-          expires_in: 3600,
-          refresh_token: "test-fixture-only",
-          user,
-        },
-      });
-    } else if (url.pathname.endsWith("/logout"))
+    if (url.pathname.endsWith("/token"))
+      await route.fulfill({ json: sessionPayload() });
+    else if (url.pathname.endsWith("/logout"))
       await route.fulfill({ status: 204 });
     else await route.fulfill({ json: user });
   });
@@ -206,7 +228,7 @@ async function fixture(page: Page, fail = false, rosters = false) {
       json: { message: "No fixture deletes" },
     });
   });
-  return { db, writes, control };
+  return { db, writes, control, user };
 }
 async function enter(page: Page) {
   await page.goto("/");
@@ -225,7 +247,16 @@ async function enter(page: Page) {
   ).toBeVisible();
 }
 async function login(page: Page, label = "ผู้ดูแลระบบ") {
-  await page.getByLabel("อีเมล", { exact: true }).fill("test@example.invalid");
+  if (label === "ผู้ดูแลระบบ") {
+    await page
+      .getByRole("button", { name: "ผู้ดูแลระบบ (อีเมล)", exact: true })
+      .click();
+    await page
+      .getByLabel("อีเมล", { exact: true })
+      .fill("test@example.invalid");
+  } else {
+    await page.getByLabel("ชื่อบัญชี", { exact: true }).fill("fixture-user");
+  }
   await page.getByLabel("รหัสผ่าน", { exact: true }).fill("fixture-only");
   await page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).click();
   await expect(page.locator(".role")).toContainText(label);
@@ -750,4 +781,133 @@ test("account transitions are locked while a live refresh is pending", async ({
     page.locator(".badge").getByText("โหมดสาธิต", { exact: true }),
   ).toBeVisible();
   await expect(page.locator(".role")).toContainText("ผู้ชม");
+});
+
+test("pending username accounts stay viewers until an admin provisions their school profile", async ({
+  page,
+}) => {
+  const { db, user, writes } = await fixture(page);
+  db.profiles[0].role = "viewer";
+  user.email = "fixture-user@accounts.sports-competition.invalid";
+  user.app_metadata = { registration: { role: "school", status: "pending" } };
+  user.user_metadata = { role: "admin", status: "approved" };
+  await enter(page);
+  await login(page, "ผู้ชม");
+  await expect(
+    page.getByRole("status").filter({ hasText: "รอผู้ดูแลระบบอนุมัติ" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "นักกีฬา", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "บันทึกผล", exact: true }),
+  ).toHaveCount(0);
+  expect(writes).toHaveLength(0);
+  db.profiles[0].role = "school_admin";
+  db.profiles[0].school_id = sid;
+  await page
+    .getByRole("button", { name: "โหลดข้อมูลใหม่", exact: true })
+    .click();
+  await expect(page.locator(".role")).toContainText("โรงเรียน");
+  await expect(
+    page.getByRole("button", { name: "นักกีฬา", exact: true }),
+  ).toBeVisible();
+});
+
+test("rejected referee username login displays the reason and grants no scoring controls", async ({
+  page,
+}) => {
+  const { db, user } = await fixture(page);
+  db.profiles[0].role = "viewer";
+  user.email = "fixture-user@accounts.sports-competition.invalid";
+  user.app_metadata = {
+    registration: {
+      role: "referee",
+      status: "rejected",
+      note: "กรุณาติดต่อผู้จัด",
+    },
+  };
+  await enter(page);
+  await login(page, "ผู้ชม");
+  await expect(
+    page.getByRole("status").filter({ hasText: "คำขอไม่ได้รับอนุมัติ" }),
+  ).toContainText("กรุณาติดต่อผู้จัด");
+  await expect(
+    page.getByRole("button", { name: "บันทึกผล", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("email login rejects a non-admin school account", async ({ page }) => {
+  const { db } = await fixture(page);
+  db.profiles[0].role = "school_admin";
+  db.profiles[0].school_id = sid;
+  await enter(page);
+  await page
+    .getByRole("button", { name: "ผู้ดูแลระบบ (อีเมล)", exact: true })
+    .click();
+  await page.getByLabel("อีเมล", { exact: true }).fill("test@example.invalid");
+  await page.getByLabel("รหัสผ่าน", { exact: true }).fill("fixture-only");
+  await page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).click();
+  await expect(page.locator(".account-login").getByRole("alert")).toContainText(
+    "สำหรับผู้ดูแลระบบเท่านั้น",
+  );
+  await expect(page.locator(".role")).toContainText("ผู้ชม");
+});
+
+test("admin reviews school and referee requests from the same queue", async ({
+  page,
+}) => {
+  const { db } = await fixture(page);
+  const requests = [
+    {
+      id: "50000000-0000-4000-8000-000000000001",
+      kind: "school",
+      username: "school01",
+      fullName: "ผู้ประสานงาน",
+      schoolName: "โรงเรียนรออนุมัติ",
+      phone: "0812345678",
+      createdAt: "2026-11-06T00:00:00Z",
+    },
+    {
+      id: "50000000-0000-4000-8000-000000000002",
+      kind: "referee",
+      username: "referee01",
+      fullName: "กรรมการรออนุมัติ",
+      schoolName: "",
+      phone: "",
+      createdAt: "2026-11-06T00:01:00Z",
+    },
+  ];
+  const reviewed: Row[] = [];
+  await page.route("**/api/account-requests", async (route) => {
+    expect(route.request().headers().authorization).toMatch(/^Bearer /);
+    if (route.request().method() === "GET")
+      await route.fulfill({ json: { requests } });
+    else {
+      const body = route.request().postDataJSON();
+      reviewed.push(body);
+      await route.fulfill({ json: { status: body.decision } });
+    }
+  });
+  page.on("dialog", (dialog) => dialog.accept());
+  await enter(page);
+  await login(page);
+  await page
+    .getByRole("button", { name: "โหลดคำขอที่รอตรวจสอบ", exact: true })
+    .click();
+  const queue = page.locator(".account-approvals");
+  await expect(queue.locator(".school-request")).toHaveCount(2);
+  await queue
+    .getByRole("button", { name: "อนุมัติและสร้างโรงเรียน", exact: true })
+    .click();
+  await expect(queue.locator(".school-request")).toHaveCount(1);
+  await queue
+    .getByRole("button", { name: "อนุมัติกรรมการ", exact: true })
+    .click();
+  await expect(queue.locator(".school-request")).toHaveCount(0);
+  expect(reviewed.map((r) => [r.kind, r.decision])).toEqual([
+    ["school", "approved"],
+    ["referee", "approved"],
+  ]);
+  expect(db.profiles[0].role).toBe("admin");
 });

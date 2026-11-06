@@ -94,6 +94,9 @@ import {
   reconcileManagedMatches,
 } from "@/lib/demo-seed";
 import SpiderSchedule from "@/components/spider-schedule";
+import AccountLogin from "@/components/account-login";
+import AccountApprovals from "@/components/account-approvals";
+import type { AccountStatus } from "@/lib/account-types";
 const tabs = [
   "ภาพรวม",
   "นักกีฬา",
@@ -153,14 +156,6 @@ const sportIcons = [
   CircleDot,
 ];
 const DEMO_COMPETITIONS_KEY = "kosamphi-admin-competitions-v1";
-type SchoolRegistrationRequest = {
-  id: string;
-  username: string;
-  school_name: string;
-  contact_name: string;
-  contact_phone: string | null;
-  created_at: string;
-};
 type AppRole = "admin" | "school" | "recorder" | "referee" | "viewer";
 const roleOptions: { value: AppRole; label: string }[] = [
   { value: "viewer", label: "ผู้ชม" },
@@ -238,9 +233,7 @@ export default function Home() {
   const [messageKind, setMessageKind] = useState<"success" | "error">("error");
   const [menuOpen, setMenuOpen] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
-  const [schoolRequests, setSchoolRequests] = useState<
-    SchoolRegistrationRequest[]
-  >([]);
+  const [accountState, setAccountState] = useState<AccountStatus | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const roleMenuButton = useRef<HTMLButtonElement>(null);
   const roleMenu = useRef<HTMLDivElement>(null);
@@ -348,6 +341,8 @@ export default function Home() {
     } catch {
       setMessage("ไม่สามารถอ่านข้อมูลสาธิตเดิม");
     }
+    if (new URLSearchParams(window.location.search).get("account") === "1")
+      setTab(7);
     setReady(true);
   }, []);
   function chooseRole(nextRole: AppRole) {
@@ -384,6 +379,7 @@ export default function Home() {
       role: string;
       school_id: string | null;
     } | null = null;
+    let pending: AccountStatus | null = null;
     if (session.session) {
       const { data: auth, error } = await supabase.auth.getUser();
       if (error) throw Error(error.message);
@@ -395,6 +391,21 @@ export default function Home() {
           .maybeSingle();
         if (res.error) throw Error(res.error.message);
         profile = res.data;
+        if (
+          (!profile || profile.role === "viewer") &&
+          (auth.user.app_metadata.registration ||
+            auth.user.email?.endsWith("@accounts.sports-competition.invalid"))
+        ) {
+          const response = await fetch("/api/school-account", {
+            headers: {
+              Authorization: `Bearer ${session.session.access_token}`,
+            },
+          });
+          const status = await response.json();
+          if (!response.ok)
+            throw Error(status.error || "ตรวจสอบสถานะคำขอไม่สำเร็จ");
+          pending = status.account;
+        }
       }
     }
     const loaded = await readHosted(
@@ -406,6 +417,7 @@ export default function Home() {
     );
     // Commit mode, permissions and data together only after every read succeeds.
     setSnapshot(loaded);
+    setAccountState(pending);
     setData(loaded.state);
     setProfileId(profile?.id || "");
     const nextRole = profile?.role || "viewer";
@@ -443,35 +455,6 @@ export default function Home() {
       setDivision("");
       setGender("");
     }
-  }
-  async function loadSchoolRequests() {
-    if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
-    const { data, error } = await supabase
-      .from("school_registration_requests")
-      .select("id,username,school_name,contact_name,contact_phone,created_at")
-      .eq("status", "pending")
-      .order("created_at", { ascending: true })
-      .limit(50);
-    if (error) throw Error(error.message);
-    setSchoolRequests((data || []) as SchoolRegistrationRequest[]);
-  }
-  async function reviewSchoolRequest(
-    id: string,
-    decision: "approved" | "rejected",
-  ) {
-    if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
-    const note =
-      decision === "rejected"
-        ? prompt("ระบุเหตุผลที่ไม่อนุมัติ (ไม่บังคับ):")
-        : null;
-    if (decision === "rejected" && note === null) return;
-    const { error } = await supabase.rpc("review_school_registration", {
-      p_request_id: id,
-      p_decision: decision,
-      p_note: note?.trim() || null,
-    });
-    if (error) throw Error(error.message);
-    await loadSchoolRequests();
   }
   function downloadCsv(name: string, rows: Record<string, string>[]) {
     const url = URL.createObjectURL(
@@ -2535,7 +2518,7 @@ export default function Home() {
                   <p className="muted">
                     โรงเรียนเดิมที่ยังไม่มีประเภทจะแสดงเฉพาะผลรวม
                     ส่วนการแยกกลุ่มจะทำได้เมื่อประเภทโรงเรียนถูกบันทึกในข้อมูลจริง
-                    (แบบลงทะเบียนปัจจุบันยังเป็นตัวอย่าง)
+                    (ต้องบันทึกประเภทโรงเรียนในข้อมูลจริงก่อนจึงจะแยกกลุ่มได้)
                   </p>
                 )}
                 <h3>รายการผลที่คำนวณเป็นเหรียญ</h3>
@@ -2587,19 +2570,39 @@ export default function Home() {
               <section className="panel">
                 <h2>บัญชีและการเชื่อมต่อ</h2>
                 <p className="muted">
-                  ขณะนี้เปิดให้ทดลองเข้าถึงทุกบทบาทโดยยังไม่ต้องเข้าสู่ระบบ
-                  การยืนยันตัวตนจะเพิ่มภายหลัง
+                  ผู้ดูแลระบบใช้อีเมล โรงเรียนและกรรมการใช้ชื่อบัญชีและรหัสผ่าน
+                  บัญชีใหม่ต้องรอผู้ดูแลระบบอนุมัติ
+                  โหมดสาธิตยังทดลองบทบาทได้โดยไม่สมัคร
                 </p>
                 <p>
-                  <a href="/school-registration">ลงทะเบียนโรงเรียนใหม่</a>
+                  <a href="/school-registration">
+                    สมัครบัญชีโรงเรียน / กรรมการ
+                  </a>
                 </p>
+                {!demo &&
+                  accountState &&
+                  accountState.status !== "approved" && (
+                    <p role="status" className="registration-message">
+                      {accountState.status === "rejected"
+                        ? `คำขอไม่ได้รับอนุมัติ${accountState.note ? `: ${accountState.note}` : " กรุณาติดต่อผู้ดูแลระบบ"}`
+                        : accountState.status === "pending"
+                          ? "รอผู้ดูแลระบบอนุมัติ ขณะนี้ยังไม่มีสิทธิ์โรงเรียนหรือกรรมการ"
+                          : "บัญชียังไม่มีคำขอสมัคร กรุณาติดต่อผู้ดูแลระบบ"}
+                    </p>
+                  )}
+                {(demo || role === "viewer") && (
+                  <AccountLogin
+                    busy={busy}
+                    onSession={() => run(refresh, true)}
+                  />
+                )}
                 {demo ? (
                   <>
                     <div className="connection-action">
                       <strong>ระบบแข่งขันที่เชื่อมต่ออยู่</strong>
                       <p className="muted">
-                        เข้าสู่ระบบจริงสำหรับข้อมูลการแข่งขันที่มีอยู่
-                        หน้าลงทะเบียนโรงเรียนยังเป็นตัวอย่างและไม่ส่งข้อมูล
+                        ใช้บัญชีที่ได้รับอนุมัติเพื่อจัดการข้อมูลจริง
+                        หรือเปิดดูข้อมูลการแข่งขันสาธารณะโดยไม่เข้าสู่ระบบ
                       </p>
                       <button
                         disabled={!supabase || busy}
@@ -2777,35 +2780,6 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const f = new FormData(e.currentTarget);
-                        run(async () => {
-                          const res = await supabase!.auth.signInWithPassword({
-                            email: String(f.get("email")),
-                            password: String(f.get("password")),
-                          });
-                          if (res.error) throw Error(res.error.message);
-                          await refresh();
-                        });
-                      }}
-                    >
-                      <label>
-                        อีเมล
-                        <input name="email" type="email" required />
-                      </label>
-                      <label>
-                        รหัสผ่าน
-                        <input
-                          name="password"
-                          type="password"
-                          required
-                          autoComplete="current-password"
-                        />
-                      </label>
-                      <button disabled={busy}>เข้าสู่ระบบ</button>
-                    </form>
                     <button disabled={busy} onClick={() => run(refresh)}>
                       โหลดข้อมูลใหม่
                     </button>
@@ -2854,58 +2828,7 @@ export default function Home() {
                 )}
               </section>
               {!demo && admin && (
-                <section className="panel">
-                  <h2>คำขอลงทะเบียนโรงเรียน</h2>
-                  <button
-                    disabled={busy}
-                    onClick={() => run(loadSchoolRequests)}
-                  >
-                    โหลดคำขอที่รอตรวจสอบ
-                  </button>
-                  {schoolRequests.length === 0 ? (
-                    <p className="muted">ยังไม่มีคำขอที่โหลดไว้</p>
-                  ) : (
-                    schoolRequests.map((request) => (
-                      <article className="school-request" key={request.id}>
-                        <strong>{request.school_name}</strong>
-                        <p>
-                          บัญชี {request.username} · ผู้ประสานงาน{" "}
-                          {request.contact_name}
-                          {request.contact_phone
-                            ? ` · ${request.contact_phone}`
-                            : ""}
-                        </p>
-                        <p className="muted">
-                          ส่งเมื่อ{" "}
-                          {new Date(request.created_at).toLocaleString("th-TH")}
-                        </p>
-                        <div>
-                          <button
-                            className="primary"
-                            disabled={busy}
-                            onClick={() =>
-                              run(() =>
-                                reviewSchoolRequest(request.id, "approved"),
-                              )
-                            }
-                          >
-                            อนุมัติและสร้างโรงเรียน
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() =>
-                              run(() =>
-                                reviewSchoolRequest(request.id, "rejected"),
-                              )
-                            }
-                          >
-                            ไม่อนุมัติ
-                          </button>
-                        </div>
-                      </article>
-                    ))
-                  )}
-                </section>
+                <AccountApprovals onReviewed={() => run(refresh, true)} />
               )}
               <section className="panel">
                 <h2>โรงเรียนในระบบ</h2>
