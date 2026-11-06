@@ -115,7 +115,7 @@ async function fixture(
           ? new Response(files.get(match[1]), {
               headers: { "Content-Type": "application/json" },
             })
-          : json({}, 404);
+          : json({ statusCode: "404", message: "Object not found" }, 404);
       assert.equal(req.method, "POST");
       const content = await req.text();
       if (files.has(match[1]))

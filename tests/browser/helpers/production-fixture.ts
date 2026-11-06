@@ -1,4 +1,6 @@
 import { expect, type Page } from "@playwright/test";
+import { decodeHosted, type HostedRows } from "../../../lib/hosted";
+import { prepareRoster } from "../../../lib/registration";
 import { defaultPolicy } from "../../../lib/registration";
 export const sid = "20000000-0000-4000-8000-000000000001",
   sid2 = "20000000-0000-4000-8000-000000000002";
@@ -179,6 +181,83 @@ export async function fixture(page: Page, fail = false, rosters = false) {
     const school = db.schools.find((row) => row.id === body.schoolId)!;
     school.name = body.name;
     await route.fulfill({ json: { school } });
+  });
+  await page.route("**/api/admin-accounts", (route) =>
+    route.fulfill({ json: { accounts: [] } }),
+  );
+  await page.route("**/api/competition-reset**", (route) =>
+    route.fulfill({
+      json: {
+        preview: { counts: {}, fingerprint: "empty" },
+        job: null,
+        archives: [],
+        nextOffset: null,
+      },
+    }),
+  );
+  await page.route("**/api/athlete-registrations", async (route) => {
+    expect(route.request().headers().authorization).toMatch(/^Bearer /);
+    try {
+      const { athletes } = route.request().postDataJSON();
+      const state = decodeHosted(db as unknown as HostedRows);
+      const prepared = [
+        ...new Set<string>(athletes.map((a: Row) => String(a.competition_id))),
+      ].flatMap((id) => {
+        const policy = db.competitions.find(
+          (c) => c.id === id,
+        )?.registration_policy;
+        const incoming = athletes.filter((a: Row) => a.competition_id === id);
+        if (
+          !policy &&
+          incoming.some(
+            (a: Row) => !db.registrations.some((r) => r.id === a.id),
+          )
+        )
+          throw Error("ผู้ดูแลยังไม่ได้ตั้งค่ากติกาของรายการนี้");
+        return policy
+          ? prepareRoster(
+              state.athletes,
+              incoming,
+              policy as Parameters<typeof prepareRoster>[2],
+            )
+          : incoming;
+      });
+      const inserts: Row[] = [];
+      for (const a of prepared) {
+        const original = db.registrations.find((r) => r.id === a.id);
+        if (original) {
+          const patch = { athlete_name: a.name, bib: a.bib || a.id };
+          Object.assign(original, patch);
+          writes.push({
+            table: "registrations",
+            method: "PATCH",
+            payload: [patch],
+          });
+        } else
+          inserts.push({
+            id: a.id,
+            competition_id: a.competition_id,
+            school_id: a.school_id,
+            athlete_name: a.name,
+            bib: a.bib || a.id,
+            roster_details: a.roster || null,
+          });
+      }
+      if (inserts.length) {
+        db.registrations.push(...inserts);
+        writes.push({
+          table: "registrations",
+          method: "POST",
+          payload: inserts,
+        });
+      }
+      await route.fulfill({ json: { ok: true } });
+    } catch (e) {
+      await route.fulfill({
+        status: 400,
+        json: { error: e instanceof Error ? e.message : "ข้อมูลไม่ถูกต้อง" },
+      });
+    }
   });
   await page.route("**/api/match-results", async (route) => {
     expect(route.request().headers().authorization).toMatch(/^Bearer /);

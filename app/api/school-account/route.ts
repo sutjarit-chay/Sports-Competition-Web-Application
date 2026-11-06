@@ -1,3 +1,4 @@
+import { reserveUsername } from "@/lib/username-reservations";
 import { createHmac } from "node:crypto";
 import { normalizeUsername, usernameEmail } from "@/lib/school-auth";
 import {
@@ -80,6 +81,21 @@ export async function POST(request: Request) {
           "สร้างบัญชีไม่สำเร็จ ชื่อบัญชีอาจถูกใช้แล้ว หากสมัครไว้แล้วให้เข้าสู่ระบบ",
           409,
         );
+      if (!created.data.user)
+        throw new AccountError("สร้างบัญชีไม่สำเร็จ", 503);
+      try {
+        await reserveUsername(admin, username, created.data.user.id);
+      } catch (reservationError) {
+        // This identity was created in this request and has not received a
+        // registration request or an approved profile. Never delete an existing user.
+        const cleanup = await admin.auth.admin.deleteUser(created.data.user.id);
+        if (cleanup.error)
+          throw new AccountError(
+            "จองชื่อบัญชีไม่สำเร็จและลบบัญชีใหม่ที่ยังไม่อนุมัติไม่สำเร็จ กรุณาติดต่อผู้ดูแลระบบ",
+            503,
+          );
+        throw reservationError;
+      }
     }
     const auth = accountClient();
     const signed = await auth.auth.signInWithPassword({

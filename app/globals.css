@@ -3513,3 +3513,71 @@ footer {
 .account-approvals > button {
   margin: 16px 0;
 }
+
+.admin-maintenance .admin-editor {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #dfd5bc);
+  border-radius: 1rem;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.admin-maintenance form {
+  display: grid;
+  gap: 0.75rem;
+}
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+.admin-maintenance label {
+  display: grid;
+  gap: 0.4rem;
+}
+.admin-maintenance input,
+.admin-maintenance select {
+  width: 100%;
+  min-width: 0;
+}
+.admin-maintenance .danger-button {
+  color: #fff;
+  background: #a72424;
+  border-color: #a72424;
+}
+.admin-maintenance .danger-button:hover:not(:disabled) {
+  background: #841b1b;
+}
+.admin-maintenance .danger-button:disabled {
+  opacity: 0.55;
+}
+.admin-maintenance.danger-zone,
+.admin-maintenance .danger-zone {
+  border-color: #b8624d;
+}
+.reset-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+.reset-counts div {
+  border: 1px solid #e5ddca;
+  border-radius: 0.7rem;
+  padding: 0.75rem;
+}
+.reset-counts dd {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0.2rem 0 0;
+}
+.admin-maintenance p,
+.admin-maintenance td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .admin-maintenance .admin-actions > button {
+    flex: 1 1 160px;
+  }
+}

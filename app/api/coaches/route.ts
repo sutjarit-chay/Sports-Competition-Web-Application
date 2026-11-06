@@ -1,3 +1,4 @@
+import { assertCompetitionOpen } from "@/lib/competition-reset";
 import { accountError, accountJson, AccountError } from "@/lib/account-server";
 import {
   authorizeSchool,
@@ -47,6 +48,7 @@ export async function PUT(request: Request) {
       schoolId = schoolUuid(body.schoolId),
       competitionId = schoolUuid(body.competitionId);
     const admin = await scope(request, schoolId, competitionId);
+    await assertCompetitionOpen(admin);
     const coaches = validateCoaches(body.coaches, schoolId, competitionId);
     const saved = await writeDocument(
       admin,

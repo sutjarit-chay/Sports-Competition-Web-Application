@@ -118,6 +118,11 @@ async function fixture(
         app_metadata: {},
         user_metadata: {},
       });
+    if (url.pathname.startsWith("/storage/v1/"))
+      return new Response(
+        JSON.stringify({ statusCode: "404", message: "Object not found" }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      );
     const table = url.pathname.split("/").at(-1)!;
     if (table === "profiles")
       return response({ id: actor, role, school_id: null });

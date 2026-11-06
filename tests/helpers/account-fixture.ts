@@ -42,6 +42,7 @@ function authFixture() {
     schools: Row[] = [],
     writes: Row[] = [];
   const passwords = new Map<string, string>();
+  const reservations = new Map<string, unknown>();
   const token = (id: string) =>
     [
       {},
@@ -83,6 +84,23 @@ function authFixture() {
       ).sub;
     } catch {}
     if (method !== "GET") writes.push({ path: url.pathname, method, body });
+    if (url.pathname.startsWith("/storage/v1/object/")) {
+      const name = decodeURIComponent(
+        url.pathname.replace(/^.*team-files\//, ""),
+      );
+      if (method === "POST") {
+        if (reservations.has(name))
+          return response(
+            { message: "already exists", statusCode: "409" },
+            409,
+          );
+        reservations.set(name, body);
+        return response({ Key: name });
+      }
+      return reservations.has(name)
+        ? response(reservations.get(name))
+        : response({ message: "not found", statusCode: "404" }, 404);
+    }
     if (url.pathname === "/auth/v1/admin/users" && method === "POST") {
       if (users.some((u) => u.email === body.email))
         return response({ message: "duplicate", code: "email_exists" }, 422);
@@ -123,6 +141,10 @@ function authFixture() {
     if (url.pathname.startsWith("/auth/v1/admin/users/")) {
       const user = users.find((u) => u.id === url.pathname.split("/").pop());
       if (!user) return response({ message: "not found" }, 404);
+      if (method === "DELETE") {
+        users.splice(users.indexOf(user), 1);
+        return response({});
+      }
       if (method === "PUT") Object.assign(user, body);
       return response(user);
     }
@@ -224,5 +246,6 @@ function authFixture() {
     adminId,
     newId,
     passwords,
+    reservations,
   };
 }

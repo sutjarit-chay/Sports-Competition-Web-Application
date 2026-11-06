@@ -195,3 +195,34 @@ test("signup does not expose a session and oversized JSON is rejected before Aut
     assert.equal(f.writes.length, before);
   });
 });
+test("signup reservation conflict removes only its newly created unapproved identity", async () => {
+  await withAuthFixture(async (f) => {
+    f.reservations.set("account-usernames/referee01.json", {
+      userId: f.adminId,
+    });
+    const r = await POST(signup("referee"));
+    assert.equal(r.status, 409);
+    assert.equal(f.users.length, 1);
+    assert.equal(f.users[0].id, f.adminId);
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.profiles.length, 1);
+  });
+});
+test("signup reports failed cleanup honestly and grants no approved profile", async () => {
+  await withAuthFixture(async (f) => {
+    f.reservations.set("account-usernames/referee01.json", {
+      userId: f.adminId,
+    });
+    const fetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) =>
+      init?.method === "DELETE"
+        ? Response.json({ message: "cleanup unavailable" }, { status: 503 })
+        : fetch(input, init);
+    const r = await POST(signup("referee"));
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /ลบบัญชีใหม่/);
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.profiles.length, 1);
+    assert.equal(f.users.length, 2);
+  });
+});

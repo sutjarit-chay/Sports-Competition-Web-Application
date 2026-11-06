@@ -1,3 +1,4 @@
+import { assertCompetitionOpen } from "@/lib/competition-reset";
 import {
   accountAdmin,
   accountBody,
@@ -17,7 +18,9 @@ export async function POST(request: Request) {
     const profile = await accountProfile(client, user.id);
     if (!profile) throw new AccountError("ไม่มีสิทธิ์บันทึกผลกรีฑา", 403);
     const body = await accountBody(request);
-    await saveAthleticsResult(accountAdmin(), body.race, {
+    const admin = accountAdmin();
+    await assertCompetitionOpen(admin);
+    await saveAthleticsResult(admin, body.race, {
       id: user.id,
       role: profile.role,
     });
@@ -34,7 +37,9 @@ export async function PATCH(request: Request) {
     if (profile?.role !== "admin")
       throw new AccountError("เฉพาะผู้ดูแลระบบเท่านั้น", 403);
     const body = await accountBody(request);
-    await assignAthleticsReferee(accountAdmin(), body.eventId, body.refereeId, {
+    const admin = accountAdmin();
+    await assertCompetitionOpen(admin);
+    await assignAthleticsReferee(admin, body.eventId, body.refereeId, {
       id: user.id,
       role: profile.role,
     });

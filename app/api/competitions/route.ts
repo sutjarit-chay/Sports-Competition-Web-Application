@@ -1,3 +1,4 @@
+import { assertCompetitionOpen } from "@/lib/competition-reset";
 import {
   accountAdmin,
   accountBody,
@@ -47,7 +48,9 @@ export async function POST(request: Request) {
       !["admin", "recorder", "referee"].includes(profile.role)
     )
       throw new AccountError("ไม่มีสิทธิ์เลื่อนทีม", 403);
-    await performCompetitionAction(accountAdmin(), body, {
+    const admin = accountAdmin();
+    await assertCompetitionOpen(admin);
+    await performCompetitionAction(admin, body, {
       id: user.id,
       role: profile.role,
     });

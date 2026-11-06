@@ -88,6 +88,9 @@ import {
 import SpiderSchedule from "@/components/spider-schedule";
 import AccountLogin from "@/components/account-login";
 import AccountApprovals from "@/components/account-approvals";
+import AdminAccountManager from "@/components/admin-account-manager";
+import AdminSchoolManager from "@/components/admin-school-manager";
+import AdminMaintenance from "@/components/admin-maintenance";
 import type { AccountStatus } from "@/lib/account-types";
 const tabs = [
   "ภาพรวม",
@@ -572,21 +575,31 @@ export default function Home() {
     }
     if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
     if (!snapshot) throw Error("กรุณาโหลดข้อมูล Supabase ใหม่");
-    if (table === "matches" || table === "races") {
+    if (table === "matches" || table === "races" || table === "athletes") {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) throw Error("กรุณาเข้าสู่ระบบใหม่");
       for (const row of rows) {
         const isMatch = table === "matches";
         const response = await fetch(
-          isMatch ? "/api/match-results" : "/api/athletics-results",
+          isMatch
+            ? "/api/match-results"
+            : table === "athletes"
+              ? "/api/athlete-registrations"
+              : "/api/athletics-results",
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify(isMatch ? { match: row } : { race: row }),
+            body: JSON.stringify(
+              isMatch
+                ? { match: row }
+                : table === "athletes"
+                  ? { athletes: rows }
+                  : { race: row },
+            ),
           },
         );
         const result = await response.json();
@@ -600,6 +613,7 @@ export default function Home() {
           } catch {}
           throw Error(result.error || "บันทึกผลไม่สำเร็จ");
         }
+        if (table === "athletes") break;
       }
     } else await writeHosted(supabase, snapshot, table, rows);
     await refresh();
@@ -2474,7 +2488,18 @@ export default function Home() {
                 }
               </section>
               {admin && (
-                <AccountApprovals onReviewed={() => run(refresh, true)} />
+                <>
+                  <AccountApprovals onReviewed={() => run(refresh, true)} />
+                  <AdminAccountManager
+                    schools={data.schools}
+                    onChanged={refresh}
+                  />
+                  <AdminSchoolManager
+                    schools={data.schools}
+                    onChanged={refresh}
+                  />
+                  <AdminMaintenance onChanged={refresh} />
+                </>
               )}
               <section className="panel">
                 <h2>โรงเรียนในระบบ</h2>
