@@ -370,3 +370,145 @@ test("existing field event retains direction, unit and scheduling metadata", asy
   assert.equal(calls, 1);
   assert.deepEqual(data.athletics_events[0], event);
 });
+
+test("an unconfigured legacy competition cannot accept new registrations", async () => {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { writeHosted } = await import("../lib/hosted");
+  let writes = 0;
+  const client = createClient("https://fixture.invalid", "fixture-public", {
+    auth: { persistSession: false },
+    global: {
+      fetch: async () => {
+        writes++;
+        return new Response("[]");
+      },
+    },
+  });
+  await assert.rejects(
+    () =>
+      writeHosted(client, { rows: raw, state: decodeHosted(raw) }, "athletes", [
+        {
+          ...decodeHosted(raw).athletes[0],
+          id: "new-registration",
+          name: "new",
+          bib: "102",
+        },
+      ]),
+    /ยังไม่ได้ตั้งค่ากติกา/,
+  );
+  assert.equal(writes, 0);
+});
+
+test("confirmed knockout winners cannot change after persistence, while score-only corrections keep their winner", async () => {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { writeHosted } = await import("../lib/hosted");
+  let writes = 0;
+  const client = createClient("https://fixture.invalid", "fixture-public", {
+    auth: { persistSession: false },
+    global: {
+      fetch: async () => {
+        writes++;
+        return new Response(JSON.stringify([{ id: "m1" }]), {
+          headers: { "content-type": "application/json" },
+        });
+      },
+    },
+  });
+  const source = {
+    ...raw,
+    competitions: [
+      {
+        ...c,
+        registration_policy: {
+          ruleId: "football-male",
+          reserves: 3,
+          eventQuotas: {},
+          maxEventsPerAthlete: null,
+          management: {
+            revision: 1,
+            format: "knockout",
+            teamLimit: 2,
+            details: "",
+            teams: [],
+            fixtures: [],
+          },
+        },
+      },
+    ],
+    matches: [
+      { ...raw.matches[0], status: "confirmed", home_score: 2, away_score: 1 },
+    ],
+  };
+  const snapshot = { rows: source, state: decodeHosted(source) };
+  const match = snapshot.state.matches[0];
+  await assert.rejects(
+    () =>
+      writeHosted(client, snapshot, "matches", [
+        { ...match, home_score: 0, away_score: 1 },
+      ]),
+    /เปลี่ยนผู้ชนะ/,
+  );
+  assert.equal(writes, 0);
+  await writeHosted(client, snapshot, "matches", [
+    { ...match, home_score: 3, away_score: 1 },
+  ]);
+  assert.equal(writes, 1);
+});
+
+test("new athletics events require a real schedule and persist required hosted columns", async () => {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { writeHosted } = await import("../lib/hosted");
+  const bodies: { table: string; body: Record<string, unknown> }[] = [];
+  const client = createClient("https://fixture.invalid", "fixture-public", {
+    auth: { persistSession: false },
+    global: {
+      fetch: async (input, init) => {
+        const table = new URL(String(input)).pathname.split("/").pop()!;
+        const body = JSON.parse(String(init?.body));
+        bodies.push({ table, body });
+        return new Response(JSON.stringify([body]), {
+          headers: { "content-type": "application/json" },
+        });
+      },
+    },
+  });
+  const source = {
+    ...raw,
+    competitions: [{ ...c, sport: "กรีฑา" }],
+    matches: [],
+    medals: [],
+  };
+  const snapshot = { rows: source, state: decodeHosted(source) };
+  const race = {
+    id: "new-result",
+    event: "วิ่ง 100 เมตร",
+    division: "U12",
+    gender: "ผสม",
+    stage: "heat",
+    heat: 1,
+    athlete_id: "r1",
+    value: 12,
+    status: "OK",
+  };
+  await assert.rejects(
+    () => writeHosted(client, snapshot, "races", [race]),
+    /วันเวลา/,
+  );
+  assert.equal(bodies.length, 0);
+  await writeHosted(client, snapshot, "races", [
+    { ...race, starts_at: "2026-11-30T09:00", venue: "สนามจริง" },
+  ]);
+  assert.equal(bodies[0].table, "athletics_events");
+  assert.equal(bodies[0].body.starts_at, "2026-11-30T02:00:00.000Z");
+  assert.equal(bodies[0].body.venue, "สนามจริง");
+});
+
+test("hosted athletics lower/higher direction maps to UI ranking and back", async () => {
+  const { normalizedRaceDirection, storedRaceDirection } =
+    await import("../lib/hosted");
+  assert.equal(normalizedRaceDirection("lower"), "asc");
+  assert.equal(normalizedRaceDirection("higher"), "desc");
+  assert.equal(storedRaceDirection("asc"), "lower");
+  assert.equal(storedRaceDirection("desc"), "higher");
+  assert.throws(() => normalizedRaceDirection("unknown"));
+});

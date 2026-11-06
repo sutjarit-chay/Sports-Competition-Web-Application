@@ -52,16 +52,20 @@ test("pending applicants cannot read the approval queue or approve themselves", 
     );
   });
 });
-test("admin approval grants only the existing recorder role and cannot approve twice", async () => {
+test("admin approval grants the production referee role despite an admin role in editable metadata and cannot approve twice", async () => {
   await withAuthFixture(async (f) => {
     await signup(registration("referee"));
+    f.users[1].user_metadata = {
+      role: "admin",
+      registration: { role: "admin", status: "approved" },
+    };
     assert.equal(
       (await POST(review(f.token(f.adminId), "referee", f.newId))).status,
       200,
     );
     assert.deepEqual(
       f.profiles.find((p) => p.id === f.newId),
-      { id: f.newId, role: "recorder", school_id: null },
+      { id: f.newId, role: "referee", school_id: null },
     );
     assert.equal(f.users[1].app_metadata.registration.status, "approved");
     assert.equal(
@@ -180,7 +184,7 @@ test("concurrent approve and reject accept only one referee decision", async () 
     const successful = responses.find((r) => r.status === 200)!;
     const decision = (await successful.json()).status;
     if (decision === "approved")
-      assert.equal(f.profiles.find((p) => p.id === f.newId)?.role, "recorder");
+      assert.equal(f.profiles.find((p) => p.id === f.newId)?.role, "referee");
     else
       assert.equal(
         f.profiles.find((p) => p.id === f.newId),
@@ -234,7 +238,7 @@ test("a partially completed approval can resume the same decision without duplic
       (await POST(review(f.token(f.adminId), "referee", f.newId))).status,
       503,
     );
-    assert.equal(f.profiles.find((p) => p.id === f.newId)?.role, "recorder");
+    assert.equal(f.profiles.find((p) => p.id === f.newId)?.role, "referee");
     assert.equal(
       (await POST(review(f.token(f.adminId), "referee", f.newId, "rejected")))
         .status,

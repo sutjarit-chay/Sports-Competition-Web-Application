@@ -1,3 +1,4 @@
+import { readManagement } from "./production-competitions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Athlete, Match, Race, Award, State } from "./domain";
 import {
@@ -94,6 +95,14 @@ export const COLUMNS = {
 } as const;
 const LEGACY_MATCH_COLUMNS =
   "id,competition_id,group_name,home_school_id,away_school_id,starts_at,venue,status,home_score,away_score,revision";
+export function normalizedRaceDirection(value: string): "asc" | "desc" {
+  if (value === "lower" || value === "asc") return "asc";
+  if (value === "higher" || value === "desc") return "desc";
+  throw Error("ทิศทางอันดับกรีฑาในฐานข้อมูลไม่ถูกต้อง");
+}
+export function storedRaceDirection(value: string): "lower" | "higher" {
+  return normalizedRaceDirection(value) === "asc" ? "lower" : "higher";
+}
 export function toBangkokInput(value: string | null) {
   if (!value) return "";
   const d = new Date(value);
@@ -178,7 +187,7 @@ export function decodeHosted(rows: HostedRows): State {
       away: m.away_school_id,
       starts_at: toBangkokInput(m.starts_at),
       venue: m.venue || "",
-      status: m.status,
+      status: m.status === "confirmed" ? "finished" : m.status,
       home_score: m.home_score ?? undefined,
       away_score: m.away_score ?? undefined,
       revision: m.revision,
@@ -206,7 +215,7 @@ export function decodeHosted(rows: HostedRows): State {
         event_id: e.id,
         school_id: r.school_id,
         bib: r.bib,
-        direction: e.direction,
+        direction: normalizedRaceDirection(e.direction),
         unit: e.unit,
         kind: e.kind,
       };
@@ -231,7 +240,7 @@ export function matchPayload(m: Match, competitionId: string) {
     away_school_id: m.away,
     starts_at: fromBangkokInput(m.starts_at),
     venue: m.venue,
-    status: m.status,
+    status: m.status === "confirmed" ? "finished" : m.status,
     home_score: m.home_score ?? null,
     away_score: m.away_score ?? null,
     referee_id: m.referee_id || null,
@@ -301,6 +310,10 @@ export async function readHosted(
     ]),
   );
   const rows = Object.fromEntries(entries) as HostedRows;
+  rows.athletics_events = rows.athletics_events.map((event) => ({
+    ...event,
+    direction: normalizedRaceDirection(event.direction),
+  }));
   const extension = await readRosterExtension(client, includeRegistrations);
   if (extension.available) {
     rows.competitions.forEach((c) => {
@@ -428,7 +441,11 @@ export async function writeHosted<K extends keyof State>(
         (c) => c.id === id,
       )?.registration_policy;
       if (policy) return prepareRoster(state.athletes, athletes, policy);
-      if (athletes.some((a) => a.roster))
+      if (
+        athletes.some(
+          (a) => a.roster || !rows.registrations.some((r) => r.id === a.id),
+        )
+      )
         throw Error(
           "ผู้ดูแลยังไม่ได้ตั้งค่ากติกาของรายการนี้ หรือต้องติดตั้ง migration ก่อน",
         );
@@ -500,11 +517,43 @@ export async function writeHosted<K extends keyof State>(
   if (table === "matches") {
     const inserts: ReturnType<typeof matchPayload>[] = [];
     for (const m of values as Match[]) {
+      if (!m.starts_at) throw Error("กรุณากำหนดวันเวลาแข่งขันก่อนบันทึก");
+      if (!m.venue.trim()) throw Error("กรุณากำหนดสนามแข่งขันก่อนบันทึก");
       const payload = matchPayload(m, findCompetition(rows.competitions, m).id);
       const existing = rows.matches.find((x) => x.id === m.id);
       if (!existing) {
         inserts.push(payload);
         continue;
+      }
+      const management = readManagement(
+        rows.competitions.find((c) => c.id === existing.competition_id)
+          ?.registration_policy,
+      );
+      if (management?.format === "knockout") {
+        if (
+          ["finished", "confirmed"].includes(payload.status) &&
+          payload.home_score === payload.away_score
+        )
+          throw Error("รอบคัดออกต้องมีผู้ชนะ ไม่สามารถบันทึกผลเสมอ");
+        if (["finished", "confirmed"].includes(existing.status)) {
+          const oldWinner =
+            existing.home_score! > existing.away_score!
+              ? existing.home_school_id
+              : existing.away_school_id;
+          const newWinner =
+            payload.home_score! > payload.away_score!
+              ? payload.home_school_id
+              : payload.away_school_id;
+          if (
+            !["finished", "confirmed"].includes(payload.status) ||
+            payload.home_school_id !== existing.home_school_id ||
+            payload.away_school_id !== existing.away_school_id ||
+            oldWinner !== newWinner
+          )
+            throw Error(
+              "ไม่สามารถเปลี่ยนผู้ชนะของผลคัดออกที่ยืนยันแล้ว กรุณาติดต่อผู้จัดการแข่งขันเพื่อตรวจสอบสาย",
+            );
+        }
       }
       if (!Number.isInteger(m.revision))
         throw Error("กรุณาโหลดตารางแข่งขันใหม่ก่อนแก้ไข");
@@ -584,6 +633,10 @@ export async function writeHosted<K extends keyof State>(
         eventId,
       );
       if (!event) {
+        if (!r.starts_at)
+          throw Error("กรุณากำหนดวันเวลารายการกรีฑาใหม่ก่อนบันทึก");
+        if (!r.venue?.trim())
+          throw Error("กรุณากำหนดสนามรายการกรีฑาใหม่ก่อนบันทึก");
         event = {
           id: eventId,
           competition_id: competition.id,
@@ -591,8 +644,10 @@ export async function writeHosted<K extends keyof State>(
           kind: r.kind || "track",
           round: r.stage,
           heat: r.heat,
-          direction: r.direction || "asc",
+          direction: storedRaceDirection(r.direction || "asc"),
           unit: r.unit || "s",
+          starts_at: fromBangkokInput(r.starts_at),
+          venue: r.venue.trim(),
           referee_id: r.referee_id || null,
         };
         await checked(

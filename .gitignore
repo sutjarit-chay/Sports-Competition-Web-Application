@@ -12,3 +12,6 @@ docs/design-preview/*.png
 docs/design-review/*.png
 docs/design-review/*.pdf
 docs/registration-review/
+
+# Private local data backups; never publish operational snapshots
+.local-backups/

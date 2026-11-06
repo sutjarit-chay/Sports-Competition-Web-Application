@@ -1,266 +1,14 @@
-import { test, expect, type Page } from "@playwright/test";
-import { defaultPolicy } from "../../lib/registration";
-const sid = "20000000-0000-4000-8000-000000000001",
-  sid2 = "20000000-0000-4000-8000-000000000002";
-const football = "10000000-0000-4000-8000-000000000001",
-  track = "10000000-0000-4000-8000-000000000006";
-type Row = Record<string, unknown>;
-async function fixture(page: Page, fail = false, rosters = false) {
-  const db: Record<string, Row[]> = {
-    schools: [
-      { id: sid, name: "โรงเรียนจริง ก" },
-      { id: sid2, name: "โรงเรียนจริง ข" },
-    ],
-    competitions: [
-      {
-        id: football,
-        sport: "ฟุตบอล",
-        name: "ฟุตบอล U12",
-        age_group: "U12",
-        gender: "ผสม",
-        win_points: 2,
-        draw_points: 1,
-        loss_points: 0,
-      },
-      {
-        id: track,
-        sport: "กรีฑา",
-        name: "กรีฑา U12",
-        age_group: "U12",
-        gender: "ผสม",
-        win_points: 3,
-        draw_points: 1,
-        loss_points: 0,
-      },
-    ],
-    registrations: [],
-    matches: [],
-    athletics_events: [],
-    athletics_results: [],
-    medals: [],
-    profiles: [
-      {
-        id: "30000000-0000-4000-8000-000000000001",
-        role: "admin",
-        school_id: null,
-      },
-    ],
-  };
-  if (rosters) {
-    Object.assign(db.competitions[0], {
-      gender: "ชาย",
-      age_group: "ประถม",
-      registration_policy: defaultPolicy("football-male"),
-    });
-    db.competitions[1].registration_policy = null;
-  }
-  const columns: Record<string, string[]> = {
-    competitions: ["registration_policy"],
-    schools: ["id", "name"],
-    registrations: [
-      "id",
-      "school_id",
-      "competition_id",
-      "athlete_name",
-      "bib",
-      ...(rosters ? ["roster_details"] : []),
-    ],
-    matches: [
-      "id",
-      "competition_id",
-      "group_name",
-      "home_school_id",
-      "away_school_id",
-      "starts_at",
-      "venue",
-      "status",
-      "home_score",
-      "away_score",
-      "revision",
-      "referee_id",
-    ],
-    athletics_events: [
-      "id",
-      "competition_id",
-      "name",
-      "kind",
-      "round",
-      "heat",
-      "direction",
-      "unit",
-      "starts_at",
-      "venue",
-      "referee_id",
-    ],
-    athletics_results: [
-      "id",
-      "event_id",
-      "school_id",
-      "bib",
-      "value",
-      "status",
-    ],
-    medals: ["id", "competition_id", "school_id", "award", "event_label"],
-  };
-  const control: { readGate?: Promise<void> } = {};
-  const writes: { table: string; method: string; payload: Row[] }[] = [];
-  const user: Row = {
-    id: db.profiles[0].id,
-    aud: "authenticated",
-    role: "authenticated",
-    email: "test@example.invalid",
-    app_metadata: {},
-    user_metadata: {},
-    created_at: "2026-01-01T00:00:00Z",
-  };
-  const sessionPayload = () => {
-    const token = [
-      { alg: "HS256", typ: "JWT" },
-      {
-        sub: user.id,
-        exp: Math.floor(Date.now() / 1000) + 3600,
-        role: "authenticated",
-      },
-      { fixture: true },
-    ]
-      .map((x) => Buffer.from(JSON.stringify(x)).toString("base64url"))
-      .join(".");
-    return {
-      access_token: token,
-      token_type: "bearer",
-      expires_in: 3600,
-      refresh_token: "test-fixture-only",
-      user,
-    };
-  };
-  await page.route("**/api/school-account", async (route) => {
-    const profile = db.profiles[0];
-    const registration = (user.app_metadata as Row | undefined)
-      ?.registration as Row | undefined;
-    const account =
-      profile?.role && profile.role !== "viewer"
-        ? { status: "approved", role: profile.role }
-        : {
-            status: registration?.status || "pending",
-            role: registration?.role || "referee",
-            note: registration?.note,
-          };
-    await route.fulfill({
-      json: {
-        account,
-        ...(route.request().method() === "POST"
-          ? { session: sessionPayload() }
-          : {}),
-      },
-    });
-  });
-  await page.route("**/auth/v1/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/token"))
-      await route.fulfill({ json: sessionPayload() });
-    else if (url.pathname.endsWith("/logout"))
-      await route.fulfill({ status: 204 });
-    else await route.fulfill({ json: user });
-  });
-  await page.route("**/rest/v1/**", async (route) => {
-    const req = route.request(),
-      url = new URL(req.url()),
-      table = url.pathname.split("/").pop()!;
-    if (!(table in db)) {
-      await route.fulfill({
-        status: 404,
-        json: { message: "Unknown table: " + table },
-      });
-      return;
-    }
-    if (fail && table === "medals") {
-      await route.fulfill({
-        status: 403,
-        json: { message: "Fixture read denied" },
-      });
-      return;
-    }
-    let rows = db[table];
-    for (const [key, value] of url.searchParams)
-      if (value.startsWith("eq."))
-        rows = rows.filter((r) => String(r[key]) === value.slice(3));
-    if (req.method() === "GET") {
-      if (table === "schools" && control.readGate) await control.readGate;
-      // A small server cap intentionally exercises paginated loading.
-      const offset = Number(url.searchParams.get("offset") || 0),
-        limit = Math.min(Number(url.searchParams.get("limit") || 500), 1);
-      const result = rows.slice(offset, offset + limit);
-      await route.fulfill({
-        status: 200,
-        json: result,
-        headers: {
-          "content-range": result.length
-            ? `${offset}-${offset + result.length - 1}/${rows.length}`
-            : `*/${rows.length}`,
-        },
-      });
-      return;
-    }
-    if (req.method() === "POST" || req.method() === "PATCH") {
-      const body = req.postDataJSON(),
-        payload = (Array.isArray(body) ? body : [body]) as Row[];
-      for (const p of payload)
-        for (const k of Object.keys(p))
-          expect(columns[table], `unexpected ${table}.${k}`).toContain(k);
-      writes.push({ table, method: req.method(), payload });
-      if (req.method() === "POST")
-        for (const row of payload)
-          db[table].push({
-            ...row,
-            ...(table === "matches" ? { revision: 0 } : {}),
-          });
-      else for (const row of rows) Object.assign(row, body);
-      await route.fulfill({
-        status: 200,
-        json: req.headers().prefer?.includes("return=representation")
-          ? rows
-          : [],
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 405,
-      json: { message: "No fixture deletes" },
-    });
-  });
-  return { db, writes, control, user };
-}
-async function enter(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: /โปรไฟล์/ }).click();
-  await page
-    .getByRole("menuitemradio", { name: "ผู้ดูแลระบบ", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "เข้าสู่โหมด Supabase", exact: true })
-    .click();
-  await expect(
-    page.getByText("Supabase · ข้อมูลจริง", { exact: true }),
-  ).toBeVisible();
-}
-async function login(page: Page, label = "ผู้ดูแลระบบ") {
-  if (label === "ผู้ดูแลระบบ") {
-    await page
-      .getByRole("button", { name: "ผู้ดูแลระบบ (อีเมล)", exact: true })
-      .click();
-    await page
-      .getByLabel("อีเมล", { exact: true })
-      .fill("test@example.invalid");
-  } else {
-    await page.getByLabel("ชื่อบัญชี", { exact: true }).fill("fixture-user");
-  }
-  await page.getByLabel("รหัสผ่าน", { exact: true }).fill("fixture-only");
-  await page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).click();
-  await expect(page.locator(".role")).toContainText(label);
-}
+import { test, expect } from "@playwright/test";
+import {
+  fixture,
+  enter,
+  login,
+  sid,
+  sid2,
+  football,
+  track,
+  type Row,
+} from "./helpers/production-fixture";
 test("migrated school_admin roster keeps legacy registrations and persists starter metadata", async ({
   page,
 }) => {
@@ -268,7 +16,7 @@ test("migrated school_admin roster keeps legacy registrations and persists start
   db.profiles[0].role = "school_admin";
   db.profiles[0].school_id = sid;
   db.registrations.push({
-    id: "legacy-registration",
+    id: "40000000-0000-4000-8000-000000000006",
     competition_id: football,
     school_id: sid,
     athlete_name: "นักกีฬาเดิมก่อนย้าย",
@@ -317,34 +65,34 @@ for (const role of ["school_admin", "school"]) {
     db.profiles[0].role = role;
     db.profiles[0].school_id = sid;
     db.registrations.push({
-      id: "existing-registration",
+      id: "40000000-0000-4000-8000-000000000007",
       school_id: sid,
       competition_id: football,
       athlete_name: "นักกีฬาเดิม",
       bib: "101",
     });
     db.registrations.push({
-      id: "track-registration",
+      id: "40000000-0000-4000-8000-000000000008",
       school_id: sid,
       competition_id: track,
       athlete_name: "นักวิ่งเดิม",
       bib: "201",
     });
     db.matches.push({
-      id: "existing-match",
+      id: "40000000-0000-4000-8000-000000000001",
       competition_id: football,
       group_name: "A",
       home_school_id: sid,
       away_school_id: sid2,
-      starts_at: null,
-      venue: null,
+      starts_at: "2026-11-07T02:00:00Z",
+      venue: "สนามเดิม",
       status: "scheduled",
       home_score: null,
       away_score: null,
       revision: 0,
     });
     db.athletics_events.push({
-      id: "existing-event",
+      id: "40000000-0000-4000-8000-000000000004",
       competition_id: track,
       name: "วิ่ง 100 เมตร",
       kind: "track",
@@ -352,10 +100,12 @@ for (const role of ["school_admin", "school"]) {
       heat: 1,
       direction: "asc",
       unit: "s",
+      starts_at: "2026-11-07T02:00:00Z",
+      venue: "ลู่วิ่ง",
     });
     db.athletics_results.push({
-      id: "existing-result",
-      event_id: "existing-event",
+      id: "40000000-0000-4000-8000-000000000005",
+      event_id: "40000000-0000-4000-8000-000000000004",
       school_id: sid,
       bib: "201",
       value: 12.5,
@@ -390,7 +140,7 @@ for (const role of ["school_admin", "school"]) {
       name: "other-school.csv",
       mimeType: "text/csv",
       buffer: Buffer.from(
-        `name,school_id,sport,gender,division,bib\nต่างโรงเรียน,${sid2},ฟุตบอล,ผสม,U12,102`,
+        `name,school_id,sport,gender,division,bib\nต่างโรงเรียน,${sid2},ฟุตบอล,ชาย,ประถม,102`,
       ),
     });
     await expect(page.getByRole("status")).toContainText(
@@ -430,7 +180,7 @@ for (const role of ["school_admin", "school"]) {
   });
 }
 
-test("hosted school profile keeps browser presentation fields after reopening", async ({
+test("school profile persists on the server across a full reload", async ({
   page,
 }) => {
   const { db } = await fixture(page);
@@ -448,9 +198,8 @@ test("hosted school profile keeps browser presentation fields after reopening", 
   await expect(
     page.getByRole("status").filter({ hasText: "บันทึกข้อมูลโรงเรียนแล้ว" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "นักกีฬาและครูผู้ฝึกซ้อม", exact: true })
-    .click();
+  await page.reload();
+  await expect(page.locator(".role")).toContainText("โรงเรียน");
   await page
     .getByRole("button", { name: "ข้อมูลโรงเรียน", exact: true })
     .click();
@@ -464,7 +213,7 @@ test("school edits a migrated hosted athlete without inserting another registrat
   db.profiles[0].role = "school_admin";
   db.profiles[0].school_id = sid;
   db.registrations.push({
-    id: "editable-athlete",
+    id: "40000000-0000-4000-8000-000000000009",
     school_id: sid,
     competition_id: football,
     athlete_name: "ชื่อเดิม",
@@ -502,13 +251,13 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
   page.on("dialog", (dialog) => dialog.accept());
   const { db, writes } = await fixture(page);
   db.matches.push({
-    id: "existing-match",
+    id: "40000000-0000-4000-8000-000000000001",
     competition_id: football,
     group_name: "A",
     home_school_id: sid,
     away_school_id: sid2,
-    starts_at: null,
-    venue: null,
+    starts_at: "2026-11-07T02:00:00Z",
+    venue: "สนามเดิม",
     status: "scheduled",
     home_score: null,
     away_score: null,
@@ -580,6 +329,7 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
   await page
     .getByRole("combobox", { name: "รายการแข่งขัน", exact: true })
     .selectOption(track);
+  await page.getByRole("checkbox", { name: /วิ่ง 100 เมตร/ }).check();
   await page.getByLabel("ชื่อ–นามสกุล").fill("นักวิ่งจริง");
   await page.getByLabel("เลขประจำตัว (bib)").fill("201");
   await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
@@ -587,11 +337,20 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
     page.getByRole("cell", { name: "นักวิ่งจริง", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "กรีฑา", exact: true }).click();
+  await page
+    .getByLabel("วันเวลารายการใหม่ / รอบชิง", { exact: true })
+    .fill("2026-11-07T09:00");
+  await page
+    .getByLabel("สนามรายการใหม่ / รอบชิง", { exact: true })
+    .fill("ลู่วิ่งจริง");
   await page.getByLabel("ผล (s)", { exact: true }).fill("12.5");
   await page.getByRole("button", { name: "บันทึกเวลา", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "12.5", exact: true }),
   ).toBeVisible();
+  await page
+    .getByLabel("วันเวลารายการใหม่ / รอบชิง", { exact: true })
+    .fill("2026-11-07T15:00");
   await page.getByRole("button", { name: "ส่งเข้ารอบชิง" }).click();
   await expect.poll(() => db.athletics_results.length).toBe(2);
   expect(db.athletics_events.map((e) => e.round)).toEqual(["heat", "final"]);
@@ -600,99 +359,84 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
     bib: "201",
     value: 12.5,
   });
+  await page.emulateMedia({ media: "print" });
+  const pdf = await page.pdf({ format: "A4" });
+  expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
   expect(
     writes.some((w) => ["athletes", "races", "awards"].includes(w.table)),
   ).toBe(false);
 });
-test("recorder sees and submits only assigned matches without schedule controls", async ({
-  page,
-}) => {
-  page.on("dialog", (dialog) => dialog.accept());
-  const { db } = await fixture(page);
-  const refereeId = String(db.profiles[0].id);
-  db.profiles[0].role = "recorder";
-  db.matches.push(
-    {
-      id: "assigned-match",
-      competition_id: football,
-      group_name: "A",
-      home_school_id: sid,
-      away_school_id: sid2,
-      starts_at: "2026-11-05T05:30:00Z",
-      venue: "สนามกลาง",
-      status: "scheduled",
-      home_score: null,
-      away_score: null,
-      revision: 0,
+for (const grantedRole of ["referee", "recorder"]) {
+  test(`${grantedRole} sees and submits only assigned matches without schedule controls`, async ({
+    page,
+  }) => {
+    page.on("dialog", (dialog) => dialog.accept());
+    const { db } = await fixture(page);
+    const refereeId = String(db.profiles[0].id);
+    db.profiles[0].role = grantedRole;
+    db.matches.push(
+      {
+        id: "40000000-0000-4000-8000-000000000002",
+        competition_id: football,
+        group_name: "A",
+        home_school_id: sid,
+        away_school_id: sid2,
+        starts_at: "2026-11-05T05:30:00Z",
+        venue: "สนามกลาง",
+        status: "scheduled",
+        home_score: null,
+        away_score: null,
+        revision: 0,
+        referee_id: refereeId,
+      },
+      {
+        id: "40000000-0000-4000-8000-000000000003",
+        competition_id: football,
+        group_name: "B",
+        home_school_id: sid2,
+        away_school_id: sid,
+        starts_at: "2026-11-05T06:30:00Z",
+        venue: "สนามอื่น",
+        status: "scheduled",
+        home_score: null,
+        away_score: null,
+        revision: 0,
+        referee_id: null,
+      },
+    );
+    await enter(page);
+    await login(page, "กรรมการ");
+    await page
+      .getByRole("button", { name: "ตารางแข่งขัน", exact: true })
+      .click();
+    await expect(page.locator(".spider-match-card")).toHaveCount(1);
+    await expect(page.locator(".spider-match-card")).toContainText("สนามกลาง");
+    await expect(page.getByLabel("วันเวลา", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
+    await expect(page.locator(".match-form")).toHaveCount(1);
+    await expect(page.locator(".match-form")).toContainText("สนามกลาง");
+    await page.getByLabel("เจ้าบ้าน").fill("3");
+    await page.getByLabel("ทีมเยือน").fill("1");
+    await page.getByRole("button", { name: "ยืนยันผล" }).click();
+    await expect.poll(() => db.matches[0].status).toBe("finished");
+    expect(db.matches[0]).toMatchObject({
+      home_score: 3,
+      away_score: 1,
       referee_id: refereeId,
-    },
-    {
-      id: "unassigned-match",
-      competition_id: football,
-      group_name: "B",
-      home_school_id: sid2,
-      away_school_id: sid,
-      starts_at: "2026-11-05T06:30:00Z",
-      venue: "สนามอื่น",
-      status: "scheduled",
-      home_score: null,
-      away_score: null,
-      revision: 0,
-      referee_id: null,
-    },
-  );
-  await enter(page);
-  await login(page, "กรรมการ");
-  await page.getByRole("button", { name: "ตารางแข่งขัน", exact: true }).click();
-  await expect(page.locator(".spider-match-card")).toHaveCount(1);
-  await expect(page.locator(".spider-match-card")).toContainText("สนามกลาง");
-  await expect(page.getByLabel("วันเวลา", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
-  await expect(page.locator(".match-form")).toHaveCount(1);
-  await expect(page.locator(".match-form")).toContainText("สนามกลาง");
-  await page.getByLabel("เจ้าบ้าน").fill("3");
-  await page.getByLabel("ทีมเยือน").fill("1");
-  await page.getByRole("button", { name: "ยืนยันผล" }).click();
-  await expect.poll(() => db.matches[0].status).toBe("finished");
-  expect(db.matches[0]).toMatchObject({
-    home_score: 3,
-    away_score: 1,
-    referee_id: refereeId,
+    });
+    await expect(
+      page.getByRole("button", { name: "นักกีฬา", exact: true }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
+      .click();
+    await page.getByRole("button", { name: "ออกจากระบบ", exact: true }).click();
+    await expect(page.locator(".role")).toContainText("ผู้ชม");
   });
-  await expect(
-    page.getByRole("button", { name: "นักกีฬา", exact: true }),
-  ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
-    .click();
-  await page.getByRole("button", { name: "ออกจากระบบ", exact: true }).click();
-  await expect(page.locator(".role")).toContainText("ผู้ชม");
-});
-test("failed hosted transition preserves demo storage and permissions", async ({
-  page,
-}) => {
-  await fixture(page, true);
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
-    .click();
-  const before = await page.evaluate(() =>
-    localStorage.getItem("kosamphi-demo-v1"),
-  );
-  await page
-    .getByRole("button", { name: "เข้าสู่โหมด Supabase", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText("Fixture read denied");
-  await expect(
-    page.locator(".badge").getByText("โหมดสาธิต", { exact: true }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(() => localStorage.getItem("kosamphi-demo-v1")),
-  ).toBe(before);
-});
+}
 test("same athlete can register for distinct competition IDs with identical labels, including CSV", async ({
   page,
 }) => {
@@ -705,14 +449,14 @@ test("same athlete can register for distinct competition IDs with identical labe
   });
   db.registrations.push(
     {
-      id: "existing1",
+      id: "40000000-0000-4000-8000-000000000010",
       school_id: sid,
       competition_id: football,
       athlete_name: "นักกีฬาซ้ำชื่อ",
       bib: "101",
     },
     {
-      id: "existing2",
+      id: "40000000-0000-4000-8000-000000000011",
       school_id: sid,
       competition_id: football,
       athlete_name: "นักกีฬาจาก CSV",
@@ -740,7 +484,7 @@ test("same athlete can register for distinct competition IDs with identical labe
     name: "athletes.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(
-      `name,school_id,sport,gender,division,bib\nนักกีฬาจาก CSV,${sid},ฟุตบอล,ผสม,U12,102`,
+      `name,school_id,sport,gender,division,bib\nนักกีฬาจาก CSV,${sid},ฟุตบอล,ชาย,ประถม,102`,
     ),
   });
   await expect(
@@ -752,37 +496,6 @@ test("same athlete can register for distinct competition IDs with identical labe
       .map((a) => a.competition_id),
   ).toEqual([football, second]);
 });
-test("account transitions are locked while a live refresh is pending", async ({
-  page,
-}) => {
-  const { control } = await fixture(page);
-  await enter(page);
-  await login(page);
-  let release!: () => void;
-  control.readGate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page
-    .getByRole("button", { name: "โหลดข้อมูลใหม่", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText("กำลังโหลดข้อมูล");
-  await expect(
-    page.getByRole("button", { name: "กลับสาธิต", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "ออกจากระบบ", exact: true }),
-  ).toBeDisabled();
-  release();
-  await expect(
-    page.getByRole("button", { name: "กลับสาธิต", exact: true }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "กลับสาธิต", exact: true }).click();
-  await expect(
-    page.locator(".badge").getByText("โหมดสาธิต", { exact: true }),
-  ).toBeVisible();
-  await expect(page.locator(".role")).toContainText("ผู้ชม");
-});
-
 test("pending username accounts stay viewers until an admin provisions their school profile", async ({
   page,
 }) => {
@@ -842,6 +555,9 @@ test("email login rejects a non-admin school account", async ({ page }) => {
   db.profiles[0].role = "school_admin";
   db.profiles[0].school_id = sid;
   await enter(page);
+  await page
+    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "ผู้ดูแลระบบ (อีเมล)", exact: true })
     .click();
@@ -910,4 +626,72 @@ test("admin reviews school and referee requests from the same queue", async ({
     ["referee", "approved"],
   ]);
   expect(db.profiles[0].role).toBe("admin");
+});
+
+test("private coaches are saved with authorization and survive a reload", async ({
+  page,
+}) => {
+  const { db } = await fixture(page);
+  db.profiles[0].role = "school_admin";
+  db.profiles[0].school_id = sid;
+  await enter(page);
+  await login(page, "โรงเรียน");
+  await page
+    .getByRole("button", { name: "นักกีฬาและครูผู้ฝึกซ้อม", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "บันทึกครู/ผู้ฝึกสอน", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByLabel("ชื่อ–นามสกุลครู/ผู้ฝึกสอน", { exact: true })
+    .fill("ครูข้อมูลจริง");
+  await page
+    .locator('select[name="staff-title"]')
+    .selectOption({ label: "ครูผู้ฝึกสอน" });
+  await page
+    .getByRole("button", { name: "บันทึกครู/ผู้ฝึกสอน", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "บันทึกครู/ผู้ฝึกสอนแล้ว" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".role")).toContainText("โรงเรียน");
+  await page
+    .getByRole("button", { name: "นักกีฬาและครูผู้ฝึกซ้อม", exact: true })
+    .click();
+  await expect(
+    page
+      .locator(".school-portal-roster-list")
+      .filter({ hasText: "ครูข้อมูลจริง" }),
+  ).toBeVisible();
+});
+
+test("unmatched legacy competition remains readable without silently rewriting its athletes", async ({
+  page,
+}) => {
+  const { db, writes } = await fixture(page);
+  db.profiles[0].role = "school_admin";
+  db.profiles[0].school_id = sid;
+  Object.assign(db.competitions[0], {
+    name: "รายการเดิม U12",
+    age_group: "U12",
+    gender: "ผสม",
+    registration_policy: null,
+  });
+  db.registrations.push({
+    id: "70000000-0000-4000-8000-000000000001",
+    competition_id: football,
+    school_id: sid,
+    athlete_name: "รายชื่อก่อนเปลี่ยนระเบียบ",
+    bib: "001",
+    roster_details: null,
+  });
+  await enter(page);
+  await login(page, "โรงเรียน");
+  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
+  await expect(
+    page.getByRole("cell", { name: "รายชื่อก่อนเปลี่ยนระเบียบ", exact: true }),
+  ).toBeVisible();
+  expect(db.registrations[0].roster_details).toBeNull();
+  expect(writes).toHaveLength(0);
 });

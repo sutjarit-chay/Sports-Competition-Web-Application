@@ -3,7 +3,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, MapPin, Trophy } from "lucide-react";
 import type { Match } from "@/lib/domain";
-import { RULES } from "@/lib/registration";
 
 const MONTHS = [
   "ม.ค.",
@@ -60,15 +59,11 @@ export default function SpiderSchedule({
     for (const match of matches)
       options.set(match.competition_id || "__unassigned", match);
     return [...options].map(([id, match]) => {
-      const ruleId = id.startsWith("demo-") ? id.slice("demo-".length) : "";
-      const rule = RULES.find((item) => item.id === ruleId);
       return {
         id,
-        name:
-          rule?.name ||
-          `${match.sport} · ${match.division} · ${match.gender}${
-            options.size > 1 ? ` · ${id.slice(-6)}` : ""
-          }`,
+        name: `${match.sport} · ${match.division} · ${match.gender}${
+          options.size > 1 ? ` · ${id.slice(-6)}` : ""
+        }`,
       };
     });
   }, [matches]);

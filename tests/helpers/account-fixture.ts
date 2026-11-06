@@ -177,6 +177,15 @@ function authFixture() {
           value.slice(4, -1).split(",").includes(r[key]),
         );
     if (method === "POST") {
+      // The production profiles_role_check rejects the legacy recorder name.
+      if (table === "profiles" && body.role === "recorder")
+        return response(
+          {
+            message: 'new row violates check constraint "profiles_role_check"',
+            code: "23514",
+          },
+          400,
+        );
       if (table === "profiles" && db.some((r) => r.id === body.id))
         return response({ message: "duplicate", code: "23505" }, 409);
       const row =

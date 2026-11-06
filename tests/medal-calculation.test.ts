@@ -49,7 +49,7 @@ test("English semifinals do not award final medals", () => {
 
 test("playing rounds of one round-robin competition share the same medal standings", async () => {
   const { createDemoCompetitionData, demoFixturesAsMatches } =
-    await import("../lib/demo-seed");
+    await import("./helpers/sports-fixtures");
   const seed = createDemoCompetitionData();
   const competition = seed.competitions.find((c) => c.sport === "ฟุตบอล")!;
   const matches = demoFixturesAsMatches([competition]).map((m) => ({

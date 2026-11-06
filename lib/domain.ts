@@ -53,12 +53,15 @@ export type Race = {
   status: string;
   competition_id?: string;
   event_id?: string;
+  source_event_id?: string;
   school_id?: string;
   bib?: string;
   direction?: string;
   unit?: string;
   kind?: string;
   referee_id?: string;
+  starts_at?: string;
+  venue?: string;
 };
 export type Award = {
   id: string;

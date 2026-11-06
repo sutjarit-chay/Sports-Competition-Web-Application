@@ -689,11 +689,7 @@ h3 svg {
   color: #b88f2916;
   pointer-events: none;
 }
-.hero-demo {
-  max-width: 1200px;
-  margin: auto;
-  padding: 24px;
-}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

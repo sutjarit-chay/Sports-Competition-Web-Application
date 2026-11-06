@@ -4,7 +4,7 @@ import { fixturesConflict } from "../lib/admin-competitions";
 import {
   createDemoCompetitionData,
   demoFixturesAsMatches,
-} from "../lib/demo-seed";
+} from "./helpers/sports-fixtures";
 import { RULES, validateRoster } from "../lib/registration";
 
 test("demo seed creates ten schools with a complete valid roster for every rule", () => {

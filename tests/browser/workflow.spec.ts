@@ -1,158 +1,38 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { fixture, enter } from "./helpers/production-fixture";
 
-async function seedSchools(page: Page) {
+test("public startup ignores obsolete demo state and grants no editing permissions", async ({page}) => {
+  await fixture(page);
   await page.addInitScript(() => {
-    if (!localStorage.getItem("kosamphi-demo-v1")) {
-      localStorage.setItem(
-        "kosamphi-demo-v1",
-        JSON.stringify({
-          schools: [
-            { id: "1", name: "โรงเรียนทดสอบ ก" },
-            { id: "2", name: "โรงเรียนทดสอบ ข" },
-          ],
-          athletes: [],
-          matches: [
-            {
-              id: "workflow-match",
-              sport: "ฟุตบอล",
-              division: "ประถม",
-              gender: "ชาย",
-              pool: "A",
-              home: "1",
-              away: "2",
-              starts_at: "",
-              venue: "",
-              status: "scheduled",
-            },
-          ],
-          races: [],
-          awards: [],
-        }),
-      );
-    }
+    for (const key of ["kosamphi-demo-v1", "kosamphi-admin-competitions-v1", "kosamphi-school-profiles-v1"])
+      localStorage.setItem(key, JSON.stringify({schools:[{id:"fake",name:"POISONED DEMO SCHOOL"}],role:"admin"}));
   });
-}
-
-async function useDemoRole(page: Page, role: string) {
-  await page.getByRole("button", { name: /โปรไฟล์/ }).click();
-  await page.getByRole("menuitemradio", { name: role, exact: true }).click();
-}
-
-test("register, persist, view schedule, score and print", async ({ page }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("dialog", (dialog) => dialog.accept());
-  await seedSchools(page);
-  await page.goto("/");
-  await useDemoRole(page, "ผู้ดูแลระบบ");
-  await expect(
-    page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
-  await page.getByLabel("ชื่อ–นามสกุล").fill("เด็กชาย ทดสอบ");
-  await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
-  await expect(
-    page.getByRole("cell", { name: "เด็กชาย ทดสอบ", exact: true }),
-  ).toBeVisible();
-  await page.reload();
-  await useDemoRole(page, "ผู้ดูแลระบบ");
-  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
-  await expect(
-    page.getByRole("cell", { name: "เด็กชาย ทดสอบ", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "ตารางแข่งขัน", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
-  ).toHaveCount(0);
-  await expect(page.locator(".spider-match-card")).toHaveCount(1);
-  await expect(page.locator(".spider-match-card")).toContainText(
-    "โรงเรียนทดสอบ ก",
-  );
-  await expect(page.locator(".spider-match-card")).toContainText(
-    "โรงเรียนทดสอบ ข",
-  );
-  await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
-  await page.getByLabel("เจ้าบ้าน").fill("2");
-  await page.getByLabel("ทีมเยือน").fill("0");
-  await page.getByRole("button", { name: "ยืนยันผล" }).click();
-  await expect(page.getByText(/ยืนยันผลแล้ว/)).toBeVisible();
-  await page.getByRole("button", { name: "ตารางคะแนน", exact: true }).click();
-  await expect(
-    page.getByRole("row").filter({ hasText: "โรงเรียนทดสอบ ก" }),
-  ).toContainText("3");
-  await page.emulateMedia({ media: "print" });
-  await page.pdf({ path: "/tmp/kosamphi-report.pdf", format: "A4" });
-  expect(errors).toEqual([]);
+  await enter(page);
+  await expect(page.locator(".role")).toContainText("ผู้ชม");
+  await expect(page.getByText("POISONED DEMO SCHOOL")).toHaveCount(0);
+  await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+  await expect(page.getByRole("button", {name:"เข้าสู่โหมด Supabase",exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button", {name:"นักกีฬา",exact:true})).toHaveCount(0);
 });
-test("CSV import validates and school demonstration cannot score", async ({
-  page,
-}) => {
-  await seedSchools(page);
+
+test("failed initial public reads expose a retry that recovers from the server", async ({page}) => {
+  const {control} = await fixture(page, true);
   await page.goto("/");
-  await useDemoRole(page, "ผู้ดูแลระบบ");
-  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
-  await page.getByLabel("นำเข้า CSV").setInputFiles({
-    name: "athletes.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from(
-      "name,school_id,sport,gender,division\nเด็กหญิง ตัวอย่าง,2,ฟุตบอล,ชาย,ประถม",
-    ),
-  });
-  await expect(
-    page.getByRole("cell", { name: "เด็กหญิง ตัวอย่าง", exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "โรงเรียน / บัญชี", exact: true })
-    .click();
-  await useDemoRole(page, "โรงเรียน");
-  await page.getByRole("button", { name: "ตารางแข่งขัน", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Fixture read denied");
+  await expect(page.locator(".role")).toContainText("ผู้ชม");
+  control.fail = false;
+  await page.getByRole("button", {name:"โหลดข้อมูลใหม่",exact:true}).click();
+  await expect(page.getByRole("status")).not.toContainText("Fixture read denied");
+  await expect(page.getByText("Supabase · ข้อมูลจริง",{exact:true})).toBeVisible();
 });
-test("athletics heats advance to final and mobile has no horizontal overflow", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await seedSchools(page);
+
+test("public loading remains visible until the paginated server read completes",async ({page})=>{
+  const {control}=await fixture(page);
+  let release!:()=>void;
+  control.readGate=new Promise<void>(resolve=>{release=resolve;});
   await page.goto("/");
-  await useDemoRole(page, "ผู้ดูแลระบบ");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.getByRole("button", { name: "เมนูทั้งหมด", exact: true }).click();
-  await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "กีฬา", exact: true })
-    .selectOption("กรีฑา");
-  await page
-    .getByText("ตั้งค่าจำนวนสำรองและโควตา (ผู้ดูแลระบบ)", { exact: true })
-    .click();
-  await page.getByLabel("โควตา วิ่ง 100 เมตร", { exact: true }).fill("2");
-  await page.getByRole("button", { name: "บันทึกกติกาการสมัคร" }).click();
-  await page.getByLabel("ชื่อ–นามสกุล").fill("นักวิ่ง ทดสอบ");
-  await page.getByRole("checkbox", { name: /วิ่ง 100 เมตร/ }).check();
-  await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
-  await expect(
-    page.getByRole("cell", { name: "นักวิ่ง ทดสอบ", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "เมนูทั้งหมด", exact: true }).click();
-  await page.getByRole("button", { name: "กรีฑา", exact: true }).click();
-  await page.getByLabel("เวลา (วินาที)").fill("12.5");
-  await page.getByRole("button", { name: "บันทึกเวลา", exact: true }).click();
-  await expect(
-    page.getByRole("cell", { name: "12.5", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "ส่งเข้ารอบชิง" }).click();
-  await page
-    .getByRole("combobox", { name: "รอบ", exact: true })
-    .selectOption("final");
-  await expect(
-    page.getByRole("cell", { name: "นักวิ่ง ทดสอบ", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("cell", { name: "DNS", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("กำลังโหลดข้อมูล");
+  await expect(page.getByRole("button",{name:"นักกีฬา",exact:true})).toHaveCount(0);
+  release();
+  await expect(page.getByRole("status").filter({hasText:"กำลังโหลดข้อมูล"})).toHaveCount(0);
 });

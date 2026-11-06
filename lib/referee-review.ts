@@ -123,7 +123,7 @@ export async function reviewReferee(
   if (decision === "approved" && !existing) {
     const inserted = await admin
       .from("profiles")
-      .insert({ id: user.id, role: "recorder", school_id: null });
+      .insert({ id: user.id, role: "referee", school_id: null });
     if (inserted.error) {
       // A previous worker for this same immutable decision may have inserted it before recovery.
       const provisioned =

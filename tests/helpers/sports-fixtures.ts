@@ -1,13 +1,13 @@
 import {
   generateFixtures,
   type ManagedCompetition,
-} from "./admin-competitions";
-import type { Athlete, State } from "./domain";
+} from "../../lib/admin-competitions";
+import type { Athlete, State } from "../../lib/domain";
 import {
   ATHLETICS_EVENTS,
   RULES,
   type RegistrationPolicy,
-} from "./registration";
+} from "../../lib/registration";
 
 const SCHOOL_NAMES = [
   "โรงเรียนบ้านคลองลึก",

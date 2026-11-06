@@ -25,8 +25,6 @@ import {
   writeHosted,
   findCompetition,
   type Snapshot,
-  writeRegistrationPolicy,
-  writeAthleticsReferee,
 } from "../lib/hosted";
 import Papa from "papaparse";
 import {
@@ -79,20 +77,14 @@ import {
 import AdminCompetitionManager from "@/components/admin-competition-manager";
 import SchoolPortal from "@/components/school-portal";
 import {
-  SCHOOL_PROFILE_KEY,
-  parseSchoolProfiles,
-  type SchoolProfile,
-} from "@/lib/school-profiles";
+  managedFromHosted,
+  readManagement,
+} from "@/lib/production-competitions";
 import {
   isManagedCompetition,
   fixturesConflict,
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
-import {
-  createDemoCompetitionData,
-  demoFixturesAsMatches,
-  reconcileManagedMatches,
-} from "@/lib/demo-seed";
 import SpiderSchedule from "@/components/spider-schedule";
 import AccountLogin from "@/components/account-login";
 import AccountApprovals from "@/components/account-approvals";
@@ -116,9 +108,8 @@ function availableTabIndices(role: string) {
   if (role === "recorder" || role === "referee") return [0, 2, 3, 4, 7];
   if (role === "school" || role === "school_admin")
     return [0, 1, 2, 5, 6, 7, 9, 10];
-  return tabs.flatMap((_, index) =>
-    [8, 9, 10].includes(index) && role !== "admin" ? [] : [index],
-  );
+  if (role === "admin") return [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  return viewerTabIndices;
 }
 const icons = [
   LayoutDashboard,
@@ -155,14 +146,6 @@ const sportIcons = [
   CircleArrowUp,
   CircleDot,
 ];
-const DEMO_COMPETITIONS_KEY = "kosamphi-admin-competitions-v1";
-type AppRole = "admin" | "school" | "recorder" | "referee" | "viewer";
-const roleOptions: { value: AppRole; label: string }[] = [
-  { value: "viewer", label: "ผู้ชม" },
-  { value: "admin", label: "ผู้ดูแลระบบ" },
-  { value: "school", label: "โรงเรียน" },
-  { value: "recorder", label: "กรรมการ" },
-];
 const roleLabels: Record<string, string> = {
   admin: "ผู้ดูแลระบบ",
   school: "โรงเรียน",
@@ -179,18 +162,9 @@ const roleIcons: Record<string, LucideIcon> = {
   referee: ClipboardPenLine,
   viewer: UserRound,
 };
-function removePlaceholderSchools(state: State): State {
-  return {
-    ...state,
-    schools: state.schools.filter(
-      (school) => !/^โรงเรียน (?:[1-9]|10)$/.test(school.name),
-    ),
-  };
-}
 export default function Home() {
   const [data, setData] = useState<State>(initialState),
     [tab, setTab] = useState(0),
-    [demo, setDemo] = useState(true),
     [ready, setReady] = useState(false),
     [role, setRole] = useState("viewer"),
     [school, setSchool] = useState(""),
@@ -199,44 +173,15 @@ export default function Home() {
     [division, setDivision] = useState("ประถม"),
     [gender, setGender] = useState("ชาย"),
     [busy, setBusy] = useState(false);
-  const [demoPolicies, setDemoPolicies] = useState<
-    Record<string, RegistrationPolicy>
-  >({});
-  const [managedCompetitions, setManagedCompetitions] = useState<
-    ManagedCompetition[]
-  >([]);
-  const syncCompetitions = useCallback((competitions: ManagedCompetition[]) => {
-    setManagedCompetitions(competitions);
-    setData((current) => ({
-      ...current,
-      matches: reconcileManagedMatches(current.matches, competitions),
-    }));
-  }, []);
-  const [schoolProfiles, setSchoolProfiles] = useState<
-    Record<string, SchoolProfile>
-  >({});
+  const [accessToken, setAccessToken] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const refreshGeneration = useRef(0);
+  const mounted = useRef(true);
   const [registrationRuleId, setRegistrationRuleId] = useState("football-male");
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("kosamphi-registration-policies-v1");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        Object.values(parsed).forEach((p) =>
-          policyLimits(p as RegistrationPolicy),
-        );
-        setDemoPolicies(parsed);
-      }
-    } catch {
-      setMessage("อ่านการตั้งค่าโควตาสาธิตไม่สำเร็จ กรุณาตรวจสอบการตั้งค่า");
-    }
-  }, []);
   const [messageKind, setMessageKind] = useState<"success" | "error">("error");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [accountState, setAccountState] = useState<AccountStatus | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const roleMenuButton = useRef<HTMLButtonElement>(null);
-  const roleMenu = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 701px)");
     const closeOnDesktop = () => {
@@ -280,28 +225,6 @@ export default function Home() {
       document.body.style.overflow = previousOverflow;
     };
   }, [menuOpen]);
-  useEffect(() => {
-    if (!roleMenuOpen) return;
-    roleMenu.current
-      ?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')
-      ?.focus();
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!roleMenu.current?.contains(event.target as Node))
-        setRoleMenuOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setRoleMenuOpen(false);
-        roleMenuButton.current?.focus();
-      }
-    };
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [roleMenuOpen]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [profileId, setProfileId] = useState("");
   const [competitionId, setCompetitionId] = useState("");
@@ -309,54 +232,16 @@ export default function Home() {
   const [eventKind, setEventKind] = useState("track");
   const [eventDirection, setEventDirection] = useState("asc");
   const [eventUnit, setEventUnit] = useState("s");
+  const [newEventStartsAt, setNewEventStartsAt] = useState("");
+  const [newEventVenue, setNewEventVenue] = useState("");
   const [eventRefereeId, setEventRefereeId] = useState("");
   const [event, setEvent] = useState("วิ่ง 100 เมตร"),
     [stage, setStage] = useState("heat"),
     [heat, setHeat] = useState(1);
   useEffect(() => {
-    let profiles: Record<string, SchoolProfile> = {};
-    try {
-      profiles = parseSchoolProfiles(localStorage.getItem(SCHOOL_PROFILE_KEY));
-      setSchoolProfiles(profiles);
-    } catch {
-      setMessage("อ่านข้อมูลโลโก้และชื่อย่อโรงเรียนไม่สำเร็จ");
-    }
-    try {
-      const saved = localStorage.getItem("kosamphi-demo-v1");
-      const state = saved
-        ? removePlaceholderSchools(JSON.parse(saved))
-        : initialState();
-      const savedCompetitions = localStorage.getItem(DEMO_COMPETITIONS_KEY);
-      if (savedCompetitions) {
-        const competitions: unknown = JSON.parse(savedCompetitions);
-        if (
-          !Array.isArray(competitions) ||
-          !competitions.every(isManagedCompetition)
-        )
-          throw Error("ข้อมูลรายการแข่งขันสาธิตไม่ถูกต้อง");
-        setManagedCompetitions(competitions);
-        state.matches = reconcileManagedMatches(state.matches, competitions);
-      }
-      setData(state);
-    } catch {
-      setMessage("ไม่สามารถอ่านข้อมูลสาธิตเดิม");
-    }
     if (new URLSearchParams(window.location.search).get("account") === "1")
       setTab(7);
-    setReady(true);
   }, []);
-  function chooseRole(nextRole: AppRole) {
-    setRole(nextRole);
-    setProfileId(
-      nextRole === "recorder" || nextRole === "referee" ? "demo-referee" : "",
-    );
-    setSchool(nextRole === "viewer" ? "" : data.schools[0]?.id || "");
-    if (!availableTabIndices(nextRole).includes(tab)) setTab(0);
-  }
-  useEffect(() => {
-    if (ready && demo)
-      localStorage.setItem("kosamphi-demo-v1", JSON.stringify(data));
-  }, [data, ready, demo]);
   function chooseCompetition(id: string, source = snapshot) {
     const c = source?.rows.competitions.find((c) => c.id === id);
     if (!c) return;
@@ -370,6 +255,7 @@ export default function Home() {
     }
   }
   async function refresh() {
+    const generation = ++refreshGeneration.current;
     if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
     const { data: session, error: sessionError } =
       await supabase.auth.getSession();
@@ -415,7 +301,30 @@ export default function Home() {
           profile.role,
         ),
     );
-    // Commit mode, permissions and data together only after every read succeeds.
+    const publicResponse = await fetch("/api/school-profile?public=1");
+    const publicBody = await publicResponse.json();
+    if (!publicResponse.ok)
+      throw Error(publicBody.error || "โหลดข้อมูลโรงเรียนไม่สำเร็จ");
+    const extras = new Map<string, Record<string, unknown>>(
+      (publicBody.schools || []).map((item: { id: string }) => [item.id, item]),
+    );
+    loaded.state.schools = loaded.state.schools.map((item) => ({
+      ...item,
+      ...extras.get(item.id),
+      id: item.id,
+      name: item.name,
+    }));
+    loaded.state.matches = loaded.state.matches.map((match) => {
+      const policy = loaded.rows.competitions.find(
+        (c) => c.id === match.competition_id,
+      )?.registration_policy;
+      const management = readManagement(policy);
+      return management ? { ...match, format: management.format } : match;
+    });
+    if (!mounted.current || generation !== refreshGeneration.current) return;
+    setLoadFailed(false);
+    setAccessToken(session.session?.access_token || "");
+    // Commit permissions and data together only after every read succeeds.
     setSnapshot(loaded);
     setAccountState(pending);
     setData(loaded.state);
@@ -427,7 +336,6 @@ export default function Home() {
       profile?.school_id ||
         (profile?.role === "admin" ? loaded.state.schools[0]?.id || "" : ""),
     );
-    setDemo(false);
     const assignedCompetitionIds =
       nextRole === "recorder" || nextRole === "referee"
         ? new Set([
@@ -455,6 +363,78 @@ export default function Home() {
       setDivision("");
       setGender("");
     }
+  }
+  useEffect(() => {
+    mounted.current = true;
+    const load = async () => {
+      try {
+        await refresh();
+      } catch (error) {
+        if (!mounted.current) return;
+        setLoadFailed(true);
+        setMessageKind("error");
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "โหลดข้อมูล Supabase ไม่สำเร็จ",
+        );
+      } finally {
+        if (mounted.current) setReady(true);
+      }
+    };
+    void load();
+    const listener = supabase?.auth.onAuthStateChange((event) => {
+      if (event === "INITIAL_SESSION") return;
+      // Clear privileged/private state before revalidating a changed session.
+      ++refreshGeneration.current;
+      setRole("viewer");
+      setProfileId("");
+      setSchool("");
+      setAccessToken("");
+      setSnapshot(null);
+      setAccountState(null);
+      setData(initialState());
+      setReady(false);
+      setTimeout(() => {
+        if (mounted.current) void load();
+      }, 0);
+    });
+    return () => {
+      mounted.current = false;
+      ++refreshGeneration.current;
+      listener?.data.subscription.unsubscribe();
+    };
+  }, []);
+  const managedCompetitions = useMemo(
+    () =>
+      managedFromHosted(
+        snapshot?.rows.competitions || [],
+        snapshot?.rows.matches || [],
+      ),
+    [snapshot],
+  );
+  async function mutateCompetition(action: Record<string, unknown>) {
+    const current = await supabase?.auth.getSession();
+    const token = current?.data.session?.access_token;
+    if (!token) throw Error("กรุณาเข้าสู่ระบบใหม่");
+    const response = await fetch("/api/competitions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(action),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      try {
+        await refresh();
+      } catch {
+        /* Keep the original mutation error visible. */
+      }
+      throw Error(body.error || "บันทึกรายการแข่งขันไม่สำเร็จ");
+    }
+    await refresh();
   }
   function downloadCsv(name: string, rows: Record<string, string>[]) {
     const url = URL.createObjectURL(
@@ -531,7 +511,7 @@ export default function Home() {
           );
       }
     }
-    if (!demo) {
+    {
       if (!snapshot) throw Error("กรุณาโหลดข้อมูล Supabase ใหม่");
       const active = snapshot.rows.competitions.find(
         (c) => c.id === competitionId,
@@ -556,7 +536,6 @@ export default function Home() {
         return { ...row, competition_id: id };
       }) as State[K];
     }
-
     if (table === "athletes") {
       const existing = data.athletes.filter(
         (a) => !rows.some((r) => r.id === a.id),
@@ -591,92 +570,38 @@ export default function Home() {
         seen.add(key);
       }
     }
-
-    if (demo && table === "athletes") {
-      const groups = new Map<string, Athlete[]>();
-      const legacy: Athlete[] = [];
-      for (const a of rows as Athlete[]) {
-        const matches = compatibleRules(a.sport, a.gender, a.division);
-        const id =
-          a.roster?.ruleId || (matches.length === 1 ? matches[0].id : "");
-        if (!id) {
-          if (matches.length > 1)
-            throw Error("กรุณาเลือกประเภทกรีฑาและรายการของนักกีฬา");
-          throw Error(
-            "ประเภทกีฬา เพศ หรือระดับชั้นไม่อยู่ในรายการที่เปิดรับสมัคร กรุณาเลือกประเภทการแข่งขันก่อน",
-          );
-        }
-        groups.set(id, [...(groups.get(id) || []), a]);
-      }
-      rows = [
-        ...legacy,
-        ...[...groups].flatMap(([id, values]) =>
-          prepareRoster(
-            data.athletes,
-            values,
-            demoPolicies[id] || defaultPolicy(id),
-          ),
-        ),
-      ] as State[K];
-    }
-    if (demo) {
-      if (table === "matches") {
-        const incoming = rows as Match[];
-        const combined = [
-          ...data.matches.filter((m) => !incoming.some((r) => r.id === m.id)),
-          ...incoming,
-        ];
-        const competitions = managedCompetitions.map((c) => ({
-          ...c,
-          fixtures: c.fixtures.map((f) => {
-            const row = incoming.find(
-              (m) => m.id === f.id && m.competition_id === c.id,
-            );
-            return row
-              ? {
-                  ...f,
-                  startsAt: row.starts_at,
-                  venue: row.venue,
-                  referee_id: row.referee_id,
-                }
-              : f;
-          }),
-        }));
-        const matches = reconcileManagedMatches(combined, competitions);
-        if (
-          data.matches.some(
-            (old) =>
-              old.status === "finished" &&
-              matches.some(
-                (m) =>
-                  m.id === old.id &&
-                  (m.home !== old.home || m.away !== old.away),
-              ),
-          )
-        )
-          throw Error(
-            "รอบถัดไปยืนยันผลแล้ว กรุณาตรวจสอบผลก่อนเปลี่ยนทีมผู้เข้ารอบ",
-          );
-        localStorage.setItem(
-          DEMO_COMPETITIONS_KEY,
-          JSON.stringify(competitions),
-        );
-        setManagedCompetitions(competitions);
-        setData((current) => ({ ...current, matches }));
-        return;
-      }
-      setData((d) => ({
-        ...d,
-        [table]: [
-          ...d[table].filter((x) => !rows.some((y) => y.id === x.id)),
-          ...rows,
-        ],
-      }));
-      return;
-    }
     if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
     if (!snapshot) throw Error("กรุณาโหลดข้อมูล Supabase ใหม่");
-    await writeHosted(supabase, snapshot, table, rows);
+    if (table === "matches" || table === "races") {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) throw Error("กรุณาเข้าสู่ระบบใหม่");
+      for (const row of rows) {
+        const isMatch = table === "matches";
+        const response = await fetch(
+          isMatch ? "/api/match-results" : "/api/athletics-results",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(isMatch ? { match: row } : { race: row }),
+          },
+        );
+        const result = await response.json();
+        if (response.ok && result.note) {
+          await refresh();
+          throw Error(result.note);
+        }
+        if (!response.ok) {
+          try {
+            await refresh();
+          } catch {}
+          throw Error(result.error || "บันทึกผลไม่สำเร็จ");
+        }
+      }
+    } else await writeHosted(supabase, snapshot, table, rows);
     await refresh();
   }
   const admin = role === "admin",
@@ -690,119 +615,94 @@ export default function Home() {
   const activeRuleId = ruleCandidates.some((r) => r.id === registrationRuleId)
     ? registrationRuleId
     : ruleCandidates[0]?.id || "";
-  const useRoster =
-    !!activeRuleId && (demo || snapshot?.registrationExtension === true);
-  const activePolicy = demo
-    ? demoPolicies[activeRuleId]
-    : competition?.registration_policy?.ruleId === activeRuleId
+  const useRoster = !!activeRuleId && snapshot?.registrationExtension === true;
+  const activePolicy =
+    competition?.registration_policy?.ruleId === activeRuleId
       ? competition.registration_policy
       : undefined;
-  const catalogPolicies: Record<string, RegistrationPolicy> = demo
-    ? demoPolicies
-    : activePolicy
-      ? { [activePolicy.ruleId]: activePolicy }
-      : {};
+  const catalogPolicies: Record<string, RegistrationPolicy> = activePolicy
+    ? { [activePolicy.ruleId]: activePolicy }
+    : {};
   function chooseRegistrationRule(id: string) {
-    const r = getRule(id);
-    if (!demo) {
-      const c =
-        snapshot?.rows.competitions.find(
-          (c) => c.registration_policy?.ruleId === id,
-        ) ||
-        snapshot?.rows.competitions.find((c) =>
-          compatibleRules(c.sport, c.gender, c.age_group).some(
-            (rule) => rule.id === id,
-          ),
-        );
-      if (!c) {
-        setMessageKind("error");
-        setMessage(
-          "ยังไม่มีรายการแข่งขันที่ตรงกับกีฬา เพศ และระดับชั้นนี้ กรุณาให้ผู้ดูแลเตรียมรายการก่อน",
-        );
-        return;
-      }
-      chooseCompetition(c.id);
-      setRegistrationRuleId(id);
+    const c =
+      snapshot?.rows.competitions.find(
+        (c) => c.registration_policy?.ruleId === id,
+      ) ||
+      snapshot?.rows.competitions.find((c) =>
+        compatibleRules(c.sport, c.gender, c.age_group).some(
+          (rule) => rule.id === id,
+        ),
+      );
+    if (!c) {
+      setMessageKind("error");
+      setMessage(
+        "ยังไม่มีรายการแข่งขันที่ตรงกับกีฬา เพศ และระดับชั้นนี้ กรุณาให้ผู้ดูแลเตรียมรายการก่อน",
+      );
       return;
     }
+    chooseCompetition(c.id);
     setRegistrationRuleId(id);
-    setSport(r.sport);
-    if (r.genders.length) setGender(r.genders[0]);
-    if (r.levels.length && !r.levels.includes(normalizeLevel(division)))
-      setDivision(r.levels[0] === "ประถมศึกษา" ? "ประถม" : r.levels[0]);
   }
   async function configurePolicy(policy: RegistrationPolicy) {
     policyLimits(policy);
     if (!admin) throw Error("เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่าโควตาได้");
-    if (demo) {
-      const next = { ...demoPolicies, [policy.ruleId]: policy };
-      localStorage.setItem(
-        "kosamphi-registration-policies-v1",
-        JSON.stringify(next),
-      );
-      setDemoPolicies(next);
-    } else {
+    {
       if (!supabase || !competition || snapshot?.registrationExtension !== true)
         throw Error("ต้องติดตั้ง migration สำหรับกติกาการสมัครก่อน");
-      await writeRegistrationPolicy(supabase, competition.id, policy);
-      await refresh();
+      await mutateCompetition({
+        action: "policy",
+        id: competition.id,
+        policy,
+        revision: managedCompetitions.find((c) => c.id === competition.id)
+          ?.managementRevision,
+      });
     }
   }
-  const points =
-    !demo && competition
-      ? {
-          win: competition.win_points,
-          draw: competition.draw_points,
-          loss: competition.loss_points,
-        }
-      : (() => {
-          const ids = new Set(
-            data.matches
-              .filter(
-                (m) =>
-                  m.sport === sport &&
-                  m.division === division &&
-                  m.gender === gender,
-              )
-              .map((m) => m.competition_id),
-          );
-          const c = managedCompetitions.find((c) => ids.has(c.id));
-          return c
-            ? { win: c.winPoints, draw: c.drawPoints, loss: c.lossPoints }
-            : { win: 3, draw: 1, loss: 0 };
-        })();
-  const eventCandidates = !demo
-    ? snapshot?.rows.athletics_events.filter(
-        (e) =>
-          e.competition_id === competitionId &&
-          (!refereeRole || e.referee_id === profileId) &&
-          e.name === event &&
-          e.round === stage &&
-          e.heat === heat,
-      ) || []
-    : [];
-  const raceEvent = !demo
-    ? eventId
-      ? snapshot?.rows.athletics_events.find(
-          (e) =>
-            e.id === eventId && (!refereeRole || e.referee_id === profileId),
-        )
-      : eventCandidates.length === 1
-        ? eventCandidates[0]
-        : undefined
-    : undefined;
-  const ambiguousEvent = !demo && !eventId && eventCandidates.length > 1;
+  const points = competition
+    ? {
+        win: competition.win_points,
+        draw: competition.draw_points,
+        loss: competition.loss_points,
+      }
+    : (() => {
+        const ids = new Set(
+          data.matches
+            .filter(
+              (m) =>
+                m.sport === sport &&
+                m.division === division &&
+                m.gender === gender,
+            )
+            .map((m) => m.competition_id),
+        );
+        const c = managedCompetitions.find((c) => ids.has(c.id));
+        return c
+          ? { win: c.winPoints, draw: c.drawPoints, loss: c.lossPoints }
+          : { win: 3, draw: 1, loss: 0 };
+      })();
+  const eventCandidates =
+    snapshot?.rows.athletics_events.filter(
+      (e) =>
+        e.competition_id === competitionId &&
+        (!refereeRole || e.referee_id === profileId) &&
+        e.name === event &&
+        e.round === stage &&
+        e.heat === heat,
+    ) || [];
+  const raceEvent = eventId
+    ? snapshot?.rows.athletics_events.find(
+        (e) => e.id === eventId && (!refereeRole || e.referee_id === profileId),
+      )
+    : eventCandidates.length === 1
+      ? eventCandidates[0]
+      : undefined;
+  const ambiguousEvent = !eventId && eventCandidates.length > 1;
   const scopeMatch = (row: {
     sport?: string;
     division: string;
     gender: string;
     competition_id?: string;
-  }) =>
-    !demo
-      ? row.competition_id === competitionId
-      : normalizeSport(row.sport || "") === normalizeSport(sport) &&
-        normalizeLevel(row.division) === normalizeLevel(division) &&
-        row.gender === gender;
+  }) => row.competition_id === competitionId;
   const selected = data.matches.filter((m) => scopeMatch(m));
   const assignedMatches = refereeRole
     ? data.matches.filter((match) => match.referee_id === profileId)
@@ -859,17 +759,10 @@ export default function Home() {
   const assignedEventsToday = assignedEvents.filter(
     (event) => event.starts_at?.slice(0, 10) === todayKey,
   );
-  const displayedSchools = useMemo(
-    () =>
-      data.schools.map((item) => ({
-        ...item,
-        short_name: schoolProfiles[item.id]?.shortName || undefined,
-      })),
-    [data.schools, schoolProfiles],
-  );
+  const displayedSchools = data.schools;
   const schoolName = (id: string) => {
-    const school = data.schools.find((item) => item.id === id);
-    return schoolProfiles[id]?.shortName || school?.name || id;
+    const item = data.schools.find((s) => s.id === id);
+    return item?.short_name || item?.name || id;
   };
   const schoolRole = role === "school" || role === "school_admin";
   const schoolMatches = data.matches.filter(
@@ -884,19 +777,14 @@ export default function Home() {
     (athlete) => athlete.school_id === school,
   );
   const pointsByCompetition = Object.fromEntries(
-    demo
-      ? managedCompetitions.map((c) => [
-          c.id,
-          { win: c.winPoints, draw: c.drawPoints, loss: c.lossPoints },
-        ])
-      : (snapshot?.rows.competitions || []).map((item) => [
-          item.id,
-          {
-            win: item.win_points,
-            draw: item.draw_points,
-            loss: item.loss_points,
-          },
-        ]),
+    (snapshot?.rows.competitions || []).map((item) => [
+      item.id,
+      {
+        win: item.win_points,
+        draw: item.draw_points,
+        loss: item.loss_points,
+      },
+    ]),
   );
   const calculatedAwards = calculateMedalAwards({
     matches: data.matches,
@@ -932,9 +820,9 @@ export default function Home() {
   const fields = (f: FormData) => ({
     division: String(f.get("division") || division),
     gender: String(f.get("gender") || gender),
-    competition_id: demo ? undefined : competitionId,
+    competition_id: competitionId,
   });
-  const filter = !demo ? (
+  const filter = (
     <div className="filters">
       <label>
         รายการแข่งขัน
@@ -963,33 +851,6 @@ export default function Home() {
         <p>ยังไม่มีรายการแข่งขันที่มีสิทธิ์อ่าน</p>
       )}
     </div>
-  ) : (
-    <div className="filters">
-      <label>
-        กีฬา
-        <select value={sport} onChange={(e) => setSport(e.target.value)}>
-          {SPORTS.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-      </label>
-      <label>
-        รุ่น
-        <input
-          value={division}
-          onChange={(e) => setDivision(e.target.value)}
-          required
-        />
-      </label>
-      <label>
-        เพศ
-        <select value={gender} onChange={(e) => setGender(e.target.value)}>
-          {["ชาย", "หญิง", "ผสม"].map((g) => (
-            <option key={g}>{g}</option>
-          ))}
-        </select>
-      </label>
-    </div>
   );
   function selectTab(index: number) {
     if (!availableTabIndices(role).includes(index)) return;
@@ -997,7 +858,7 @@ export default function Home() {
     setMenuOpen(false);
     if (index === 4) {
       setSport("กรีฑา");
-      if (!demo) {
+      {
         const c = snapshot?.rows.competitions.find((c) => c.sport === "กรีฑา");
         if (c) chooseCompetition(c.id);
       }
@@ -1085,74 +946,28 @@ export default function Home() {
           <span>
             <span className="header-desktop-title">ระบบบริหารการแข่งขัน</span>
             <span className="header-mobile-title">นครโกสัมพีเกมส์</span>{" "}
-            <span className="badge">
-              {demo ? "โหมดสาธิต" : "Supabase · ข้อมูลจริง"}
-            </span>
+            <span className="badge">{"Supabase · ข้อมูลจริง"}</span>
           </span>
-          <div className="profile-menu" ref={roleMenu}>
-            <button
-              ref={roleMenuButton}
-              className="profile-trigger"
-              type="button"
-              aria-label={`โปรไฟล์ ${roleLabels[role] || "ผู้ชม"}`}
-              aria-haspopup="menu"
-              aria-expanded={roleMenuOpen}
-              disabled={!demo || !ready || busy}
-              onClick={() => setRoleMenuOpen((open) => !open)}
-            >
-              <span className="profile-avatar" aria-hidden="true">
-                <Image
-                  src="/assets/profile/default-avatar.svg"
-                  alt=""
-                  width={40}
-                  height={40}
-                  unoptimized
-                />
-                <span className="profile-online" />
-              </span>
-              <span className="profile-trigger-copy">
-                <strong>{roleLabels[role] || "ผู้ชม"}</strong>
-                <small>{demo ? "โหมดสาธิต" : "บัญชีที่เข้าสู่ระบบ"}</small>
-              </span>
-              <ChevronDown
-                className={
-                  roleMenuOpen ? "profile-chevron open" : "profile-chevron"
-                }
-                aria-hidden="true"
+          <button
+            className="profile-trigger"
+            type="button"
+            aria-label={`โปรไฟล์ ${roleLabels[role] || "ผู้ชม"}`}
+            onClick={() => setTab(7)}
+          >
+            <span className="profile-avatar">
+              <Image
+                src="/assets/profile/default-avatar.svg"
+                alt=""
+                width={40}
+                height={40}
+                unoptimized
               />
-            </button>
-            {roleMenuOpen && (
-              <div
-                className="profile-dropdown"
-                role="menu"
-                aria-label="เลือกบทบาท"
-              >
-                <p>สลับบทบาทการใช้งาน</p>
-                {roleOptions.map(({ value, label }) => {
-                  const AvatarIcon = roleIcons[value] || UserRound;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={value === role}
-                      onClick={() => {
-                        setRoleMenuOpen(false);
-                        chooseRole(value);
-                      }}
-                    >
-                      <span className={`profile-option-avatar role-${value}`}>
-                        <AvatarIcon aria-hidden="true" />
-                      </span>
-                      <span>{label}</span>
-                      {value === role && <Check aria-hidden="true" />}
-                    </button>
-                  );
-                })}
-                <small>สลับบทบาทเพื่อดูแต่ละส่วนได้ทันที (โหมดทดสอบ)</small>
-              </div>
-            )}
-          </div>
+            </span>
+            <span className="profile-trigger-copy">
+              <strong>{roleLabels[role] || "ผู้ชม"}</strong>
+              <small>บัญชีที่เข้าสู่ระบบ</small>
+            </span>
+          </button>
         </header>
         <div className="content">
           <div className="heading">
@@ -1167,7 +982,7 @@ export default function Home() {
             </div>
             <span className="role">
               <ShieldCheck aria-hidden="true" />
-              {demo ? "สาธิต · " : ""}
+              {""}
               {roleLabels[role] || "ผู้ชม"}
             </span>
           </div>
@@ -1182,7 +997,7 @@ export default function Home() {
                 <strong>กำลังโหลดข้อมูล</strong>
                 <p>
                   {!ready
-                    ? "กำลังเตรียมข้อมูลสาธิต"
+                    ? "กำลังโหลดข้อมูล Supabase"
                     : "กำลังดำเนินการ กรุณารอสักครู่"}
                 </p>
               </div>
@@ -1210,72 +1025,63 @@ export default function Home() {
               </button>
             </div>
           )}
-          {tab === 8 &&
-            role === "admin" &&
-            (demo ? (
-              <AdminCompetitionManager
-                schools={displayedSchools}
-                onChange={syncCompetitions}
-                hasFinishedResults={(id) =>
-                  data.matches.some(
-                    (match) =>
-                      match.competition_id === id &&
-                      match.status === "finished",
-                  )
-                }
-              />
-            ) : (
-              <section className="panel">
-                <h2>จัดการรายการแข่งขัน</h2>
-                <p role="status">
-                  หน้าจัดสายนี้ใช้เฉพาะโหมดสาธิต การสร้างรายการจริงต้องเตรียมใน
-                  Supabase ก่อน จากนั้นแก้เวลา สนาม และกรรมการได้ที่ตารางแข่งขัน
-                </p>
-              </section>
-            ))}
+          {loadFailed && (
+            <section className="panel" role="alert">
+              <p>
+                เชื่อมต่อ Supabase ไม่สำเร็จ
+                กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง
+              </p>
+              <button
+                disabled={busy}
+                onClick={() => run(refresh, false, "โหลดข้อมูลใหม่แล้ว")}
+              >
+                โหลดข้อมูลใหม่
+              </button>
+            </section>
+          )}
+          {tab === 8 && role === "admin" && (
+            <AdminCompetitionManager
+              schools={displayedSchools}
+              competitions={managedCompetitions}
+              busy={busy}
+              onMutation={async (action) =>
+                run(() => mutateCompetition(action), true)
+              }
+            />
+          )}
           {(tab === 9 || tab === 10) && schoolRole && (
             <SchoolPortal
               key={tab}
               page={tab === 9 ? "profile" : "roster"}
-              demo={demo}
               schoolId={school}
               schools={data.schools}
               athletes={data.athletes}
               competitions={snapshot?.rows.competitions || []}
-              demoPolicies={demoPolicies}
               busy={busy}
-              onChooseSchool={setSchool}
-              onCreateDemoSchool={() => {
-                if (!demo) return;
-                const newSchool = {
-                  id: crypto.randomUUID(),
-                  name: "โรงเรียนตัวอย่าง",
-                };
-                setData((current) => ({
-                  ...current,
-                  schools: [...current.schools, newSchool],
-                }));
-                setSchool(newSchool.id);
-              }}
+              accessToken={accessToken}
               onSaveSchool={async (schoolRecord) => {
-                const { short_name, logo, ...schoolData } = schoolRecord;
-                await save("schools", [schoolData]);
-                setSchoolProfiles((current) => ({
-                  ...current,
-                  [schoolData.id]: {
-                    ...(current[schoolData.id] || {
-                      contactName: "",
-                      contactPhone: "",
-                      address: "",
-                    }),
-                    shortName: short_name || "",
-                    logo: logo || "",
+                const response = await fetch("/api/schools", {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${accessToken}`,
                   },
-                }));
+                  body: JSON.stringify({
+                    schoolId: schoolRecord.id,
+                    name: schoolRecord.name,
+                    expectedName: data.schools.find(
+                      (s) => s.id === schoolRecord.id,
+                    )?.name,
+                  }),
+                });
+                const result = await response.json();
+                if (!response.ok)
+                  throw Error(result.error || "บันทึกชื่อโรงเรียนไม่สำเร็จ");
               }}
+              onSaved={refresh}
               onSaveAthletes={async (rows) => save("athletes", rows)}
               onImportAthletes={async (file, selectedCompetitionId) => {
-                if (file.size > 2_000_000) throw Error("ไฟล์ใหญ่เกิน 2 MB");
+                if (file.size > 2000000) throw Error("ไฟล์ใหญ่เกิน 2 MB");
                 const rows = parseAthletes(await file.text(), data.schools);
                 if (rows.some((row) => row.school_id !== school))
                   throw Error("นำเข้าได้เฉพาะรายชื่อนักกีฬาในโรงเรียนตนเอง");
@@ -1472,7 +1278,7 @@ export default function Home() {
                         key={s}
                         onClick={() => {
                           setSport(s);
-                          if (!demo) {
+                          {
                             const c = snapshot?.rows.competitions.find(
                               (c) => c.sport === s,
                             );
@@ -1584,12 +1390,8 @@ export default function Home() {
               )}
               <div className="notice">
                 <Info aria-hidden="true" />
-                {demo
-                  ? "ข้อมูลสาธิตเก็บในเบราว์เซอร์นี้เท่านั้น ไม่ใช่ข้อมูลการแข่งขันจริง"
-                  : "เชื่อมต่อฐานข้อมูลจริง สิทธิ์บังคับใช้ด้วย Supabase RLS"}{" "}
-                {demo
-                  ? " · ชื่อโรงเรียนเริ่มต้นเป็นชื่อชั่วคราว"
-                  : " · ชื่อโรงเรียนจากฐานข้อมูลจริง"}
+                {"เชื่อมต่อฐานข้อมูลจริง สิทธิ์บังคับใช้ด้วย Supabase RLS"}{" "}
+                {" · ชื่อโรงเรียนจากฐานข้อมูลจริง"}
               </div>
             </>
           )}
@@ -1617,7 +1419,7 @@ export default function Home() {
                 </label>
               </section>
               {filter}
-              {!demo && snapshot?.registrationExtension !== true && (
+              {snapshot?.registrationExtension !== true && (
                 <p className="notice">
                   ฐานข้อมูลยังไม่ได้ติดตั้งส่วนกติกาการสมัคร
                   แสดงข้อมูลและแบบฟอร์มเดิมอยู่ กรุณาให้ผู้ดูแลติดตั้ง migration
@@ -1626,13 +1428,13 @@ export default function Home() {
               )}
               {useRoster ? (
                 <RosterRegistrationPanel
-                  key={`${demo}-${competitionId}-${activeRuleId}-${school}`}
+                  key={`${competitionId}-${activeRuleId}-${school}`}
                   ruleId={activeRuleId}
                   policy={activePolicy || defaultPolicy(activeRuleId)}
                   sport={sport}
                   gender={gender}
                   division={division}
-                  competitionId={demo ? undefined : competitionId}
+                  competitionId={competitionId}
                   athletes={athletes.filter(
                     (a) => !a.roster || a.roster.ruleId === activeRuleId,
                   )}
@@ -1642,7 +1444,6 @@ export default function Home() {
                   canRegister={register}
                   busy={busy}
                   enabled={
-                    demo ||
                     competition?.registration_policy?.ruleId === activeRuleId
                   }
                   onRuleChange={chooseRegistrationRule}
@@ -1676,8 +1477,7 @@ export default function Home() {
                   onSchoolCodes={() => downloadCsv("schools.csv", data.schools)}
                   onImport={(file) =>
                     run(async () => {
-                      if (file.size > 2_000_000)
-                        throw Error("ไฟล์ใหญ่เกิน 2 MB");
+                      if (file.size > 2000000) throw Error("ไฟล์ใหญ่เกิน 2 MB");
                       const rows = parseAthletes(
                         await file.text(),
                         data.schools,
@@ -1692,7 +1492,7 @@ export default function Home() {
                 <section className="panel">
                   <h2>ลงทะเบียนนักกีฬา</h2>
                   {register &&
-                  !demo &&
+                  true &&
                   snapshot?.registrationExtension !== true ? (
                     <>
                       <form
@@ -1770,7 +1570,7 @@ export default function Home() {
                               const file = e.target.files?.[0];
                               if (file)
                                 run(async () => {
-                                  if (file.size > 2_000_000)
+                                  if (file.size > 2000000)
                                     throw Error("ไฟล์ใหญ่เกิน 2 MB");
                                   const rows = parseAthletes(
                                     await file.text(),
@@ -1866,7 +1666,6 @@ export default function Home() {
                   onSave={(match, startsAt, venue, refereeId) =>
                     run(async () => {
                       if (
-                        !demo &&
                         refereeId &&
                         !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
                           refereeId,
@@ -1875,6 +1674,28 @@ export default function Home() {
                         throw Error(
                           "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
                         );
+                      const managed = managedCompetitions.find(
+                        (c) => c.id === match.competition_id,
+                      );
+                      if (
+                        managed?.fixtures.some((f) => f.id === match.id) &&
+                        readManagement(
+                          snapshot?.rows.competitions.find(
+                            (c) => c.id === match.competition_id,
+                          )?.registration_policy,
+                        )
+                      ) {
+                        await mutateCompetition({
+                          action: "schedule",
+                          id: match.competition_id,
+                          fixtureId: match.id,
+                          startsAt,
+                          venue,
+                          refereeId: refereeId || null,
+                          revision: managed.managementRevision,
+                        });
+                        return;
+                      }
                       await save("matches", [
                         {
                           ...match,
@@ -1895,7 +1716,8 @@ export default function Home() {
               <section className="panel">
                 <h2>บันทึกผลการแข่งขัน</h2>
                 <p className="muted">
-                  คะแนนลีก: ชนะ {points.win} · เสมอ {points.draw} · แพ้{" "}
+                  ผลคัดออกที่ยืนยันแล้วแก้คะแนนได้เฉพาะกรณีผู้ชนะเดิมไม่เปลี่ยน
+                  · คะแนนลีก: ชนะ {points.win} · เสมอ {points.draw} · แพ้{" "}
                   {points.loss} | เหรียญคำนวณจากผลที่ยืนยันแล้ว
                 </p>
                 {refereeRole && (
@@ -1982,7 +1804,7 @@ export default function Home() {
               {filter}
               <section className="panel">
                 <h2>กรีฑา · ฮีตและรอบชิง</h2>
-                {!demo && (
+                {
                   <label>
                     รายการกรีฑาที่มีอยู่
                     <select
@@ -2023,8 +1845,8 @@ export default function Home() {
                         ))}
                     </select>
                   </label>
-                )}
-                {admin && raceEvent && !demo && (
+                }
+                {admin && raceEvent && true && (
                   <form
                     className="referee-assignment-form"
                     onSubmit={(e) => {
@@ -2041,11 +1863,22 @@ export default function Home() {
                             "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
                           );
                         if (!supabase) throw Error("ยังไม่ได้ตั้งค่า Supabase");
-                        await writeAthleticsReferee(
-                          supabase,
-                          raceEvent.id,
-                          nextId,
-                        );
+                        const response = await fetch("/api/athletics-results", {
+                          method: "PATCH",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${accessToken}`,
+                          },
+                          body: JSON.stringify({
+                            eventId: raceEvent.id,
+                            refereeId: nextId,
+                          }),
+                        });
+                        const result = await response.json();
+                        if (!response.ok)
+                          throw Error(
+                            result.error || "มอบหมายกรรมการไม่สำเร็จ",
+                          );
                         await refresh();
                       });
                     }}
@@ -2107,6 +1940,26 @@ export default function Home() {
                     />
                   </label>
                 </div>
+                {edit && (
+                  <div className="filters">
+                    <label>
+                      วันเวลารายการใหม่ / รอบชิง
+                      <input
+                        type="datetime-local"
+                        value={newEventStartsAt}
+                        onChange={(e) => setNewEventStartsAt(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      สนามรายการใหม่ / รอบชิง
+                      <input
+                        value={newEventVenue}
+                        onChange={(e) => setNewEventVenue(e.target.value)}
+                        maxLength={200}
+                      />
+                    </label>
+                  </div>
+                )}
                 <p className="muted">
                   บันทึกตามหน่วยของรายการ · ผู้ได้ผลเท่ากันได้อันดับร่วม
                 </p>
@@ -2115,7 +1968,7 @@ export default function Home() {
                     มีรายการกรีฑาชื่อและรอบซ้ำ กรุณาเลือกรายการกรีฑาที่มีอยู่
                   </p>
                 )}
-                {!demo && !raceEvent && !refereeRole && (
+                {!raceEvent && !refereeRole && (
                   <div className="filters">
                     <label>
                       ประเภท
@@ -2174,7 +2027,7 @@ export default function Home() {
                             r.gender === gender &&
                             r.stage === stage &&
                             r.athlete_id === aid &&
-                            (demo || r.competition_id === competitionId) &&
+                            r.competition_id === competitionId &&
                             (!eventId || r.event_id === eventId),
                         );
                         const status = String(f.get("status"));
@@ -2211,6 +2064,8 @@ export default function Home() {
                             heat,
                             athlete_id: aid,
                             event_id: raceEvent?.id,
+                            starts_at: newEventStartsAt,
+                            venue: newEventVenue,
                             kind: raceEvent?.kind || eventKind,
                             direction: raceEvent?.direction || eventDirection,
                             unit: raceEvent?.unit || eventUnit,
@@ -2237,9 +2092,7 @@ export default function Home() {
                       </select>
                     </label>
                     <label>
-                      {demo
-                        ? "เวลา (วินาที)"
-                        : `ผล (${raceEvent?.unit || eventUnit})`}
+                      {`ผล (${raceEvent?.unit || eventUnit})`}
                       <input
                         name="value"
                         type="number"
@@ -2276,14 +2129,13 @@ export default function Home() {
                         r.gender === gender &&
                         r.stage === stage &&
                         r.heat === heat &&
-                        (demo || r.competition_id === competitionId) &&
+                        r.competition_id === competitionId &&
                         (!refereeRole ||
                           (r.event_id && assignedEventIds.has(r.event_id))) &&
                         !ambiguousEvent &&
                         (!raceEvent || r.event_id === raceEvent.id),
                     ),
-                    !demo &&
-                      (raceEvent?.direction || eventDirection) === "desc",
+                    (raceEvent?.direction || eventDirection) === "desc",
                   ).map((r) => [
                     r.rank ?? "—",
                     data.athletes.find((a) => a.id === r.athlete_id)?.name ||
@@ -2313,7 +2165,7 @@ export default function Home() {
                                   x.athlete_id === r.athlete_id &&
                                   x.division === division &&
                                   x.gender === gender &&
-                                  (demo || x.competition_id === competitionId),
+                                  x.competition_id === competitionId,
                               )
                             )
                               throw Error("เข้ารอบชิงแล้ว");
@@ -2328,6 +2180,9 @@ export default function Home() {
                                 gender: r.gender,
                                 athlete_id: r.athlete_id,
                                 id: crypto.randomUUID(),
+                                source_event_id: r.event_id,
+                                starts_at: newEventStartsAt,
+                                venue: newEventVenue,
                                 stage: "final",
                                 heat: 1,
                                 value: null,
@@ -2399,7 +2254,7 @@ export default function Home() {
           )}
           {tab === 6 && (
             <>
-              {!demo && filter}
+              {filter}
               <section className="panel">
                 <h2>เหรียญรางวัลจากผลการแข่งขัน</h2>
                 <p className="muted">
@@ -2572,213 +2427,28 @@ export default function Home() {
                 <p className="muted">
                   ผู้ดูแลระบบใช้อีเมล โรงเรียนและกรรมการใช้ชื่อบัญชีและรหัสผ่าน
                   บัญชีใหม่ต้องรอผู้ดูแลระบบอนุมัติ
-                  โหมดสาธิตยังทดลองบทบาทได้โดยไม่สมัคร
                 </p>
                 <p>
                   <a href="/school-registration">
                     สมัครบัญชีโรงเรียน / กรรมการ
                   </a>
                 </p>
-                {!demo &&
-                  accountState &&
-                  accountState.status !== "approved" && (
-                    <p role="status" className="registration-message">
-                      {accountState.status === "rejected"
-                        ? `คำขอไม่ได้รับอนุมัติ${accountState.note ? `: ${accountState.note}` : " กรุณาติดต่อผู้ดูแลระบบ"}`
-                        : accountState.status === "pending"
-                          ? "รอผู้ดูแลระบบอนุมัติ ขณะนี้ยังไม่มีสิทธิ์โรงเรียนหรือกรรมการ"
-                          : "บัญชียังไม่มีคำขอสมัคร กรุณาติดต่อผู้ดูแลระบบ"}
-                    </p>
-                  )}
-                {(demo || role === "viewer") && (
+                {accountState && accountState.status !== "approved" && (
+                  <p role="status" className="registration-message">
+                    {accountState.status === "rejected"
+                      ? `คำขอไม่ได้รับอนุมัติ${accountState.note ? `: ${accountState.note}` : " กรุณาติดต่อผู้ดูแลระบบ"}`
+                      : accountState.status === "pending"
+                        ? "รอผู้ดูแลระบบอนุมัติ ขณะนี้ยังไม่มีสิทธิ์โรงเรียนหรือกรรมการ"
+                        : "บัญชียังไม่มีคำขอสมัคร กรุณาติดต่อผู้ดูแลระบบ"}
+                  </p>
+                )}
+                {role === "viewer" && (
                   <AccountLogin
                     busy={busy}
                     onSession={() => run(refresh, true)}
                   />
                 )}
-                {demo ? (
-                  <>
-                    <div className="connection-action">
-                      <strong>ระบบแข่งขันที่เชื่อมต่ออยู่</strong>
-                      <p className="muted">
-                        ใช้บัญชีที่ได้รับอนุมัติเพื่อจัดการข้อมูลจริง
-                        หรือเปิดดูข้อมูลการแข่งขันสาธารณะโดยไม่เข้าสู่ระบบ
-                      </p>
-                      <button
-                        disabled={!supabase || busy}
-                        onClick={() =>
-                          run(async () => {
-                            await refresh();
-                            setDemo(false);
-                          })
-                        }
-                      >
-                        เข้าสู่โหมด Supabase
-                      </button>
-                      {!supabase && (
-                        <p className="muted">
-                          ยังไม่ได้ตั้งค่า Supabase สำหรับข้อมูลการแข่งขัน
-                        </p>
-                      )}
-                    </div>
-                    <p className="muted">
-                      เลือกบทบาทได้จากเมนูโปรไฟล์ด้านบน และเปลี่ยนกลับได้ทันที
-                    </p>
-                    {admin && (
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          run(
-                            () => {
-                              const seed = createDemoCompetitionData(
-                                data.schools,
-                              );
-                              let savedCompetitions: ManagedCompetition[] = [];
-                              const stored = localStorage.getItem(
-                                DEMO_COMPETITIONS_KEY,
-                              );
-                              if (stored) {
-                                const parsed: unknown = JSON.parse(stored);
-                                if (
-                                  !Array.isArray(parsed) ||
-                                  !parsed.every(isManagedCompetition)
-                                )
-                                  throw Error(
-                                    "ข้อมูลรายการแข่งขันสาธิตไม่ถูกต้อง",
-                                  );
-                                savedCompetitions = parsed;
-                              }
-                              const savedById = new Map(
-                                savedCompetitions.map((item) => [
-                                  item.id,
-                                  item,
-                                ]),
-                              );
-                              const seededIds = new Set(
-                                seed.competitions.map((item) => item.id),
-                              );
-                              const nextCompetitions = [
-                                ...seed.competitions.map((seeded) => {
-                                  const saved = savedById.get(seeded.id);
-                                  const savedFixtures = new Map(
-                                    saved?.fixtures.map((fixture) => [
-                                      fixture.id,
-                                      fixture,
-                                    ]),
-                                  );
-                                  const seededFixtureIds = new Set(
-                                    seeded.fixtures.map(
-                                      (fixture) => fixture.id,
-                                    ),
-                                  );
-                                  return saved
-                                    ? {
-                                        ...seeded,
-                                        ...saved,
-                                        teams: [
-                                          ...new Set([
-                                            ...seeded.teams,
-                                            ...saved.teams,
-                                          ]),
-                                        ],
-                                        fixtures: [
-                                          ...seeded.fixtures.map((fixture) => {
-                                            const previous = savedFixtures.get(
-                                              fixture.id,
-                                            );
-                                            return previous
-                                              ? {
-                                                  ...fixture,
-                                                  ...previous,
-                                                  round:
-                                                    previous.round ===
-                                                    "พบกันหมด"
-                                                      ? fixture.round
-                                                      : previous.round,
-                                                  startsAt:
-                                                    previous.startsAt ||
-                                                    fixture.startsAt,
-                                                  venue:
-                                                    previous.venue ||
-                                                    fixture.venue,
-                                                }
-                                              : fixture;
-                                          }),
-                                          ...saved.fixtures.filter(
-                                            (fixture) =>
-                                              !seededFixtureIds.has(fixture.id),
-                                          ),
-                                        ],
-                                      }
-                                    : seeded;
-                                }),
-                                ...savedCompetitions.filter(
-                                  (item) => !seededIds.has(item.id),
-                                ),
-                              ];
-                              const nextPolicies = {
-                                ...demoPolicies,
-                                ...seed.policies,
-                              };
-                              const demoMatches = demoFixturesAsMatches(
-                                nextCompetitions,
-                                data.matches,
-                              );
-                              localStorage.setItem(
-                                DEMO_COMPETITIONS_KEY,
-                                JSON.stringify(nextCompetitions),
-                              );
-                              localStorage.setItem(
-                                "kosamphi-registration-policies-v1",
-                                JSON.stringify(nextPolicies),
-                              );
-                              setDemoPolicies(nextPolicies);
-                              setManagedCompetitions(nextCompetitions);
-                              setData((current) => ({
-                                ...current,
-                                schools: [
-                                  ...new Map(
-                                    [...seed.schools, ...current.schools].map(
-                                      (item) => [item.id, item],
-                                    ),
-                                  ).values(),
-                                ],
-                                athletes: [
-                                  ...new Map(
-                                    [...seed.athletes, ...current.athletes].map(
-                                      (item) => [item.id, item],
-                                    ),
-                                  ).values(),
-                                ],
-                                matches: [
-                                  ...new Map(
-                                    [...current.matches, ...demoMatches].map(
-                                      (item) => [item.id, item],
-                                    ),
-                                  ).values(),
-                                ],
-                              }));
-                            },
-                            false,
-                            "เพิ่มข้อมูลจำลองครบ 10 โรงเรียน ทุกรายการแข่งขัน และโปรแกรมแข่งแล้ว",
-                          )
-                        }
-                      >
-                        สร้างข้อมูลจำลอง 10 โรงเรียน · สมัคร จัดสาย
-                        และโปรแกรมแข่งครบทุกประเภทกีฬา
-                      </button>
-                    )}
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        if (confirm("ล้างข้อมูลสาธิตทั้งหมดในเบราว์เซอร์นี้?"))
-                          setData(initialState());
-                      }}
-                    >
-                      ล้างข้อมูลสาธิต
-                    </button>
-                  </>
-                ) : (
+                {
                   <>
                     <button disabled={busy} onClick={() => run(refresh)}>
                       โหลดข้อมูลใหม่
@@ -2800,34 +2470,10 @@ export default function Home() {
                     >
                       ออกจากระบบ
                     </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        setDemo(true);
-                        const saved = localStorage.getItem("kosamphi-demo-v1");
-                        setData(
-                          saved
-                            ? removePlaceholderSchools(JSON.parse(saved))
-                            : initialState(),
-                        );
-                        setRole("viewer");
-                        setProfileId("");
-                        setTab(0);
-                        setSchool("");
-                        setSnapshot(null);
-                        setCompetitionId("");
-                        setSport(SPORTS[0]);
-                        setDivision("ประถม");
-                        setGender("ชาย");
-                        setEventId("");
-                      }}
-                    >
-                      กลับสาธิต
-                    </button>
                   </>
-                )}
+                }
               </section>
-              {!demo && admin && (
+              {admin && (
                 <AccountApprovals onReviewed={() => run(refresh, true)} />
               )}
               <section className="panel">
@@ -2986,7 +2632,6 @@ function Table({
     </div>
   );
 }
-
 function columnClass(heading: string) {
   if (heading.includes("ทองแดง")) return "numeric medal-bronze";
   if (heading.includes("ทอง")) return "numeric medal-gold";

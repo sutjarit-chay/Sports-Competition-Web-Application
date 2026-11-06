@@ -1,34 +1,14 @@
-import { test, expect, type Page } from "@playwright/test";
-
-async function seedSchools(page: Page) {
-  await page.addInitScript(() => {
-    if (!localStorage.getItem("kosamphi-demo-v1")) {
-      localStorage.setItem(
-        "kosamphi-demo-v1",
-        JSON.stringify({
-          schools: [{ id: "1", name: "โรงเรียนตัวอย่างทดสอบ" }],
-          athletes: [],
-          matches: [],
-          races: [],
-          awards: [],
-        }),
-      );
-    }
-  });
-}
-
-async function useDemoAdmin(page: Page) {
-  await page.getByRole("button", { name: /โปรไฟล์/ }).click();
-  await page
-    .getByRole("menuitemradio", { name: "ผู้ดูแลระบบ", exact: true })
-    .click();
-}
+import { test, expect } from "@playwright/test";
+import { fixture, login } from "./helpers/production-fixture";
 
 test("hero actions navigate and wheel scrolling is not trapped", async ({
   page,
 }) => {
+  await fixture(page);
   await page.goto("/");
-  await useDemoAdmin(page);
+  await page.getByRole("button", { name: "โรงเรียน / บัญชี", exact: true }).click();
+  await login(page);
+  await page.getByRole("button", { name: "ภาพรวม", exact: true }).click();
   const hero = page.getByRole("region", {
     name: "นครโกสัมพีเกมส์ ปีการศึกษา 2569",
   });
@@ -53,6 +33,7 @@ test("reduced motion keeps hero content visible and disables its depth animation
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await fixture(page);
   await page.goto("/");
   const hero = page.getByRole("region", {
     name: "นครโกสัมพีเกมส์ ปีการศึกษา 2569",
@@ -74,6 +55,7 @@ test("mobile menu exposes only viewer pages and keyboard focus is visible", asyn
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await fixture(page);
   await page.goto("/");
   await page.getByRole("button", { name: "เมนูทั้งหมด", exact: true }).click();
   const navigation = page.locator("#main-navigation nav");
@@ -113,6 +95,7 @@ test("mobile menu exposes only viewer pages and keyboard focus is visible", asyn
 test("print keeps report content and hides the decorative hero", async ({
   page,
 }) => {
+  await fixture(page);
   await page.goto("/");
   await expect(
     page.getByRole("region", { name: "นครโกสัมพีเกมส์ ปีการศึกษา 2569" }),
@@ -129,9 +112,11 @@ test("print keeps report content and hides the decorative hero", async ({
 test("saving and duplicate errors show distinct text feedback", async ({
   page,
 }) => {
-  await seedSchools(page);
+  await fixture(page);
   await page.goto("/");
-  await useDemoAdmin(page);
+  await page.getByRole("button", { name: "โรงเรียน / บัญชี", exact: true }).click();
+  await login(page);
+  await page.getByRole("button", { name: "ภาพรวม", exact: true }).click();
   await page.getByRole("button", { name: "นักกีฬา", exact: true }).click();
   await page.getByLabel("ชื่อ–นามสกุล").fill("ทดสอบสถานะ");
   await page.getByRole("button", { name: "+ เพิ่มนักกีฬา" }).click();
@@ -149,6 +134,7 @@ test("an open mobile drawer closes when the viewport becomes desktop", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await fixture(page);
   await page.goto("/");
   await page.getByRole("button", { name: "เมนูทั้งหมด", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "เมนูหลัก" })).toBeVisible();

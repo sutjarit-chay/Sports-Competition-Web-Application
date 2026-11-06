@@ -1,1233 +1,702 @@
 "use client";
-
-import { useEffect, useState, type FormEvent } from "react";
-import Papa from "papaparse";
-import {
-  ArrowDown,
-  ArrowUp,
-  CalendarDays,
-  Download,
-  FileUp,
-  GripVertical,
-  Plus,
-  Save,
-  Trash2,
-  Trophy,
-  Users,
-} from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { CalendarDays, Trophy, Save, FileUp } from "lucide-react";
+import { RULES, compatibleRules } from "../lib/registration";
 import {
   parseCompetitionCsv,
   parseFixtureCsv,
   parseTeamCsv,
-  generateFixtures,
-  fixturesConflict,
-  isManagedCompetition,
   type CompetitionCsvRow,
-  type CompetitionFormat,
-  type FixtureCsvRow,
-  type ManagedCompetition,
-  type ManagedFixture,
-  type TeamCsvRow,
-} from "@/lib/admin-competitions";
-import { SPORTS } from "@/lib/domain";
-
-const STORAGE_KEY = "kosamphi-admin-competitions-v1";
-type Panel = "competitions" | "bracket" | "csv";
-type CsvPreview =
-  | { kind: "competitions"; rows: CompetitionCsvRow[] }
-  | { kind: "teams"; rows: TeamCsvRow[] }
-  | { kind: "fixtures"; rows: FixtureCsvRow[] };
-type School = { id: string; name: string; short_name?: string };
-
-function blankCompetition(): Omit<
-  ManagedCompetition,
-  "id" | "teams" | "fixtures"
-> {
-  return {
-    name: "",
-    sport: SPORTS[0],
-    ageGroup: "ประถม",
-    gender: "ชาย",
-    details: "",
-    starters: 7,
-    reserves: 3,
-    teamLimit: 10,
-    format: "knockout",
-    winPoints: 3,
-    drawPoints: 1,
-    lossPoints: 0,
-  };
-}
-
-function schoolLabel(id: string, schools: School[]) {
-  const school = schools.find((item) => item.id === id);
-  return school?.short_name || school?.name || id;
-}
-
-function csvDownload(filename: string, rows: Record<string, string>[]) {
-  const blob = new Blob(["\uFEFF" + Papa.unparse(rows)], {
-    type: "text/csv;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-export default function AdminCompetitionManager({
-  schools,
-  hasFinishedResults,
-  onChange,
-}: {
+} from "../lib/admin-competitions";
+import type { ProductionManagedCompetition } from "../lib/production-competitions";
+type School = { id: string; name: string };
+type Props = {
   schools: School[];
-  hasFinishedResults: (competitionId: string) => boolean;
-  onChange: (competitions: ManagedCompetition[]) => void;
-}) {
-  const [competitions, setCompetitions] = useState<ManagedCompetition[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [draft, setDraft] = useState(blankCompetition);
-  const [panel, setPanel] = useState<Panel>("competitions");
-  const [slots, setSlots] = useState<string[]>(["", ""]);
-  const [preview, setPreview] = useState<CsvPreview | null>(null);
-  const [csvKind, setCsvKind] = useState<CsvPreview["kind"]>("competitions");
-  const [message, setMessage] = useState("");
-  const [messageKind, setMessageKind] = useState<"error" | "success">("error");
-  const [loaded, setLoaded] = useState(false);
-  const [storageValid, setStorageValid] = useState(true);
-
-  useEffect(() => {
+  competitions: ProductionManagedCompetition[];
+  busy?: boolean;
+  onMutation: (action: Record<string, unknown>) => Promise<void>;
+};
+const initial = {
+  ruleId: RULES[0].id,
+  name: "",
+  sport: RULES[0].sport,
+  ageGroup: RULES[0].levels[0] || "ประถมศึกษา",
+  gender: RULES[0].genders[0] || "ชาย",
+  format: "knockout",
+  teamLimit: 16,
+  details: "",
+  winPoints: 3,
+  drawPoints: 1,
+  lossPoints: 0,
+};
+export function AdminCompetitionManager({
+  schools,
+  competitions,
+  busy = false,
+  onMutation,
+}: Props) {
+  const [panel, setPanel] = useState("competitions"),
+    [form, setForm] = useState(initial),
+    [selectedId, setSelectedId] = useState(""),
+    [teams, setTeams] = useState<string[]>(["", ""]),
+    [notice, setNotice] = useState(""),
+    [working, setWorking] = useState(false),
+    [csvKind, setCsvKind] = useState("competitions"),
+    [preview, setPreview] = useState<Record<string, unknown>[] | null>(null);
+  const selected = competitions.find((c) => c.id === selectedId);
+  const disabled = busy || working;
+  const schoolName = (id: string) =>
+    schools.find((s) => s.id === id)?.name || id;
+  async function mutate(action: Record<string, unknown>) {
+    setWorking(true);
+    setNotice("");
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed: unknown = JSON.parse(saved);
-        if (!Array.isArray(parsed) || !parsed.every(isManagedCompetition))
-          throw Error("รูปแบบข้อมูลรายการแข่งขันในเบราว์เซอร์ไม่ถูกต้อง");
-        setCompetitions(parsed);
-      }
+      await onMutation(action);
+      setNotice("บันทึกข้อมูลแล้ว");
+      return true;
     } catch (error) {
-      setStorageValid(false);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "อ่านข้อมูลรายการแข่งขันในเบราว์เซอร์ไม่สำเร็จ",
+      setNotice(
+        error instanceof Error ? error.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่",
+      );
+      return false;
+    } finally {
+      setWorking(false);
+    }
+  }
+  function choose(id: string) {
+    setSelectedId(id);
+    const c = competitions.find((c) => c.id === id);
+    setTeams(c?.teams.length ? [...c.teams] : ["", ""]);
+    setNotice("");
+  }
+  function selectRule(id: string) {
+    const rule = RULES.find((r) => r.id === id)!;
+    setForm({
+      ...form,
+      ruleId: id,
+      sport: rule.sport,
+      gender: rule.genders[0] || "ชาย",
+      ageGroup: rule.levels[0] || "ประถมศึกษา",
+    });
+  }
+  async function create(e: FormEvent) {
+    e.preventDefault();
+    if (await mutate({ action: "create", competition: form }))
+      setForm({ ...initial });
+  }
+  async function inspect(file?: File) {
+    setPreview(null);
+    setNotice("");
+    if (!file) return;
+    try {
+      if (file.size > 1000000) throw Error("ไฟล์ CSV ต้องไม่เกิน 1 MB");
+      const csv = await file.text();
+      let actions: Record<string, unknown>[];
+      if (csvKind === "competitions")
+        actions = parseCompetitionCsv(csv).map((row: CompetitionCsvRow) => {
+          const rules = compatibleRules(row.sport, row.gender, row.ageGroup);
+          if (rules.length !== 1)
+            throw Error(
+              `รายการ ${row.name}: กรุณาระบุประเภทที่ตรงกับระเบียบผ่านแบบฟอร์ม`,
+            );
+          return {
+            action: "create",
+            competition: { ...row, ruleId: rules[0].id },
+          };
+        });
+      else if (csvKind === "teams") {
+        const rows = parseTeamCsv(csv, competitions, schools);
+        const ids = [...new Set(rows.map((r) => r.competition))];
+        actions = ids.map((id) => {
+          const competition = competitions.find((c) => c.id === id)!;
+          if (competition.fixtures.length)
+            throw Error("รายการที่มีโปรแกรมแล้วไม่สามารถจัดสายใหม่");
+          return {
+            action: "draw",
+            id,
+            revision: competition.managementRevision,
+            teams: [
+              ...competition.teams,
+              ...rows.filter((r) => r.competition === id).map((r) => r.school),
+            ],
+          };
+        });
+      } else
+        actions = parseFixtureCsv(csv, competitions, schools).map((row) => {
+          const competition = competitions.find(
+            (c) => c.id === row.competition,
+          )!;
+          const fixture = competition.fixtures.find(
+            (f) =>
+              f.round === row.round &&
+              f.home === row.home &&
+              f.away === row.away,
+          );
+          if (!fixture) throw Error("กรุณาสร้างสายแข่งขันก่อนนำเข้าตาราง");
+          return {
+            action: "schedule",
+            id: competition.id,
+            fixtureId: fixture.id,
+            startsAt: row.startsAt,
+            venue: row.venue,
+          };
+        });
+      setPreview(actions);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "อ่าน CSV ไม่สำเร็จ");
+    }
+  }
+  async function confirmImport() {
+    if (!preview) return;
+    setWorking(true);
+    setNotice("");
+    let saved = 0;
+    try {
+      for (const action of preview) {
+        await onMutation(action);
+        saved++;
+      }
+      setPreview(null);
+      setNotice(`บันทึกแล้ว ${saved} รายการ`);
+    } catch (error) {
+      setPreview(null);
+      setNotice(
+        `บันทึกแล้ว ${saved} รายการ กรุณาโหลดข้อมูลก่อนนำเข้าส่วนที่เหลือ: ${error instanceof Error ? error.message : "เกิดข้อผิดพลาด"}`,
       );
     } finally {
-      setLoaded(true);
+      setWorking(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (loaded && storageValid) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(competitions));
-        onChange(competitions);
-      } catch {
-        setStorageValid(false);
-        setMessage("บันทึกข้อมูลในเบราว์เซอร์ไม่สำเร็จ พื้นที่จัดเก็บอาจเต็ม");
-      }
-    }
-  }, [competitions, loaded, storageValid, onChange]);
-
-  const selected = competitions.find(
-    (competition) => competition.id === selectedId,
-  );
-  const assignedSlots = slots;
-
-  function announce(text: string, kind: "error" | "success" = "error") {
-    setMessage(text);
-    setMessageKind(kind);
   }
-
-  function editCompetition(competition: ManagedCompetition) {
-    setSelectedId(competition.id);
-    setDraft({
-      name: competition.name,
-      sport: competition.sport,
-      ageGroup: competition.ageGroup,
-      gender: competition.gender,
-      details: competition.details,
-      starters: competition.starters,
-      reserves: competition.reserves,
-      teamLimit: competition.teamLimit,
-      format: competition.format,
-      winPoints: competition.winPoints,
-      drawPoints: competition.drawPoints,
-      lossPoints: competition.lossPoints,
-    });
-    setSlots(
-      Array.from(
-        { length: Math.max(2, competition.teams.length) },
-        (_, index) => competition.teams[index] || "",
-      ),
+  function template() {
+    const headers =
+      csvKind === "competitions"
+        ? "name,sport,age_group,gender,details,starters,reserves,team_limit,format,win_points,draw_points,loss_points"
+        : csvKind === "teams"
+          ? "competition_name,school_name"
+          : "competition_name,round,home_school,away_school,starts_at,venue";
+    const url = URL.createObjectURL(
+      new Blob(["\ufeff" + headers + "\n"], { type: "text/csv;charset=utf-8" }),
     );
-    setPanel("competitions");
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = csvKind + ".csv";
+    link.click();
+    URL.revokeObjectURL(url);
   }
-
-  function saveCompetition(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const existing = competitions.find((item) => item.id === selectedId);
-    if (
-      existing &&
-      hasFinishedResults(existing.id) &&
-      (existing.sport !== draft.sport ||
-        existing.ageGroup !== draft.ageGroup ||
-        existing.gender !== draft.gender)
-    ) {
-      announce("รายการนี้มีผลยืนยันแล้ว จึงเปลี่ยนกีฬา รุ่น หรือเพศไม่ได้");
-      return;
-    }
-    if (
-      competitions.some(
-        (item) =>
-          item.id !== selectedId &&
-          item.name === draft.name.trim() &&
-          item.sport === draft.sport &&
-          item.ageGroup === draft.ageGroup &&
-          item.gender === draft.gender,
-      )
-    ) {
-      announce("มีรายการชื่อและประเภทเดียวกันอยู่แล้ว");
-      return;
-    }
-    if (
-      existing &&
-      existing.fixtures.length > 0 &&
-      (existing.format !== draft.format ||
-        existing.teamLimit !== draft.teamLimit ||
-        existing.starters !== draft.starters ||
-        existing.reserves !== draft.reserves) &&
-      hasFinishedResults(existing.id)
-    ) {
-      announce("รายการนี้มีผลยืนยันแล้ว จึงห้ามเปลี่ยนรูปแบบหรือโควตา");
-      return;
-    }
-    if (existing && existing.teams.length > draft.teamLimit) {
-      announce(
-        `มีทีมอยู่แล้ว ${existing.teams.length} ทีม ลดโควตาต่ำกว่านี้ไม่ได้`,
-      );
-      return;
-    }
-    if (
-      existing &&
-      existing.fixtures.length > 0 &&
-      existing.format !== draft.format &&
-      !window.confirm(
-        "เปลี่ยนรูปแบบแล้วจะต้องจัดตารางใหม่ ต้องการดำเนินการต่อหรือไม่?",
-      )
-    )
-      return;
-    const next: ManagedCompetition = {
-      ...draft,
-      name: draft.name.trim(),
-      details: draft.details.trim(),
-      id: existing?.id || crypto.randomUUID(),
-      teams: existing?.teams || [],
-      fixtures:
-        existing && existing.format === draft.format ? existing.fixtures : [],
-    };
-    setCompetitions((items) =>
-      existing
-        ? items.map((item) => (item.id === existing.id ? next : item))
-        : [...items, next],
-    );
-    setSelectedId(next.id);
-    announce("รายการแข่งขันบันทึกในเบราว์เซอร์แล้ว", "success");
-  }
-
-  function startNewCompetition() {
-    setSelectedId("");
-    setDraft(blankCompetition());
-    setSlots(["", ""]);
-    setPanel("competitions");
-    setMessage("");
-  }
-
-  function clearCompetitionData() {
-    if (competitions.length === 0) return;
-    if (competitions.some((c) => hasFinishedResults(c.id))) {
-      announce("มีรายการที่ยืนยันผลแล้ว จึงไม่สามารถล้างโปรแกรมทั้งหมดได้");
-      return;
-    }
-    const confirmed = window.confirm(
-      "ล้างรายการแข่งขัน ทีม และตารางทั้งหมดในต้นแบบนี้หรือไม่? ข้อมูลสาธิตส่วนอื่นและ Supabase จะไม่ถูกลบ",
-    );
-    if (!confirmed) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, "[]");
-      setCompetitions([]);
-      setSelectedId("");
-      setDraft(blankCompetition());
-      setSlots(["", ""]);
-      setPreview(null);
-      announce("ล้างรายการแข่งขัน ทีม และตารางในต้นแบบนี้แล้ว", "success");
-    } catch {
-      announce("ล้างข้อมูลไม่สำเร็จ ไม่ได้เปลี่ยนข้อมูลในหน้าจอ");
-    }
-  }
-
-  function chooseCompetition(id: string) {
-    const competition = competitions.find((item) => item.id === id);
-    if (!competition) return;
-    setSelectedId(id);
-    setSlots(
-      Array.from(
-        { length: Math.max(2, competition.teams.length) },
-        (_, index) => competition.teams[index] || "",
-      ),
-    );
-  }
-
-  function updateSlot(index: number, schoolId: string) {
-    setSlots((current) =>
-      current.map((slot, i) => (i === index ? schoolId : slot)),
-    );
-  }
-
-  function moveSlot(from: number, to: number) {
-    setSlots((current) => {
-      const next = [...current];
-      [next[from], next[to]] = [next[to], next[from]];
-      return next;
-    });
-  }
-
-  function createFixtures() {
-    if (!selected) {
-      announce("เลือกรายการแข่งขันก่อนจัดสาย");
-      return;
-    }
-    const teamIds = assignedSlots.filter(Boolean);
-    if (teamIds.length < 2) {
-      announce("เลือกอย่างน้อย 2 โรงเรียนเพื่อจัดสาย");
-      return;
-    }
-    if (new Set(teamIds).size !== teamIds.length) {
-      announce("ไม่สามารถเลือกโรงเรียนซ้ำในรายการเดียวกัน");
-      return;
-    }
-    if (teamIds.length > selected.teamLimit) {
-      announce(`รายการนี้รับได้สูงสุด ${selected.teamLimit} ทีม`);
-      return;
-    }
-    if (hasFinishedResults(selected.id)) {
-      announce("รายการนี้มีผลยืนยันแล้ว จึงไม่สามารถสร้างตารางทับได้");
-      return;
-    }
-    if (
-      selected.fixtures.length &&
-      !window.confirm(
-        "การสร้างใหม่จะแทนที่ตารางตัวอย่างเดิมของรายการนี้ ดำเนินการต่อหรือไม่?",
-      )
-    )
-      return;
-    const fixtures = generateFixtures(selected.format, teamIds);
-    setCompetitions((items) =>
-      items.map((item) =>
-        item.id === selected.id ? { ...item, teams: teamIds, fixtures } : item,
-      ),
-    );
-    announce("จัดสายและสร้างโปรแกรมตัวอย่างแล้ว", "success");
-  }
-
-  function updateFixture(
-    competitionId: string,
-    fixtureId: string,
-    field: "startsAt" | "venue",
-    value: string,
-  ) {
-    const competition = competitions.find((item) => item.id === competitionId);
-    const fixture = competition?.fixtures.find((item) => item.id === fixtureId);
-    if (!competition || !fixture) return;
-    const updated = { ...fixture, [field]: value };
-    if (
-      competitions
-        .flatMap((c) => c.fixtures)
-        .some(
-          (other) => other.id !== fixtureId && fixturesConflict(updated, other),
-        )
-    ) {
-      announce("เวลานี้มีทีมแข่งซ้อนหรือสนามถูกใช้งานแล้ว");
-      return;
-    }
-    setCompetitions((items) =>
-      items.map((competition) =>
-        competition.id === competitionId
-          ? {
-              ...competition,
-              fixtures: competition.fixtures.map((fixture) =>
-                fixture.id === fixtureId
-                  ? { ...fixture, [field]: value }
-                  : fixture,
-              ),
-            }
-          : competition,
-      ),
-    );
-  }
-
-  async function inspectCsv(file?: File) {
-    if (!file) return;
-    if (file.size > 2_000_000) {
-      announce("ไฟล์ CSV ต้องมีขนาดไม่เกิน 2 MB");
-      return;
-    }
-    try {
-      const csv = await file.text();
-      const nextPreview: CsvPreview =
-        csvKind === "competitions"
-          ? { kind: "competitions", rows: parseCompetitionCsv(csv) }
-          : csvKind === "teams"
-            ? {
-                kind: "teams",
-                rows: parseTeamCsv(csv, competitions, schools),
-              }
-            : {
-                kind: "fixtures",
-                rows: parseFixtureCsv(csv, competitions, schools),
-              };
-      setPreview(nextPreview);
-      announce(
-        `ตรวจพบข้อมูล ${nextPreview.rows.length} แถว ตรวจตัวอย่างก่อนยืนยัน`,
-        "success",
-      );
-    } catch (error) {
-      setPreview(null);
-      announce(
-        error instanceof Error ? error.message : "อ่านไฟล์ CSV ไม่สำเร็จ",
-      );
-    }
-  }
-
-  function confirmImport() {
-    if (!preview) return;
-    if (preview.kind === "competitions") {
-      const duplicates = preview.rows.find((row) =>
-        competitions.some(
-          (existing) =>
-            existing.name === row.name &&
-            existing.sport === row.sport &&
-            existing.ageGroup === row.ageGroup &&
-            existing.gender === row.gender,
-        ),
-      );
-      if (duplicates) {
-        announce(
-          `รายการ "${duplicates.name}" มีอยู่แล้ว ยกเลิกการนำเข้าทั้งชุด`,
-        );
-        return;
-      }
-      setCompetitions((current) => [
-        ...current,
-        ...preview.rows.map((row) => ({
-          ...row,
-          id: crypto.randomUUID(),
-          teams: [],
-          fixtures: [],
-        })),
-      ]);
-    } else if (preview.kind === "teams") {
-      const grouped = new Map<string, string[]>();
-      for (const row of preview.rows) {
-        const list = grouped.get(row.competition) || [];
-        list.push(row.school);
-        grouped.set(row.competition, list);
-      }
-      const overflow = [...grouped].find(([id, ids]) => {
-        const competition = competitions.find((item) => item.id === id)!;
-        return competition.teams.length + ids.length > competition.teamLimit;
-      });
-      if (overflow) {
-        announce(
-          `รายการ "${competitions.find((item) => item.id === overflow[0])?.name}" มีทีมเกินโควตา ยกเลิกทั้งชุด`,
-        );
-        return;
-      }
-      setCompetitions((items) =>
-        items.map((competition) => ({
-          ...competition,
-          teams: [...competition.teams, ...(grouped.get(competition.id) || [])],
-        })),
-      );
-    } else {
-      const conflict = preview.rows.find((row) => {
-        const competition = competitions.find(
-          (item) => item.id === row.competition,
-        );
-        return (
-          competitions
-            .flatMap((c) => c.fixtures)
-            .some((fixture) => fixturesConflict(row, fixture)) ||
-          hasFinishedResults(row.competition)
-        );
-      });
-      if (conflict) {
-        announce(
-          `รายการ "${competitions.find((item) => item.id === conflict.competition)?.name}" มีคู่ซ้ำหรือมีผลยืนยันแล้ว ยกเลิกการนำเข้าทั้งชุด`,
-        );
-        return;
-      }
-      const grouped = new Map<string, ManagedFixture[]>();
-      for (const row of preview.rows) {
-        const list = grouped.get(row.competition) || [];
-        const fixture = {
-          id: crypto.randomUUID(),
-          round: row.round,
-          home: row.home,
-          away: row.away,
-          startsAt: row.startsAt,
-          venue: row.venue,
-        };
-        if (
-          [...grouped.values()]
-            .flat()
-            .some((item) => fixturesConflict(fixture, item))
-        ) {
-          announce(
-            "ไฟล์มีทีมแข่งซ้อนหรือใช้สนามเดียวกันในเวลาเดียวกัน ยกเลิกทั้งชุด",
-          );
-          return;
-        }
-        list.push(fixture);
-        grouped.set(row.competition, list);
-      }
-      setCompetitions((items) =>
-        items.map((competition) => {
-          const fixtures = grouped.get(competition.id);
-          return fixtures
-            ? {
-                ...competition,
-                fixtures: [...competition.fixtures, ...fixtures],
-              }
-            : competition;
-        }),
-      );
-    }
-    setPreview(null);
-    announce("นำเข้าข้อมูลตัวอย่างในเบราว์เซอร์แล้ว", "success");
-  }
-
-  function downloadTemplate(kind: CsvPreview["kind"]) {
-    if (kind === "competitions") {
-      csvDownload("competitions-template.csv", [
-        {
-          name: "ฟุตบอล 7 คน ตัวอย่าง",
-          sport: "ฟุตบอล",
-          age_group: "ประถม",
-          gender: "ชาย",
-          details: "ตัวอย่างกติกาและรายละเอียดการแข่งขัน",
-          starters: "7",
-          reserves: "3",
-          team_limit: "10",
-          format: "knockout",
-          win_points: "3",
-          draw_points: "1",
-          loss_points: "0",
-        },
-      ]);
-    } else if (kind === "teams") {
-      const competition = competitions.find((item) =>
-        schools.some((school) => !item.teams.includes(school.id)),
-      );
-      const school = competition
-        ? schools.find((item) => !competition.teams.includes(item.id))
-        : undefined;
-      csvDownload(
-        "competition-teams-template.csv",
-        competition && school
-          ? [
-              {
-                competition_name: competition.name,
-                school_name: school.name,
-              },
-            ]
-          : [{ competition_name: "", school_name: "" }],
-      );
-    } else {
-      const competition = competitions.find((item) => item.teams.length > 1);
-      const home = competition
-        ? schools.find((school) => school.id === competition.teams[0])
-        : undefined;
-      const away = competition
-        ? schools.find((school) => school.id === competition.teams[1])
-        : undefined;
-      csvDownload(
-        "competition-fixtures-template.csv",
-        competition && home && away
-          ? [
-              {
-                competition_name: competition.name,
-                round: "รอบ 1",
-                home_school: home.name,
-                away_school: away.name,
-                starts_at: "2026-11-20T09:00",
-                venue: "สนาม 1",
-              },
-            ]
-          : [
-              {
-                competition_name: "",
-                round: "",
-                home_school: "",
-                away_school: "",
-                starts_at: "",
-                venue: "",
-              },
-            ],
-      );
-    }
-  }
-
-  function previewRows() {
-    if (!preview) return [];
-    if (preview.kind === "competitions")
-      return preview.rows.map((row) => [
-        row.name,
-        row.sport,
-        `${row.ageGroup} / ${row.gender}`,
-        `${row.starters} ตัวจริง + ${row.reserves} สำรอง`,
-        row.format === "knockout" ? "คัดออก" : "พบกันหมด",
-      ]);
-    if (preview.kind === "teams")
-      return preview.rows.map((row) => [
-        competitions.find((item) => item.id === row.competition)?.name || "",
-        schoolLabel(row.school, schools),
-      ]);
-    return preview.rows.map((row) => [
-      competitions.find((item) => item.id === row.competition)?.name || "",
-      row.round,
-      schoolLabel(row.home, schools),
-      schoolLabel(row.away, schools),
-      row.startsAt || "ไม่ระบุ",
-      row.venue || "ไม่ระบุ",
-    ]);
-  }
-
   return (
-    <div className="admin-manager">
-      <div className="admin-preview-notice" role="note">
-        หน้าต้นแบบสำหรับตรวจโครงสร้าง ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น
-        ยังไม่เชื่อม Supabase และไม่แก้ไขผลการแข่งขันจริง
-      </div>
-      <div
-        className="admin-manager-tabs"
-        role="tablist"
-        aria-label="จัดการรายการแข่งขัน"
-      >
+    <div className="admin-competition-manager">
+      <div className="admin-manager-tabs">
         {[
           ["competitions", "รายการแข่งขัน"],
           ["bracket", "จัดสายแข่งขัน"],
-          ["csv", "นำเข้า CSV"],
-        ].map(([value, label]) => (
+          ["csv", "นำเข้าข้อมูล CSV"],
+        ].map(([key, label]) => (
           <button
-            key={value}
             type="button"
-            role="tab"
-            aria-selected={panel === value}
-            className={panel === value ? "active" : ""}
-            onClick={() => setPanel(value as Panel)}
+            key={key}
+            className={panel === key ? "active" : ""}
+            onClick={() => setPanel(key)}
           >
             {label}
           </button>
         ))}
       </div>
-
-      {message && (
-        <p className={`admin-manager-message ${messageKind}`} role="status">
-          {message}
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
         </p>
       )}
-
       {panel === "competitions" && (
-        <div className="admin-manager-grid">
+        <div className="admin-competition-layout">
           <section className="panel">
             <div className="admin-panel-heading">
               <div>
-                <p className="eyebrow">COMPETITION CATALOG</p>
+                <p className="eyebrow">COMPETITIONS</p>
                 <h2>รายการแข่งขัน</h2>
               </div>
-              <div className="admin-competition-actions">
-                <button
-                  type="button"
-                  className="admin-clear-button"
-                  onClick={clearCompetitionData}
-                  disabled={competitions.length === 0}
-                >
-                  <Trash2 aria-hidden="true" /> ล้างข้อมูล
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={startNewCompetition}
-                >
-                  <Plus aria-hidden="true" /> เพิ่มรายการ
-                </button>
-              </div>
+              <Trophy />
             </div>
-            <div className="admin-competition-list">
-              {competitions.map((competition) => (
-                <article
-                  className="admin-competition-card"
-                  key={competition.id}
-                >
-                  <div>
-                    <strong>{competition.name}</strong>
-                    <small>
-                      {competition.sport} · {competition.ageGroup} ·{" "}
-                      {competition.gender}
-                    </small>
-                    <small>
-                      {competition.teams.length}/{competition.teamLimit} ทีม ·{" "}
-                      {competition.format === "knockout"
-                        ? "คัดออก"
-                        : "พบกันหมด"}
-                    </small>
-                  </div>
+            {competitions.length === 0 && (
+              <p className="muted">ยังไม่มีรายการแข่งขัน</p>
+            )}
+            {competitions.map((c) => (
+              <article className="admin-competition-card" key={c.id}>
+                <h3>{c.name}</h3>
+                <p>
+                  {c.sport} · {c.ageGroup} · {c.gender}
+                </p>
+                <p className="muted">{c.details || "ยังไม่ระบุรายละเอียด"}</p>
+                {c.editable !== false && (
+                  <details>
+                    <summary>แก้ไขรายละเอียดรายการ</summary>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const data = new FormData(e.currentTarget);
+                        void mutate({
+                          action: "update",
+                          id: c.id,
+                          revision: c.managementRevision,
+                          competition: {
+                            name: data.get("name"),
+                            details: data.get("details"),
+                            teamLimit: Number(data.get("teamLimit")),
+                            format: data.get("format"),
+                            winPoints: Number(data.get("winPoints")),
+                            drawPoints: Number(data.get("drawPoints")),
+                            lossPoints: Number(data.get("lossPoints")),
+                          },
+                        });
+                      }}
+                    >
+                      <label>
+                        ชื่อรายการ
+                        <input
+                          name="name"
+                          required
+                          defaultValue={c.name}
+                          maxLength={200}
+                        />
+                      </label>
+                      <label>
+                        รายละเอียด
+                        <textarea
+                          name="details"
+                          defaultValue={c.details}
+                          maxLength={2000}
+                        />
+                      </label>
+                      <label>
+                        จำนวนทีมสูงสุด
+                        <input
+                          name="teamLimit"
+                          type="number"
+                          min={Math.max(2, c.teams.length)}
+                          max={100}
+                          defaultValue={c.teamLimit}
+                        />
+                      </label>
+                      <label>
+                        รูปแบบ
+                        <select
+                          name="format"
+                          defaultValue={c.format}
+                          disabled={c.fixtures.length > 0}
+                        >
+                          <option value="knockout">คัดออก</option>
+                          <option value="round_robin">พบกันหมด</option>
+                        </select>
+                      </label>
+                      {(
+                        [
+                          ["winPoints", "คะแนนชนะ", c.winPoints],
+                          ["drawPoints", "คะแนนเสมอ", c.drawPoints],
+                          ["lossPoints", "คะแนนแพ้", c.lossPoints],
+                        ] as const
+                      ).map(([name, label, value]) => (
+                        <label key={name}>
+                          {label}
+                          <input
+                            name={name}
+                            type="number"
+                            min={0}
+                            max={1000}
+                            defaultValue={value}
+                          />
+                        </label>
+                      ))}
+                      <button
+                        type="submit"
+                        className="primary"
+                        disabled={disabled}
+                      >
+                        บันทึกการแก้ไข
+                      </button>
+                    </form>
+                  </details>
+                )}
+                {c.editable === false ? (
+                  <p className="notice">
+                    รายการเดิม: อ่านข้อมูลได้
+                    กรุณาตรวจสอบระเบียบกับผู้จัดก่อนแก้ไข
+                  </p>
+                ) : (
                   <button
                     type="button"
-                    className="ui-button-outline"
-                    onClick={() => editCompetition(competition)}
+                    onClick={() => {
+                      choose(c.id);
+                      setPanel("bracket");
+                    }}
                   >
-                    แก้ไข
+                    จัดสายและโปรแกรม
                   </button>
-                </article>
-              ))}
-              {competitions.length === 0 && (
-                <p className="muted">
-                  ยังไม่มีรายการ เพิ่มรายการใหม่หรือนำเข้า CSV
-                </p>
-              )}
-            </div>
+                )}
+              </article>
+            ))}
           </section>
-
           <section className="panel">
-            <div className="admin-panel-heading">
-              <div>
-                <p className="eyebrow">
-                  {selectedId ? "EDIT DETAILS" : "NEW COMPETITION"}
-                </p>
-                <h2>{selectedId ? "แก้ไขรายการ" : "สร้างรายการแข่งขัน"}</h2>
-              </div>
-            </div>
-            <form className="admin-competition-form" onSubmit={saveCompetition}>
+            <h2>เพิ่มรายการแข่งขัน</h2>
+            <form onSubmit={create}>
               <label>
-                ชื่อการแข่งขัน
+                ประเภทตามระเบียบ
+                <select
+                  value={form.ruleId}
+                  onChange={(e) => selectRule(e.target.value)}
+                >
+                  {RULES.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                ชื่อรายการ
                 <input
-                  value={draft.name}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
                   required
+                  value={form.name}
+                  maxLength={200}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </label>
-              <div className="admin-form-row">
-                <label>
-                  ชนิดกีฬา
-                  <select
-                    value={draft.sport}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        sport: event.target.value,
-                      }))
-                    }
-                  >
-                    {SPORTS.map((sport) => (
-                      <option key={sport}>{sport}</option>
-                    ))}
-                  </select>
-                </label>
+              <div className="form-grid">
                 <label>
                   ระดับ
                   <select
-                    value={draft.ageGroup}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        ageGroup: event.target.value,
-                      }))
+                    value={form.ageGroup}
+                    onChange={(e) =>
+                      setForm({ ...form, ageGroup: e.target.value })
                     }
                   >
-                    {["ประถม", "ขยายโอกาส", "อนุบาล"].map((level) => (
-                      <option key={level}>{level}</option>
+                    {(RULES.find((r) => r.id === form.ruleId)!.levels.length
+                      ? RULES.find((r) => r.id === form.ruleId)!.levels
+                      : ["อนุบาล", "ประถมศึกษา", "มัธยมศึกษา"]
+                    ).map((l) => (
+                      <option key={l}>{l}</option>
                     ))}
                   </select>
                 </label>
                 <label>
                   เพศ
                   <select
-                    value={draft.gender}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        gender: event.target.value,
-                      }))
+                    value={form.gender}
+                    onChange={(e) =>
+                      setForm({ ...form, gender: e.target.value })
                     }
                   >
-                    {["ชาย", "หญิง", "ผสม"].map((gender) => (
-                      <option key={gender}>{gender}</option>
+                    {(RULES.find((r) => r.id === form.ruleId)!.genders.length
+                      ? RULES.find((r) => r.id === form.ruleId)!.genders
+                      : ["ชาย", "หญิง", "ผสม"]
+                    ).map((g) => (
+                      <option key={g}>{g}</option>
                     ))}
                   </select>
                 </label>
+                <label>
+                  รูปแบบ
+                  <select
+                    value={form.format}
+                    onChange={(e) =>
+                      setForm({ ...form, format: e.target.value })
+                    }
+                  >
+                    <option value="knockout">คัดออก</option>
+                    <option value="round_robin">พบกันหมด</option>
+                  </select>
+                </label>
+                <label>
+                  จำนวนทีมสูงสุด
+                  <input
+                    type="number"
+                    min={2}
+                    max={100}
+                    value={form.teamLimit}
+                    onChange={(e) =>
+                      setForm({ ...form, teamLimit: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                {(["winPoints", "drawPoints", "lossPoints"] as const).map(
+                  (key, i) => (
+                    <label key={key}>
+                      {["คะแนนชนะ", "คะแนนเสมอ", "คะแนนแพ้"][i]}
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={form[key]}
+                        onChange={(e) =>
+                          setForm({ ...form, [key]: Number(e.target.value) })
+                        }
+                      />
+                    </label>
+                  ),
+                )}
               </div>
               <label>
-                รายละเอียด / กติกา
+                รายละเอียด
                 <textarea
-                  rows={3}
-                  value={draft.details}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      details: event.target.value,
-                    }))
+                  maxLength={2000}
+                  value={form.details}
+                  onChange={(e) =>
+                    setForm({ ...form, details: e.target.value })
                   }
                 />
               </label>
-              <div className="admin-form-row admin-quota-row">
-                <label>
-                  ตัวจริง
-                  <input
-                    type="number"
-                    min="1"
-                    value={draft.starters}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        starters: Number(event.target.value),
-                      }))
-                    }
-                    required
-                  />
-                </label>
-                <label>
-                  สำรอง
-                  <input
-                    type="number"
-                    min="0"
-                    value={draft.reserves}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        reserves: Number(event.target.value),
-                      }))
-                    }
-                    required
-                  />
-                </label>
-                <label>
-                  ทีมสูงสุด
-                  <input
-                    type="number"
-                    min="2"
-                    value={draft.teamLimit}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        teamLimit: Number(event.target.value),
-                      }))
-                    }
-                    required
-                  />
-                </label>
-              </div>
-              <fieldset className="admin-format-fieldset">
-                <legend>รูปแบบการแข่งขัน</legend>
-                <label className="admin-radio-card">
-                  <input
-                    type="radio"
-                    name="competition-format"
-                    checked={draft.format === "knockout"}
-                    onChange={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        format: "knockout",
-                      }))
-                    }
-                  />
-                  <Trophy aria-hidden="true" />
-                  <span>
-                    <strong>คัดออก</strong>
-                    <small>แพ้แล้วออก จัดสายไปจนถึงรอบชิง</small>
-                  </span>
-                </label>
-                <label className="admin-radio-card">
-                  <input
-                    type="radio"
-                    name="competition-format"
-                    checked={draft.format === "round_robin"}
-                    onChange={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        format: "round_robin",
-                      }))
-                    }
-                  />
-                  <Users aria-hidden="true" />
-                  <span>
-                    <strong>พบกันหมด</strong>
-                    <small>ทุกทีมพบกัน พร้อมเกณฑ์คะแนนชนะ/เสมอ/แพ้</small>
-                  </span>
-                </label>
-              </fieldset>
-              <div className="admin-form-row admin-points-row">
-                {(
-                  [
-                    ["winPoints", "คะแนนชนะ"],
-                    ["drawPoints", "คะแนนเสมอ"],
-                    ["lossPoints", "คะแนนแพ้"],
-                  ] as const
-                ).map(([field, label]) => (
-                  <label key={field}>
-                    {label}
-                    <input
-                      type="number"
-                      min="0"
-                      value={draft[field]}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          [field]: Number(event.target.value),
-                        }))
-                      }
-                      required
-                    />
-                  </label>
-                ))}
-              </div>
-              <button className="primary" type="submit">
-                <Save aria-hidden="true" /> บันทึกรายการ
+              <button className="primary" disabled={disabled}>
+                <Save /> บันทึกรายการ
               </button>
             </form>
           </section>
         </div>
       )}
-
       {panel === "bracket" && (
         <section className="panel admin-bracket-panel">
           <div className="admin-panel-heading">
-            <div>
-              <p className="eyebrow">DRAW & SCHEDULE</p>
-              <h2>จัดสายแข่งขัน</h2>
-              <p className="muted">
-                จัดทีมด้วยการลากวางหรือเลือกโรงเรียนในแต่ละช่อง
-                จากนั้นตรวจโปรแกรมก่อนบันทึก
-              </p>
-            </div>
-            <CalendarDays aria-hidden="true" />
+            <h2>จัดสายแข่งขัน</h2>
+            <CalendarDays />
           </div>
-          <label className="admin-select-competition">
+          <label>
             เลือกรายการแข่งขัน
-            <select
-              value={selectedId}
-              onChange={(event) => chooseCompetition(event.target.value)}
-            >
+            <select value={selectedId} onChange={(e) => choose(e.target.value)}>
               <option value="">เลือกรายการ</option>
-              {competitions.map((competition) => (
-                <option key={competition.id} value={competition.id}>
-                  {competition.name}
+              {competitions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
           </label>
-          {selected ? (
-            <>
-              <div className="admin-draw-info">
-                <strong>{selected.name}</strong>
-                <span>
-                  {selected.format === "knockout" ? "คัดออก" : "พบกันหมด"} ·{" "}
+          {selected &&
+            (selected.editable === false ? (
+              <p className="notice">
+                รายการเดิมไม่ตรงกับระเบียบที่รองรับ
+                แสดงข้อมูลได้โดยไม่แก้ไขข้อมูลเดิม
+              </p>
+            ) : selected.sport === "กรีฑา" ? (
+              <p className="notice">
+                กรีฑาให้จัดรายการวิ่งและบันทึกผลในหน้ากรีฑา
+              </p>
+            ) : (
+              <>
+                <h3>{selected.name}</h3>
+                <p>
+                  {selected.format === "knockout" ? "คัดออก" : "พบกันหมด"} ·
                   รับสูงสุด {selected.teamLimit} ทีม
-                </span>
-              </div>
-              {schools.length === 0 ? (
-                <p className="notice">
-                  ยังไม่มีโรงเรียนในข้อมูลสาธิต
-                  เพิ่ม/นำเข้าโรงเรียนก่อนจึงจะจัดทีมได้
                 </p>
-              ) : (
-                <>
-                  <label className="admin-slot-count">
-                    จำนวนทีมที่จะจัดสาย
-                    <input
-                      type="number"
-                      min="2"
-                      max={Math.min(selected.teamLimit, schools.length)}
-                      value={slots.length}
-                      onChange={(event) => {
-                        const length = Math.max(2, Number(event.target.value));
-                        setSlots((current) =>
-                          Array.from(
-                            { length },
-                            (_, index) => current[index] || "",
-                          ),
-                        );
-                      }}
-                    />
-                  </label>
-                  <div className="admin-available-schools">
-                    <strong>ลากโรงเรียนมาวางในช่องทีม</strong>
-                    <div>
-                      {schools
-                        .filter((school) => !assignedSlots.includes(school.id))
-                        .map((school) => (
-                          <button
-                            key={school.id}
-                            type="button"
-                            draggable
-                            onDragStart={(event) =>
-                              event.dataTransfer.setData(
-                                "application/x-school-id",
-                                school.id,
+                {!selected.fixtures.length && (
+                  <>
+                    <label>
+                      จำนวนทีมที่จะจัดสาย
+                      <input
+                        type="number"
+                        min={2}
+                        max={Math.min(selected.teamLimit, schools.length)}
+                        value={teams.length}
+                        onChange={(e) =>
+                          setTeams(
+                            Array.from(
+                              {
+                                length: Math.max(
+                                  2,
+                                  Math.min(
+                                    selected.teamLimit,
+                                    Number(e.target.value),
+                                  ),
+                                ),
+                              },
+                              (_, i) => teams[i] || "",
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <div className="admin-team-slots">
+                      {teams.map((id, i) => (
+                        <label className="admin-team-slot" key={i}>
+                          ทีม {i + 1}
+                          <select
+                            aria-label={`ทีม ${i + 1}`}
+                            value={id}
+                            onChange={(e) =>
+                              setTeams(
+                                teams.map((v, j) =>
+                                  j === i ? e.target.value : v,
+                                ),
                               )
                             }
                           >
-                            <GripVertical aria-hidden="true" />
-                            {schoolLabel(school.id, schools)}
-                          </button>
-                        ))}
+                            <option value="">เลือกโรงเรียน</option>
+                            {schools
+                              .filter(
+                                (s) => !teams.includes(s.id) || id === s.id,
+                              )
+                              .map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      ))}
                     </div>
-                  </div>
-                  <div className="admin-team-slots">
-                    {assignedSlots.map((schoolId, index) => (
-                      <div
-                        key={index}
-                        className="admin-team-slot"
-                        draggable={!!schoolId}
-                        onDragStart={(event) =>
-                          event.dataTransfer.setData(
-                            "text/plain",
-                            String(index),
-                          )
-                        }
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const schoolId = event.dataTransfer.getData(
-                            "application/x-school-id",
-                          );
-                          if (schoolId) {
-                            updateSlot(index, schoolId);
-                            return;
-                          }
-                          const from = Number(
-                            event.dataTransfer.getData("text/plain"),
-                          );
-                          if (Number.isInteger(from)) moveSlot(from, index);
-                        }}
-                      >
-                        <GripVertical aria-hidden="true" />
-                        <span>ทีม {index + 1}</span>
-                        <select
-                          aria-label={`ทีม ${index + 1}`}
-                          value={schoolId}
-                          onChange={(event) =>
-                            updateSlot(index, event.target.value)
-                          }
-                        >
-                          <option value="">เลือกโรงเรียน</option>
-                          {schools
-                            .filter(
-                              (school) =>
-                                !assignedSlots.includes(school.id) ||
-                                school.id === schoolId,
-                            )
-                            .map((school) => (
-                              <option key={school.id} value={school.id}>
-                                {schoolLabel(school.id, schools)}
-                              </option>
-                            ))}
-                        </select>
-                        <div className="admin-slot-move">
-                          <button
-                            type="button"
-                            aria-label={`เลื่อนทีม ${index + 1} ขึ้น`}
-                            disabled={index === 0}
-                            onClick={() => moveSlot(index, index - 1)}
-                          >
-                            <ArrowUp aria-hidden="true" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`เลื่อนทีม ${index + 1} ลง`}
-                            disabled={index === assignedSlots.length - 1}
-                            onClick={() => moveSlot(index, index + 1)}
-                          >
-                            <ArrowDown aria-hidden="true" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                    <button
+                      className="primary"
+                      type="button"
+                      disabled={disabled || teams.some((t) => !t)}
+                      onClick={() =>
+                        mutate({
+                          action: "draw",
+                          id: selected.id,
+                          revision: selected.managementRevision,
+                          teams,
+                        })
+                      }
+                    >
+                      สร้างสายและบันทึกโปรแกรม
+                    </button>
+                  </>
+                )}
+                {selected.fixtures.length > 0 && (
                   <button
                     type="button"
-                    className="primary"
-                    onClick={createFixtures}
+                    disabled={disabled}
+                    onClick={() =>
+                      mutate({
+                        action: "draw",
+                        id: selected.id,
+                        revision: selected.managementRevision,
+                        teams: selected.teams,
+                      })
+                    }
                   >
-                    <Trophy aria-hidden="true" /> สร้างตัวอย่างสายและโปรแกรม
+                    ตรวจสอบและบันทึกคู่ที่พร้อมแข่งขัน
                   </button>
-                </>
-              )}
-              {selected.fixtures.length > 0 && (
+                )}
                 <div className="admin-fixture-list">
-                  <h3>ตัวอย่างโปรแกรมแข่งขัน</h3>
-                  {selected.fixtures.map((fixture) => (
-                    <div className="admin-fixture-row" key={fixture.id}>
-                      <strong>{fixture.round}</strong>
+                  {selected.fixtures.map((f) => (
+                    <form
+                      className="admin-fixture-row"
+                      key={f.id + f.startsAt + f.venue}
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const data = new FormData(e.currentTarget);
+                        void mutate({
+                          action: "schedule",
+                          id: selected.id,
+                          revision: selected.managementRevision,
+                          fixtureId: f.id,
+                          startsAt: data.get("startsAt"),
+                          venue: data.get("venue"),
+                        });
+                      }}
+                    >
+                      <strong>{f.round}</strong>
                       <span>
-                        {schoolLabel(fixture.home, schools)} <b>พบ</b>{" "}
-                        {schoolLabel(fixture.away, schools)}
+                        {schoolName(f.home)} พบ {schoolName(f.away)}
                       </span>
                       <label>
                         วันเวลา
                         <input
                           type="datetime-local"
-                          value={fixture.startsAt}
-                          onChange={(event) =>
-                            updateFixture(
-                              selected.id,
-                              fixture.id,
-                              "startsAt",
-                              event.target.value,
-                            )
-                          }
+                          name="startsAt"
+                          defaultValue={f.startsAt}
                         />
                       </label>
                       <label>
                         สนาม
                         <input
-                          value={fixture.venue}
-                          onChange={(event) =>
-                            updateFixture(
-                              selected.id,
-                              fixture.id,
-                              "venue",
-                              event.target.value,
-                            )
-                          }
+                          name="venue"
+                          defaultValue={f.venue}
+                          maxLength={200}
                         />
                       </label>
-                    </div>
+                      <button disabled={disabled} type="submit">
+                        บันทึกโปรแกรม
+                      </button>
+                    </form>
                   ))}
                 </div>
-              )}
-            </>
-          ) : (
-            <p className="muted">สร้างหรือเลือกการแข่งขันก่อนจัดสาย</p>
-          )}
+              </>
+            ))}
         </section>
       )}
-
       {panel === "csv" && (
         <section className="panel admin-csv-panel">
           <div className="admin-panel-heading">
-            <div>
-              <p className="eyebrow">BULK DATA TOOLS</p>
-              <h2>นำเข้าข้อมูล CSV</h2>
-              <p className="muted">
-                ดาวน์โหลดไฟล์ตัวอย่าง แก้ไข
-                แล้วนำเข้าเพื่อดูตัวอย่างและตรวจข้อผิดพลาดก่อนยืนยัน
-              </p>
-              <p className="muted">
-                CSV รายการแข่งขันมีแถวตัวอย่าง
-                โปรดแก้ไขหรือลบแถวนี้ก่อนนำเข้าจริง
-              </p>
-            </div>
-            <FileUp aria-hidden="true" />
+            <h2>นำเข้าข้อมูล CSV</h2>
+            <FileUp />
           </div>
-          <div className="admin-csv-actions">
-            {(
-              [
-                ["competitions", "รายการแข่งขัน"],
-                ["teams", "รายชื่อทีม"],
-                ["fixtures", "ตารางแข่งขัน"],
-              ] as const
-            ).map(([kind, label]) => (
-              <div className="admin-csv-action" key={kind}>
-                <strong>{label}</strong>
-                <button type="button" onClick={() => downloadTemplate(kind)}>
-                  <Download aria-hidden="true" /> ดาวน์โหลดตัวอย่าง CSV
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="admin-import-control">
-            <label>
-              ประเภทข้อมูล
-              <select
-                value={csvKind}
-                onChange={(event) => {
-                  setCsvKind(event.target.value as CsvPreview["kind"]);
-                  setPreview(null);
-                }}
-              >
-                <option value="competitions">รายการแข่งขัน</option>
-                <option value="teams">รายชื่อทีม</option>
-                <option value="fixtures">ตารางแข่งขัน</option>
-              </select>
-            </label>
-            <label>
-              เลือกไฟล์ CSV
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(event) => inspectCsv(event.target.files?.[0])}
-              />
-            </label>
-          </div>
+          <p className="muted">
+            ตรวจสอบข้อมูลก่อนยืนยัน
+            รายชื่อทีมจะสร้างสายและโปรแกรมให้รายการที่ยังไม่มีโปรแกรม
+            ตารางแข่งขันใช้แก้วันเวลาและสนามของคู่ที่จัดไว้แล้ว
+          </p>
+          <label>
+            ประเภทข้อมูล
+            <select
+              value={csvKind}
+              onChange={(e) => {
+                setCsvKind(e.target.value);
+                setPreview(null);
+              }}
+            >
+              <option value="competitions">รายการแข่งขัน</option>
+              <option value="teams">รายชื่อทีม</option>
+              <option value="fixtures">ตารางแข่งขัน</option>
+            </select>
+          </label>
+          <button type="button" onClick={template}>
+            ดาวน์โหลดแม่แบบ CSV
+          </button>
+          <label>
+            เลือกไฟล์ CSV
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => inspect(e.target.files?.[0])}
+            />
+          </label>
           {preview && (
             <div className="admin-csv-preview">
-              <h3>ตรวจสอบก่อนนำเข้า · {preview.rows.length} แถว</h3>
-              <div className="admin-csv-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      {(preview.kind === "competitions"
-                        ? ["ชื่อ", "กีฬา", "รุ่น / เพศ", "โควตา", "รูปแบบ"]
-                        : preview.kind === "teams"
-                          ? ["รายการ", "โรงเรียน"]
-                          : [
-                              "รายการ",
-                              "รอบ",
-                              "ทีม A",
-                              "ทีม B",
-                              "วันเวลา",
-                              "สนาม",
-                            ]
-                      ).map((header) => (
-                        <th key={header}>{header}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows().map((row, index) => (
-                      <tr key={index}>
-                        {row.map((cell, cellIndex) => (
-                          <td key={cellIndex}>{cell}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="admin-import-confirm">
-                <p>
-                  ข้อมูลที่ยืนยันจะบันทึกในเบราว์เซอร์นี้เท่านั้น
-                  และจะไม่เขียนทับผลการแข่งขันเดิม
-                </p>
-                <button type="button" onClick={() => setPreview(null)}>
-                  ยกเลิก
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={confirmImport}
-                >
-                  ยืนยันนำเข้า
-                </button>
-              </div>
+              <h3>ตรวจสอบก่อนนำเข้า · {preview.length} รายการ</h3>
+              <ol>
+                {preview.map((action, index) => {
+                  const competition = competitions.find(
+                    (c) => c.id === action.id,
+                  );
+                  const created = action.competition as
+                    CompetitionCsvRow | undefined;
+                  return (
+                    <li key={index}>
+                      {created
+                        ? `${created.name} · ${created.sport} · ${created.ageGroup} · ${created.gender}`
+                        : action.action === "draw"
+                          ? `${competition?.name} · ${(action.teams as string[]).map(schoolName).join(", ")}`
+                          : `${competition?.name} · ${action.startsAt || "ยังไม่กำหนดเวลา"} · ${action.venue || "ยังไม่กำหนดสนาม"}`}
+                    </li>
+                  );
+                })}
+              </ol>
+              <p>
+                ข้อมูลจะบันทึกลงระบบจริงทีละรายการ หากพบข้อผิดพลาด
+                รายการที่สำเร็จแล้วจะยังคงอยู่
+              </p>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                disabled={disabled}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={confirmImport}
+                disabled={disabled}
+              >
+                ยืนยันนำเข้า
+              </button>
             </div>
           )}
         </section>
@@ -1235,3 +704,4 @@ export default function AdminCompetitionManager({
     </div>
   );
 }
+export default AdminCompetitionManager;

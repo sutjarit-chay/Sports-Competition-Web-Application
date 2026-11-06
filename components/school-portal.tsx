@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Papa from "papaparse";
 import { Download, School as SchoolIcon } from "lucide-react";
 import type { Athlete, State } from "@/lib/domain";
-import type { ManagedCompetition } from "@/lib/admin-competitions";
 import {
   compatibleRules,
   defaultPolicy,
@@ -13,14 +12,22 @@ import {
   type RegistrationPolicy,
 } from "@/lib/registration";
 import { RosterRegistrationPanel } from "@/components/registration-panel";
-import {
-  SCHOOL_PROFILE_KEY,
-  parseSchoolProfiles,
-  type SchoolProfile,
-} from "@/lib/school-profiles";
-
-const COMPETITIONS_KEY = "kosamphi-admin-competitions-v1";
-const STAFF_KEY = "kosamphi-school-staff-v1";
+type SchoolProfile = {
+  shortName: string;
+  schoolType: string;
+  logo: string;
+  contactName: string;
+  contactPhone: string;
+  address: string;
+};
+const emptyProfile: SchoolProfile = {
+  shortName: "",
+  schoolType: "",
+  logo: "",
+  contactName: "",
+  contactPhone: "",
+  address: "",
+};
 
 type Competition = {
   id: string;
@@ -41,42 +48,6 @@ type Staff = {
   phone: string;
 };
 type SchoolPortalPage = "profile" | "roster";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isManagedCompetition(value: unknown): value is ManagedCompetition {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    typeof value.sport === "string" &&
-    typeof value.ageGroup === "string" &&
-    typeof value.gender === "string" &&
-    typeof value.details === "string" &&
-    Number.isInteger(value.starters) &&
-    Number.isInteger(value.reserves) &&
-    Number.isInteger(value.teamLimit) &&
-    (value.format === "knockout" || value.format === "round_robin") &&
-    Number.isInteger(value.winPoints) &&
-    Number.isInteger(value.drawPoints) &&
-    Number.isInteger(value.lossPoints) &&
-    Array.isArray(value.teams) &&
-    value.teams.every((id) => typeof id === "string") &&
-    Array.isArray(value.fixtures) &&
-    value.fixtures.every(
-      (fixture) =>
-        isRecord(fixture) &&
-        typeof fixture.id === "string" &&
-        typeof fixture.round === "string" &&
-        typeof fixture.home === "string" &&
-        typeof fixture.away === "string" &&
-        typeof fixture.startsAt === "string" &&
-        typeof fixture.venue === "string",
-    )
-  );
-}
 
 function csvDownload(filename: string, rows: Record<string, string>[]) {
   const blob = new Blob(["\uFEFF" + Papa.unparse(rows)], {
@@ -136,32 +107,28 @@ function readLogo(file: File) {
 
 export default function SchoolPortal({
   page,
-  demo,
+  accessToken,
   schoolId,
   schools,
   athletes,
   competitions: hostedCompetitions,
-  demoPolicies,
   busy,
-  onChooseSchool,
-  onCreateDemoSchool,
   onSaveSchool,
+  onSaved,
   onSaveAthletes,
   onImportAthletes,
   onDownloadAthleteTemplate,
   onDownloadSchoolCodes,
 }: {
   page: SchoolPortalPage;
-  demo: boolean;
+  accessToken: string;
   schoolId: string;
   schools: School[];
   athletes: Athlete[];
   competitions: Competition[];
-  demoPolicies: Record<string, RegistrationPolicy>;
   busy: boolean;
-  onChooseSchool: (id: string) => void;
-  onCreateDemoSchool: () => void;
   onSaveSchool: (school: School) => Promise<void>;
+  onSaved?: () => Promise<void>;
   onSaveAthletes: (rows: Athlete[]) => Promise<void>;
   onImportAthletes: (file: File, competitionId: string) => Promise<void>;
   onDownloadAthleteTemplate: (
@@ -170,12 +137,14 @@ export default function SchoolPortal({
   ) => void;
   onDownloadSchoolCodes: () => void;
 }) {
-  const [managedCompetitions, setManagedCompetitions] = useState<
-    ManagedCompetition[]
-  >([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, SchoolProfile>>({});
+  const [extraProfile, setExtraProfile] = useState<SchoolProfile>(emptyProfile);
+  const [profileVersion, setProfileVersion] = useState<string | null>(null);
+  const [staffVersion, setStaffVersion] = useState<string | null>(null);
+  const [profileReady, setProfileReady] = useState(false);
+  const [staffReady, setStaffReady] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [storageError, setStorageError] = useState("");
   const [formError, setFormError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -197,85 +166,69 @@ export default function SchoolPortal({
     address: "",
   });
 
+  async function api(path: string, body?: unknown) {
+    const response = await fetch(path, {
+      method: body ? "PUT" : "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      cache: "no-store",
+    });
+    const data = await response.json();
+    if (!response.ok)
+      throw Error(data.error || "เชื่อมต่อข้อมูลโรงเรียนไม่สำเร็จ");
+    return data;
+  }
   useEffect(() => {
-    try {
-      setProfiles(
-        parseSchoolProfiles(localStorage.getItem(SCHOOL_PROFILE_KEY)),
-      );
-      if (!demo) {
-        setManagedCompetitions([]);
-        return;
-      }
-      const savedCompetitions = localStorage.getItem(COMPETITIONS_KEY);
-      if (savedCompetitions) {
-        const parsed: unknown = JSON.parse(savedCompetitions);
-        if (!Array.isArray(parsed) || !parsed.every(isManagedCompetition))
-          throw Error("ข้อมูลรายการแข่งขันสาธิตไม่ถูกต้อง");
-        setManagedCompetitions(parsed);
-      }
-      const savedStaff = localStorage.getItem(STAFF_KEY);
-      if (savedStaff) {
-        const parsed: unknown = JSON.parse(savedStaff);
-        if (
-          !Array.isArray(parsed) ||
-          !parsed.every(
-            (item) =>
-              isRecord(item) &&
-              typeof item.id === "string" &&
-              typeof item.school_id === "string" &&
-              typeof item.competition_id === "string" &&
-              typeof item.name === "string" &&
-              typeof item.title === "string" &&
-              typeof item.phone === "string",
-          )
-        )
-          throw Error("ข้อมูลครู/ผู้ฝึกสอนสาธิตไม่ถูกต้อง");
-        setStaff(parsed);
-      }
-    } catch (error) {
-      setStorageError(
-        error instanceof Error ? error.message : "อ่านข้อมูลสาธิตไม่สำเร็จ",
-      );
-    }
-  }, [demo]);
-
-  function persistStaffRows(rows: Staff[]) {
-    try {
-      localStorage.setItem(STAFF_KEY, JSON.stringify(rows));
-      setStaff(rows);
-      setStorageError("");
-      return true;
-    } catch {
-      setStorageError("บันทึกข้อมูลสาธิตไม่สำเร็จ พื้นที่จัดเก็บอาจเต็ม");
-      return false;
-    }
-  }
-
-  function persistSchoolProfiles(value: Record<string, SchoolProfile>) {
-    try {
-      localStorage.setItem(SCHOOL_PROFILE_KEY, JSON.stringify(value));
-      setProfiles(value);
-      setStorageError("");
-      return true;
-    } catch {
-      setStorageError("บันทึกข้อมูลสาธิตไม่สำเร็จ พื้นที่จัดเก็บอาจเต็ม");
-      return false;
-    }
-  }
-
-  const competitions = useMemo<Competition[]>(
-    () =>
-      demo
-        ? managedCompetitions.map((item) => ({
-            id: item.id,
-            name: item.name,
-            sport: item.sport,
-            age_group: item.ageGroup,
-            gender: item.gender,
-          }))
-        : hostedCompetitions,
-    [demo, hostedCompetitions, managedCompetitions],
-  );
+    let active = true;
+    setProfileReady(false);
+    setExtraProfile(emptyProfile);
+    setProfileVersion(null);
+    setStorageError("");
+    if (schoolId && accessToken)
+      void api(`/api/school-profile?schoolId=${encodeURIComponent(schoolId)}`)
+        .then((data) => {
+          if (active) {
+            setExtraProfile(data.profile);
+            setProfileVersion(data.version);
+            setProfileReady(true);
+          }
+        })
+        .catch((error) => {
+          if (active) setStorageError(error.message);
+        });
+    return () => {
+      active = false;
+    };
+  }, [schoolId, accessToken]);
+  useEffect(() => {
+    let active = true;
+    setStaffReady(false);
+    setStaff([]);
+    setStaffVersion(null);
+    setEditingStaffId("");
+    setStaffDraft({ name: "", title: "", phone: "" });
+    if (schoolId && selectedCompetitionId && accessToken)
+      void api(
+        `/api/coaches?schoolId=${encodeURIComponent(schoolId)}&competitionId=${encodeURIComponent(selectedCompetitionId)}`,
+      )
+        .then((data) => {
+          if (active) {
+            setStaff(data.coaches);
+            setStaffVersion(data.version);
+            setStaffReady(true);
+          }
+        })
+        .catch((error) => {
+          if (active) setStorageError(error.message);
+        });
+    return () => {
+      active = false;
+    };
+  }, [schoolId, selectedCompetitionId, accessToken]);
+  const competitions = hostedCompetitions;
 
   useEffect(() => {
     if (!competitions.some((item) => item.id === selectedCompetitionId))
@@ -286,29 +239,13 @@ export default function SchoolPortal({
   const selectedCompetition = competitions.find(
     (item) => item.id === selectedCompetitionId,
   );
-  const extraProfile = schoolId
-    ? profiles[schoolId] || {
-        shortName: "",
-        logo: "",
-        contactName: "",
-        contactPhone: "",
-        address: "",
-      }
-    : {
-        shortName: "",
-        logo: "",
-        contactName: "",
-        contactPhone: "",
-        address: "",
-      };
-
   useEffect(() => {
     setProfileDraft({
       name: selectedSchool?.name || "",
-      school_type: selectedSchool?.school_type || "",
+      school_type: extraProfile.schoolType,
       ...extraProfile,
-      shortName: selectedSchool?.short_name || extraProfile.shortName,
-      logo: selectedSchool?.logo || extraProfile.logo,
+      shortName: extraProfile.shortName,
+      logo: extraProfile.logo,
     });
   }, [
     selectedSchool,
@@ -317,18 +254,14 @@ export default function SchoolPortal({
     extraProfile.address,
     extraProfile.shortName,
     extraProfile.logo,
+    extraProfile.schoolType,
   ]);
 
   const competitionAthletes = selectedCompetition
     ? athletes.filter(
         (athlete) =>
           athlete.school_id === schoolId &&
-          (athlete.competition_id
-            ? athlete.competition_id === selectedCompetition.id
-            : demo &&
-              athlete.sport === selectedCompetition.sport &&
-              athlete.gender === selectedCompetition.gender &&
-              athlete.division === selectedCompetition.age_group),
+          athlete.competition_id === selectedCompetition.id,
       )
     : [];
   const competitionStaff = staff.filter(
@@ -347,18 +280,17 @@ export default function SchoolPortal({
     ? ruleId
     : rules[0]?.id || "";
   const activePolicy = activeRuleId
-    ? demo
-      ? demoPolicies[activeRuleId] || defaultPolicy(activeRuleId)
-      : selectedCompetition?.registration_policy?.ruleId === activeRuleId
-        ? selectedCompetition.registration_policy
-        : defaultPolicy(activeRuleId)
+    ? selectedCompetition?.registration_policy?.ruleId === activeRuleId
+      ? selectedCompetition.registration_policy
+      : defaultPolicy(activeRuleId)
     : null;
   const activeRuleEnabled =
-    demo || selectedCompetition?.registration_policy?.ruleId === activeRuleId;
+    selectedCompetition?.registration_policy?.ruleId === activeRuleId;
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
+    setStatusMessage("");
     if (!selectedSchool) {
       setFormError("ไม่พบบัญชีโรงเรียนที่กำลังแก้ไข");
       return;
@@ -366,33 +298,46 @@ export default function SchoolPortal({
     try {
       const name = profileDraft.name.trim();
       if (!name) throw Error("กรอกชื่อโรงเรียน");
-      await onSaveSchool({
-        ...selectedSchool,
-        name,
-        short_name: profileDraft.shortName.trim(),
-        logo: profileDraft.logo,
-        ...(demo && profileDraft.school_type
-          ? {
-              school_type: profileDraft.school_type as "ขนาดเล็ก" | "ขยายโอกาส",
-            }
-          : {}),
-      });
-      const nextProfiles = {
-        ...profiles,
-        [schoolId]: {
-          shortName: profileDraft.shortName.trim(),
-          logo: profileDraft.logo,
-          contactName: demo
-            ? profileDraft.contactName.trim()
-            : extraProfile.contactName,
-          contactPhone: demo
-            ? profileDraft.contactPhone.trim()
-            : extraProfile.contactPhone,
-          address: demo ? profileDraft.address.trim() : extraProfile.address,
-        },
-      };
-      if (!persistSchoolProfiles(nextProfiles))
-        throw Error("บันทึกข้อมูลเพิ่มเติมของโรงเรียนไม่สำเร็จ");
+      if (!profileReady) throw Error("กรุณารอโหลดข้อมูลโรงเรียนก่อนบันทึก");
+      setSaving(true);
+      let nameSaved = false;
+      try {
+        if (name !== selectedSchool.name) {
+          await onSaveSchool({ ...selectedSchool, name });
+          nameSaved = true;
+        }
+        const data = await api("/api/school-profile", {
+          schoolId,
+          expectedVersion: profileVersion,
+          profile: {
+            shortName: profileDraft.shortName.trim(),
+            schoolType: profileDraft.school_type,
+            logo: profileDraft.logo,
+            contactName: profileDraft.contactName.trim(),
+            contactPhone: profileDraft.contactPhone.trim(),
+            address: profileDraft.address.trim(),
+          },
+        });
+        setExtraProfile(data.profile);
+        setProfileVersion(data.version);
+      } catch (error) {
+        if (nameSaved)
+          throw Error(
+            `บันทึกชื่อโรงเรียนแล้ว แต่ข้อมูลเพิ่มเติมไม่สำเร็จ: ${error instanceof Error ? error.message : "กรุณาลองใหม่"}`,
+          );
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+      if (onSaved) {
+        try {
+          await onSaved();
+        } catch {
+          throw Error(
+            "บันทึกข้อมูลโรงเรียนแล้ว แต่โหลดข้อมูลแสดงผลใหม่ไม่สำเร็จ กรุณาโหลดหน้าอีกครั้ง",
+          );
+        }
+      }
       setStatusMessage("บันทึกข้อมูลโรงเรียนแล้ว");
     } catch (error) {
       setFormError(
@@ -435,24 +380,25 @@ export default function SchoolPortal({
     }
   }
 
-  async function submitRegistration(rows: Athlete[], form: FormData) {
-    const name = String(form.get("staff-name") || "").trim();
-    const title = String(form.get("staff-title") || "").trim();
-    const phone = String(form.get("staff-phone") || "").trim();
-    const existing = staff.find((item) => item.id === editingStaffId);
-    const hasStaffData = !!(editingStaffId || name || title || phone);
-    if (editingStaffId && !existing)
-      throw Error("ไม่พบข้อมูลครู/ผู้ฝึกสอนที่กำลังแก้ไข");
-    if (hasStaffData && (!name || !title))
-      throw Error("กรอกชื่อและหน้าที่ของครู/ผู้ฝึกสอนให้ครบ");
-    if (hasStaffData && (!demo || !selectedCompetition))
-      throw Error("ไม่สามารถลงทะเบียนครู/ผู้ฝึกสอนในรายการนี้ได้");
-
-    const previousStaff = staff;
-    if (hasStaffData) {
-      const nextStaff = existing
+  async function submitRegistration(rows: Athlete[]) {
+    if (rows.length) await onSaveAthletes(rows);
+    setStatusMessage("ลงทะเบียนนักกีฬาแล้ว");
+  }
+  async function saveCoach() {
+    setFormError("");
+    setStatusMessage("");
+    try {
+      if (!staffReady || !selectedCompetition)
+        throw Error("กรุณารอโหลดผู้ฝึกสอนก่อนบันทึก");
+      const name = staffDraft.name.trim(),
+        title = staffDraft.title.trim(),
+        phone = staffDraft.phone.trim();
+      if (!name || !title)
+        throw Error("กรอกชื่อและหน้าที่ของครู/ผู้ฝึกสอนให้ครบ");
+      setSaving(true);
+      const next = editingStaffId
         ? staff.map((item) =>
-            item.id === existing.id ? { ...item, name, title, phone } : item,
+            item.id === editingStaffId ? { ...item, name, title, phone } : item,
           )
         : [
             ...staff,
@@ -465,33 +411,24 @@ export default function SchoolPortal({
               phone,
             },
           ];
-      if (!persistStaffRows(nextStaff))
-        throw Error("บันทึกข้อมูลครู/ผู้ฝึกสอนไม่สำเร็จ");
-    }
-
-    try {
-      if (rows.length) await onSaveAthletes(rows);
+      const data = await api("/api/coaches", {
+        schoolId,
+        competitionId: selectedCompetitionId,
+        expectedVersion: staffVersion,
+        coaches: next,
+      });
+      setStaff(data.coaches);
+      setStaffVersion(data.version);
+      setEditingStaffId("");
+      setStaffDraft({ name: "", title: "", phone: "" });
+      setStatusMessage("บันทึกครู/ผู้ฝึกสอนแล้ว");
     } catch (error) {
-      if (hasStaffData && !persistStaffRows(previousStaff))
-        throw Error(
-          "ลงทะเบียนนักกีฬาไม่สำเร็จ และคืนค่าข้อมูลครู/ผู้ฝึกสอนไม่สำเร็จ กรุณาตรวจสอบข้อมูล",
-        );
-      throw error;
+      setFormError(
+        error instanceof Error ? error.message : "บันทึกผู้ฝึกสอนไม่สำเร็จ",
+      );
+    } finally {
+      setSaving(false);
     }
-    setEditingStaffId("");
-    setStaffDraft({ name: "", title: "", phone: "" });
-    setStatusMessage(
-      [
-        rows.length ? "ลงทะเบียนนักกีฬาแล้ว" : "",
-        hasStaffData
-          ? existing
-            ? "บันทึกการแก้ไขครู/ผู้ฝึกสอนแล้ว"
-            : "ลงทะเบียนครู/ผู้ฝึกสอนแล้ว"
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" และ "),
-    );
   }
 
   function downloadAthletes() {
@@ -530,66 +467,16 @@ export default function SchoolPortal({
     return (
       <section className="panel school-portal-empty">
         <SchoolIcon aria-hidden="true" />
-        <h2>
-          {demo ? "เลือกโรงเรียนสำหรับโหมดสาธิต" : "บัญชียังไม่ผูกโรงเรียน"}
-        </h2>
+        <h2>บัญชียังไม่ผูกโรงเรียน</h2>
         <p className="muted">
-          {demo
-            ? "เลือกโรงเรียนที่มีในข้อมูลสาธิต หรือสร้างรายการตัวอย่างเพื่อทดลองหน้าของโรงเรียน"
-            : "กรุณาติดต่อผู้ดูแลระบบให้ผูกบัญชีกับโรงเรียนก่อนใช้งาน"}
+          กรุณาติดต่อผู้ดูแลระบบให้ผูกบัญชีกับโรงเรียนก่อนใช้งาน
         </p>
-        {demo && schools.length > 0 && (
-          <label>
-            โรงเรียน
-            <select
-              aria-label="เลือกโรงเรียนสำหรับโหมดสาธิต"
-              value={schoolId}
-              onChange={(event) => onChooseSchool(event.target.value)}
-            >
-              <option value="">เลือกโรงเรียน</option>
-              {schools.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.short_name || item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {demo && (
-          <button
-            type="button"
-            className="primary"
-            onClick={onCreateDemoSchool}
-          >
-            สร้างโรงเรียนตัวอย่างในเบราว์เซอร์
-          </button>
-        )}
       </section>
     );
   }
 
   return (
     <div className="school-portal">
-      <div className="admin-preview-notice" role="note">
-        {demo
-          ? "โหมดสาธิต: บันทึกข้อมูลโรงเรียนและผู้ฝึกสอนไว้ในเบราว์เซอร์นี้เท่านั้น"
-          : "ข้อมูลโรงเรียนและนักกีฬาใช้สิทธิ์ตาม Supabase RLS; ส่วนผู้ฝึกสอนและข้อมูลติดต่อยังไม่เชื่อมฐานข้อมูล"}
-      </div>
-      {schools.length > 1 && demo && (
-        <label className="school-portal-school-picker">
-          โรงเรียนที่กำลังจัดการ
-          <select
-            value={schoolId}
-            onChange={(event) => onChooseSchool(event.target.value)}
-          >
-            {schools.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.short_name || item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
       {storageError && (
         <p className="feedback feedback-error" role="alert">
           {storageError}
@@ -644,7 +531,7 @@ export default function SchoolPortal({
                 setEditingStaffId("");
                 setStaffDraft({ name: "", title: "", phone: "" });
               }}
-              disabled={!competitions.length}
+              disabled={!competitions.length || busy || saving}
             >
               {!competitions.length && <option value="">ยังไม่มีรายการ</option>}
               {competitions.map((item) => (
@@ -659,12 +546,6 @@ export default function SchoolPortal({
       {page === "profile" && (
         <section className="panel">
           <h2>ข้อมูลพื้นฐานโรงเรียน</h2>
-          {!demo && (
-            <p className="notice">
-              ฐานข้อมูลปัจจุบันเปิดให้แก้เฉพาะชื่อโรงเรียนตามสิทธิ์ RLS
-              โลโก้และชื่อย่อจะบันทึกในเบราว์เซอร์นี้เท่านั้น
-            </p>
-          )}
           <form
             className="school-portal-form"
             onSubmit={(event) => void saveProfile(event)}
@@ -679,7 +560,7 @@ export default function SchoolPortal({
                     name: event.target.value,
                   }))
                 }
-                maxLength={160}
+                maxLength={200}
                 required
               />
             </label>
@@ -742,7 +623,7 @@ export default function SchoolPortal({
                 </button>
               )}
             </div>
-            {demo && (
+            {profileReady && (
               <>
                 <label>
                   ประเภทโรงเรียน
@@ -803,7 +684,11 @@ export default function SchoolPortal({
                 </label>
               </>
             )}
-            <button type="submit" className="primary" disabled={busy}>
+            <button
+              type="submit"
+              className="primary"
+              disabled={busy || saving || !profileReady}
+            >
               บันทึกข้อมูลโรงเรียน
             </button>
           </form>
@@ -818,7 +703,7 @@ export default function SchoolPortal({
               <h2>รายชื่อตามรายการแข่งขัน</h2>
               <p className="muted">
                 เลือกรายการแข่งขันก่อน กรอกนักกีฬาและครู/ผู้ฝึกสอน
-                แล้วกดลงทะเบียนครั้งเดียว
+                บันทึกนักกีฬาและผู้ฝึกสอนแยกกัน
               </p>
             </div>
             <div className="school-portal-downloads">
@@ -878,100 +763,9 @@ export default function SchoolPortal({
                   )}
                   admin={false}
                   canRegister
-                  busy={busy}
+                  busy={busy || saving}
                   enabled={activeRuleEnabled}
                   submitLabel="ลงทะเบียน"
-                  canSubmitWithoutAthletes={(form) =>
-                    demo &&
-                    (!!editingStaffId ||
-                      !!String(form.get("staff-name") || "").trim() ||
-                      !!String(form.get("staff-title") || "").trim() ||
-                      !!String(form.get("staff-phone") || "").trim())
-                  }
-                  registrationFields={
-                    demo ? (
-                      <section className="school-portal-registration-staff">
-                        <div>
-                          <p className="eyebrow">COACH & STAFF</p>
-                          <h3>
-                            {editingStaffId
-                              ? "แก้ไขครู/ผู้ฝึกสอน"
-                              : "ครู/ผู้ฝึกสอน"}
-                          </h3>
-                          <p className="muted">
-                            กรอกพร้อมรายชื่อนักกีฬา แล้วกดลงทะเบียนครั้งเดียว
-                          </p>
-                        </div>
-                        <div className="school-portal-form">
-                          <label>
-                            ชื่อ–นามสกุลครู/ผู้ฝึกสอน
-                            <input
-                              name="staff-name"
-                              value={staffDraft.name}
-                              onChange={(event) =>
-                                setStaffDraft((draft) => ({
-                                  ...draft,
-                                  name: event.target.value,
-                                }))
-                              }
-                              maxLength={120}
-                              autoComplete="name"
-                            />
-                          </label>
-                          <label>
-                            หน้าที่
-                            <select
-                              name="staff-title"
-                              value={staffDraft.title}
-                              onChange={(event) =>
-                                setStaffDraft((draft) => ({
-                                  ...draft,
-                                  title: event.target.value,
-                                }))
-                              }
-                            >
-                              <option value="">เลือกหน้าที่</option>
-                              <option>ครูผู้ฝึกสอน</option>
-                              <option>ผู้ช่วยผู้ฝึกสอน</option>
-                              <option>ผู้จัดการทีม</option>
-                              <option>ผู้ประสานงาน</option>
-                            </select>
-                          </label>
-                          <label>
-                            เบอร์โทรศัพท์
-                            <input
-                              name="staff-phone"
-                              type="tel"
-                              value={staffDraft.phone}
-                              onChange={(event) =>
-                                setStaffDraft((draft) => ({
-                                  ...draft,
-                                  phone: event.target.value,
-                                }))
-                              }
-                              maxLength={30}
-                              autoComplete="tel"
-                            />
-                          </label>
-                          {editingStaffId && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingStaffId("");
-                                setStaffDraft({
-                                  name: "",
-                                  title: "",
-                                  phone: "",
-                                });
-                              }}
-                            >
-                              ยกเลิกแก้ไขครู/ผู้ฝึกสอน
-                            </button>
-                          )}
-                        </div>
-                      </section>
-                    ) : undefined
-                  }
                   onRuleChange={setRuleId}
                   onSubmit={submitRegistration}
                   onConfigure={async () => undefined}
@@ -1014,7 +808,7 @@ export default function SchoolPortal({
                             <button
                               type="submit"
                               className="primary"
-                              disabled={busy}
+                              disabled={busy || saving}
                             >
                               บันทึก
                             </button>
@@ -1039,7 +833,7 @@ export default function SchoolPortal({
                             <button
                               type="button"
                               onClick={() => setEditingAthleteId(athlete.id)}
-                              disabled={busy}
+                              disabled={busy || saving}
                             >
                               แก้ไข
                             </button>
@@ -1065,44 +859,123 @@ export default function SchoolPortal({
                 <h3>ครู/ผู้ฝึกสอน ({competitionStaff.length})</h3>
               </div>
             </div>
-            {demo ? (
-              <div className="school-portal-roster-list">
-                {competitionStaff.map((item) => (
-                  <article key={item.id}>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <small>
-                        {item.title}
-                        {item.phone ? ` · ${item.phone}` : ""}
-                      </small>
-                    </div>
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingStaffId(item.id);
-                          setStaffDraft({
-                            name: item.name,
-                            title: item.title,
-                            phone: item.phone,
-                          });
-                        }}
-                      >
-                        แก้ไข
-                      </button>
-                    </div>
-                  </article>
-                ))}
-                {!competitionStaff.length && (
-                  <p className="muted">ยังไม่มีครู/ผู้ฝึกสอนในรายการนี้</p>
+            <section className="school-portal-registration-staff">
+              <div>
+                <p className="eyebrow">COACH & STAFF</p>
+                <h3>
+                  {editingStaffId ? "แก้ไขครู/ผู้ฝึกสอน" : "ครู/ผู้ฝึกสอน"}
+                </h3>
+                <p className="muted">
+                  บันทึกผู้ฝึกสอนแยกจากการลงทะเบียนนักกีฬา
+                </p>
+              </div>
+              <div className="school-portal-form">
+                <label>
+                  ชื่อ–นามสกุลครู/ผู้ฝึกสอน
+                  <input
+                    name="staff-name"
+                    value={staffDraft.name}
+                    onChange={(event) =>
+                      setStaffDraft((draft) => ({
+                        ...draft,
+                        name: event.target.value,
+                      }))
+                    }
+                    maxLength={120}
+                    autoComplete="name"
+                  />
+                </label>
+                <label>
+                  หน้าที่
+                  <select
+                    name="staff-title"
+                    value={staffDraft.title}
+                    onChange={(event) =>
+                      setStaffDraft((draft) => ({
+                        ...draft,
+                        title: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">เลือกหน้าที่</option>
+                    <option>ครูผู้ฝึกสอน</option>
+                    <option>ผู้ช่วยผู้ฝึกสอน</option>
+                    <option>ผู้จัดการทีม</option>
+                    <option>ผู้ประสานงาน</option>
+                  </select>
+                </label>
+                <label>
+                  เบอร์โทรศัพท์
+                  <input
+                    name="staff-phone"
+                    type="tel"
+                    value={staffDraft.phone}
+                    onChange={(event) =>
+                      setStaffDraft((draft) => ({
+                        ...draft,
+                        phone: event.target.value,
+                      }))
+                    }
+                    maxLength={30}
+                    autoComplete="tel"
+                  />
+                </label>
+                {editingStaffId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingStaffId("");
+                      setStaffDraft({
+                        name: "",
+                        title: "",
+                        phone: "",
+                      });
+                    }}
+                  >
+                    ยกเลิกแก้ไขครู/ผู้ฝึกสอน
+                  </button>
                 )}
               </div>
-            ) : (
-              <p className="notice">
-                การจัดเก็บครู/ผู้ฝึกสอนยังไม่เชื่อมกับฐานข้อมูลจริง
-                จึงปิดการแก้ไขในโหมด Supabase จนกว่าจะกำหนด schema และ RLS
-              </p>
-            )}
+            </section>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || saving || !staffReady}
+              onClick={() => void saveCoach()}
+            >
+              บันทึกครู/ผู้ฝึกสอน
+            </button>
+            <div className="school-portal-roster-list">
+              {competitionStaff.map((item) => (
+                <article key={item.id}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>
+                      {item.title}
+                      {item.phone ? ` · ${item.phone}` : ""}
+                    </small>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingStaffId(item.id);
+                        setStaffDraft({
+                          name: item.name,
+                          title: item.title,
+                          phone: item.phone,
+                        });
+                      }}
+                    >
+                      แก้ไข
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!competitionStaff.length && (
+                <p className="muted">ยังไม่มีครู/ผู้ฝึกสอนในรายการนี้</p>
+              )}
+            </div>
           </section>
         </section>
       )}
