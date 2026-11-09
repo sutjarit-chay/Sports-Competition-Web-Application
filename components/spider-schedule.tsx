@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, MapPin, Trophy } from "lucide-react";
 import type { Match } from "@/lib/domain";
+import type { ScheduleMatch } from "@/lib/schedule-view";
 
 const MONTHS = [
   "ม.ค.",
@@ -39,7 +40,7 @@ export default function SpiderSchedule({
   canAssign,
   onSave,
 }: {
-  matches: Match[];
+  matches: ScheduleMatch[];
   schoolName: (id: string) => string;
   canEdit: boolean;
   busy: boolean;
@@ -55,15 +56,17 @@ export default function SpiderSchedule({
   const [activeCompetition, setActiveCompetition] = useState("");
   const [view, setView] = useState<"bracket" | "matrix">("bracket");
   const competitions = useMemo(() => {
-    const options = new Map<string, Match>();
+    const options = new Map<string, ScheduleMatch>();
     for (const match of matches)
       options.set(match.competition_id || "__unassigned", match);
     return [...options].map(([id, match]) => {
       return {
         id,
-        name: `${match.sport} · ${match.division} · ${match.gender}${
-          options.size > 1 ? ` · ${id.slice(-6)}` : ""
-        }`,
+        name:
+          match.competitionName ||
+          `${match.sport} · ${match.division} · ${match.gender}${
+            options.size > 1 ? ` · ${id.slice(-6)}` : ""
+          }`,
       };
     });
   }, [matches]);
@@ -74,7 +77,7 @@ export default function SpiderSchedule({
     (match) => (match.competition_id || "__unassigned") === competition?.id,
   );
   const rounds = useMemo(() => {
-    const groups = new Map<string, Match[]>();
+    const groups = new Map<string, ScheduleMatch[]>();
     for (const match of competitionMatches)
       groups.set(match.pool, [...(groups.get(match.pool) || []), match]);
     return [...groups]
@@ -82,9 +85,15 @@ export default function SpiderSchedule({
         name,
         fixtures: [...fixtures].sort(
           (first, second) =>
+            (first.sourceNumber !== undefined &&
+            second.sourceNumber !== undefined
+              ? first.sourceNumber - second.sourceNumber
+              : 0) ||
             first.starts_at.localeCompare(second.starts_at) ||
             first.home.localeCompare(second.home),
         ),
+        sourceNumber: fixtures.find((f) => f.sourceNumber !== undefined)
+          ?.sourceNumber,
         startsAt:
           fixtures
             .map((fixture) => fixture.starts_at)
@@ -93,19 +102,26 @@ export default function SpiderSchedule({
       }))
       .sort(
         (first, second) =>
+          (first.sourceNumber !== undefined && second.sourceNumber !== undefined
+            ? first.sourceNumber - second.sourceNumber
+            : 0) ||
           first.startsAt.localeCompare(second.startsAt) ||
           first.name.localeCompare(second.name, "th"),
       );
   }, [competitionMatches]);
   const round = rounds.find((item) => item.name === activeRound) || rounds[0];
-  const teams = round
-    ? [...new Set(round.fixtures.flatMap((match) => [match.home, match.away]))]
-    : [];
+  const canMatrix =
+    !!round &&
+    round.fixtures.every((m) => m.phase === "group" || m.format !== "knockout");
+  const matrixMatches = competitionMatches.some((m) => m.format === "knockout")
+    ? round?.fixtures || []
+    : competitionMatches;
+  const showBracket = view === "bracket" || !canMatrix;
   const matrixTeams = [
-    ...new Set(competitionMatches.flatMap((match) => [match.home, match.away])),
+    ...new Set(matrixMatches.flatMap((match) => [match.home, match.away])),
   ];
   const pairings = new Map(
-    competitionMatches.map((match) => [
+    matrixMatches.map((match) => [
       [match.home, match.away].sort().join(":"),
       match,
     ]),
@@ -148,14 +164,20 @@ export default function SpiderSchedule({
                 aria-pressed={item.name === round?.name}
                 onClick={() => setActiveRound(item.name)}
               >
-                <span>รอบ {index + 1}</span>
+                <span>{item.name}</span>
                 <small>{item.fixtures.length} คู่</small>
               </button>
             ))}
           </div>
           <div className="spider-round-heading">
             <div>
-              <p className="eyebrow">การแข่งขันแบบพบกันหมด</p>
+              <p className="eyebrow">
+                {round?.fixtures.some((m) => m.phase === "group")
+                  ? "รอบแบ่งสาย"
+                  : round?.fixtures.some((m) => m.format === "knockout")
+                    ? "การแข่งขันแบบคัดออก"
+                    : "การแข่งขันแบบพบกันหมด"}
+              </p>
               <h3>{round?.name}</h3>
             </div>
             <span>
@@ -166,24 +188,26 @@ export default function SpiderSchedule({
           <div className="schedule-view-switch" aria-label="รูปแบบแผนผัง">
             <button
               type="button"
-              aria-pressed={view === "bracket"}
+              aria-pressed={showBracket}
               onClick={() => setView("bracket")}
             >
               ผังจับคู่รายรอบ
             </button>
             <button
               type="button"
-              aria-pressed={view === "matrix"}
+              aria-pressed={!showBracket}
+              disabled={!canMatrix}
               onClick={() => setView("matrix")}
             >
               ผังพบกันหมด
             </button>
           </div>
           <div className="spider-layout">
-            {view === "bracket" ? (
+            {showBracket ? (
               <div
                 className="schedule-bracket"
-                role="img"
+                role="region"
+                tabIndex={0}
                 aria-label={`ผังจับคู่ ${round?.name}`}
               >
                 <div className="schedule-bracket-labels">
@@ -215,7 +239,7 @@ export default function SpiderSchedule({
                   </div>
                   <svg
                     className="schedule-bracket-lines"
-                    viewBox={`0 0 104 ${Math.max(1, teams.length) * 76}`}
+                    viewBox={`0 0 104 ${Math.max(1, round?.fixtures.length || 0) * 152}`}
                     preserveAspectRatio="none"
                     aria-hidden="true"
                   >
@@ -234,7 +258,9 @@ export default function SpiderSchedule({
                   <div className="schedule-bracket-games">
                     {round?.fixtures.map((match, index) => (
                       <div className="schedule-bracket-game" key={match.id}>
-                        <strong>คู่ที่ {index + 1}</strong>
+                        <strong>
+                          คู่ที่ {match.sourceNumber ?? index + 1}
+                        </strong>
                         <span>
                           {match.status === "finished" &&
                           match.home_score !== undefined &&
@@ -315,7 +341,7 @@ export default function SpiderSchedule({
                 <article className="spider-match-card" key={match.id}>
                   <header>
                     <span>
-                      {round.name} · คู่ที่ {index + 1}
+                      {round.name} · คู่ที่ {match.sourceNumber ?? index + 1}
                     </span>
                     <small
                       className={

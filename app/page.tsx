@@ -85,6 +85,7 @@ import {
   fixturesConflict,
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
+import { buildScheduleMatches } from "@/lib/schedule-view";
 import SpiderSchedule from "@/components/spider-schedule";
 import AccountLogin from "@/components/account-login";
 import AccountApprovals from "@/components/account-approvals";
@@ -725,6 +726,10 @@ export default function Home() {
     competition_id?: string;
   }) => row.competition_id === competitionId;
   const selected = data.matches.filter((m) => scopeMatch(m));
+  const scheduleMatches = buildScheduleMatches(
+    managedCompetitions,
+    data.matches,
+  ).filter(scopeMatch);
   const assignedMatches = refereeRole
     ? data.matches.filter((match) => match.referee_id === profileId)
     : data.matches;
@@ -1672,13 +1677,13 @@ export default function Home() {
                 <SpiderSchedule
                   matches={
                     schoolRole
-                      ? selected.filter(
+                      ? scheduleMatches.filter(
                           (match) =>
                             match.home === school || match.away === school,
                         )
                       : refereeRole
                         ? selectedMatches
-                        : selected
+                        : scheduleMatches
                   }
                   schoolName={schoolName}
                   canEdit={admin}
