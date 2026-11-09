@@ -1685,7 +1685,9 @@ export default function Home() {
                         ? selectedMatches
                         : scheduleMatches
                   }
-                  schoolName={schoolName}
+                  schoolName={(id) =>
+                    data.schools.find((item) => item.id === id)?.name || id
+                  }
                   canEdit={admin}
                   busy={busy}
                   canAssign={admin}

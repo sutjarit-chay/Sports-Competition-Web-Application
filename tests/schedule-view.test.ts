@@ -75,6 +75,16 @@ test("bracket connector canvas uses paired rows, not unique school count", () =>
   );
   assert.match(html, /viewBox="0 0 104 1520"/);
   assert.match(html, /คู่ที่ 16/);
+  const teamLabels = [
+    ...html.matchAll(
+      /class="schedule-bracket-team"[^>]*>[\s\S]*?<strong[^>]*>(.*?)<\/strong>/g,
+    ),
+  ].map((m) => m[1]);
+  assert.equal(teamLabels.length, 20);
+  assert.ok(
+    teamLabels.every((name) => schools.some((s) => s.name === name)),
+    "visible bracket labels must contain full school names",
+  );
   assert.match(html, /รอกำหนดเวลา/);
 });
 

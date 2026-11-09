@@ -27,11 +27,6 @@ function formatScheduleDate(value: string) {
   return `${Number(day)} ${MONTHS[Number(month) - 1]} ${Number(year) + 543} · ${time} น.`;
 }
 
-function shortSchoolName(value: string) {
-  const chars = Array.from(value);
-  return chars.length > 15 ? `${chars.slice(0, 14).join("")}…` : value;
-}
-
 export default function SpiderSchedule({
   matches,
   schoolName,
@@ -223,7 +218,7 @@ export default function SpiderSchedule({
                       >
                         <small>{index * 2 + 1}</small>
                         <strong title={schoolName(match.home)}>
-                          {shortSchoolName(schoolName(match.home))}
+                          {schoolName(match.home)}
                         </strong>
                       </div>,
                       <div
@@ -232,7 +227,7 @@ export default function SpiderSchedule({
                       >
                         <small>{index * 2 + 2}</small>
                         <strong title={schoolName(match.away)}>
-                          {shortSchoolName(schoolName(match.away))}
+                          {schoolName(match.away)}
                         </strong>
                       </div>,
                     ])}
@@ -289,7 +284,7 @@ export default function SpiderSchedule({
                       <th scope="col">โรงเรียน</th>
                       {matrixTeams.map((team) => (
                         <th scope="col" key={team} title={schoolName(team)}>
-                          {shortSchoolName(schoolName(team))}
+                          {schoolName(team)}
                         </th>
                       ))}
                     </tr>
