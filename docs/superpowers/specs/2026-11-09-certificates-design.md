@@ -1,0 +1,9 @@
+# Certificates 2569 — accepted conversation design
+
+User explicitly authorized implementation after agreeing: athletes and coaches, including participation awards; reserves receive the team's medal; coaches state the team's medal; supplied white/gold background includes event text, date 20 November 2569, venue Ban Nong Daen, and the named signatory. Support replacing the background with Base64 without losing image resolution.
+
+Architecture choice: authenticated server PDF generation with embedded Sarabun Thai fonts and raster background, immutable versioned JSON in the existing private team-files bucket. No database schema/constraint/RLS changes. Settings accept PNG/JPEG data URLs or raw Base64, validate real image decoding and dimensions, enforce the existing bucket limit without silently resizing. Default background is a bundled static file. Adjustable text positions accommodate future backgrounds.
+
+Admin previews recipients from trusted results, explicitly publishes a snapshot, and can revoke/reissue. Schools see/download only their own published records; anonymous QR verification reveals only certificate recipient/school/event/award, never contacts or signatures. PDFs embed the original image bytes; batches support a combined PDF and ZIP. Individual athletics medals must be tied to the athlete/event rather than a school-wide medal; unknown/incomplete results cannot silently become participation certificates. Publishing needs a fresh source fingerprint; previews are clearly labeled and have no active verification.
+
+Approaches considered: browser print alone (existing style, but inconsistent downloads/Thai fonts), externally hosted PDFs (extra service and credentials), server PDFs (selected implementation choice for consistent embedded assets). Reuse existing SDK HTTP auth, versioned Storage CAS, medal ranking, and UI styles. Existing authorization to test/build/push remains; no E2E per user's standing instruction.

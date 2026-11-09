@@ -86,6 +86,7 @@ import {
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
 import { buildScheduleMatches } from "@/lib/schedule-view";
+import CertificateCenter from "@/components/certificate-center";
 import SpiderSchedule from "@/components/spider-schedule";
 import AccountLogin from "@/components/account-login";
 import AccountApprovals from "@/components/account-approvals";
@@ -105,14 +106,15 @@ const tabs = [
   "จัดการรายการแข่งขัน",
   "ข้อมูลโรงเรียน",
   "นักกีฬาและครูผู้ฝึกซ้อม",
+  "เกียรติบัตร",
 ];
 const viewerTabIndices = [0, 2, 5, 6, 7];
 function availableTabIndices(role: string) {
   if (role === "viewer") return viewerTabIndices;
   if (role === "recorder" || role === "referee") return [0, 2, 3, 4, 7];
   if (role === "school" || role === "school_admin")
-    return [0, 1, 2, 5, 6, 7, 9, 10];
-  if (role === "admin") return [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    return [0, 1, 2, 5, 6, 7, 9, 10, 11];
+  if (role === "admin") return [0, 1, 2, 3, 4, 5, 6, 7, 8, 11];
   return viewerTabIndices;
 }
 const icons = [
@@ -127,6 +129,7 @@ const icons = [
   Trophy,
   School,
   Users,
+  Medal,
 ];
 const mobileTabLabels: Record<number, string> = {
   0: "ภาพรวม",
@@ -1064,6 +1067,16 @@ export default function Home() {
                 โหลดข้อมูลใหม่
               </button>
             </section>
+          )}
+          {tab === 11 && (admin || schoolRole) && (
+            <CertificateCenter
+              key={`${role}-${profileId}`}
+              accessToken={accessToken}
+              role={role}
+              schoolId={school}
+              schools={data.schools}
+              competitions={snapshot?.rows.competitions || []}
+            />
           )}
           {tab === 8 && role === "admin" && (
             <AdminCompetitionManager

@@ -3582,3 +3582,229 @@ footer {
     flex: 1 1 160px;
   }
 }
+
+/* Certificate center */
+.certificate-center {
+  background: #fffdf8;
+  border: 1px solid #e5d6ae;
+  border-radius: 20px;
+  padding: clamp(16px, 3vw, 32px);
+  color: #382d19;
+  display: grid;
+  gap: 20px;
+}
+.certificate-center h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.certificate-center h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.certificate-center p {
+  margin: 8px 0;
+  line-height: 1.65;
+}
+.certificate-heading,
+.certificate-toolbar,
+.certificate-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.certificate-heading {
+  justify-content: space-between;
+}
+.certificate-badge {
+  background: #f5ebce;
+  border: 1px solid #d7bd77;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+.certificate-center label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.certificate-toolbar label {
+  flex: 1;
+  min-width: 200px;
+}
+.certificate-center select,
+.certificate-center input,
+.certificate-center textarea {
+  background: #fff;
+  border: 1px solid #cdbb92;
+  border-radius: 8px;
+  padding: 10px;
+  max-width: 100%;
+  width: 100%;
+  color: #382d19;
+}
+.certificate-center button {
+  border: 1px solid #baa15b;
+  background: #f7edcf;
+  color: #4d3912;
+  border-radius: 9px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 42px;
+}
+.certificate-center button:hover:not(:disabled) {
+  background: #ebd9a6;
+}
+.certificate-center button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.certificate-center :focus-visible {
+  outline: 3px solid #9d731e;
+  outline-offset: 3px;
+}
+.certificate-panel {
+  border: 1px solid #e9ddc2;
+  border-radius: 12px;
+  background: white;
+  padding: 18px;
+  min-width: 0;
+}
+.certificate-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 5px 0;
+}
+.certificate-panel fieldset {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+  min-width: 0;
+}
+.certificate-panel legend {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.certificate-success {
+  background: #eef6e7;
+  color: #315520;
+  padding: 12px;
+  border-radius: 8px;
+}
+.certificate-error {
+  background: #fff0ec;
+  color: #9c311e;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.certificate-error ul {
+  list-style: disc;
+  padding-left: 24px;
+}
+.certificate-candidates {
+  max-height: 260px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.certificate-table-wrap {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+.certificate-center table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  min-width: 600px;
+}
+.certificate-center th,
+.certificate-center td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #ece3cf;
+  vertical-align: top;
+}
+.certificate-center th {
+  background: #fbf6e9;
+  font-size: 0.85rem;
+}
+.certificate-center small {
+  display: block;
+  color: #756b55;
+  margin-top: 4px;
+}
+.certificate-layout-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.certificate-preview {
+  position: relative;
+  container-type: inline-size;
+  overflow: hidden;
+  border: 1px solid #d6c89f;
+  background: #faf8ef;
+  margin-top: 20px;
+}
+.certificate-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.certificate-preview > span {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.2;
+  color: #322616;
+}
+.certificate-preview .certificate-qr {
+  aspect-ratio: 1;
+  background: repeating-conic-gradient(#332b1b 0% 25%, #fff 0% 50%) 0 0/20% 20%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  text-shadow: 0 1px 3px #000;
+  font-size: 1.4cqw;
+  border: 3px solid #fff;
+}
+@media (max-width: 600px) {
+  .certificate-center {
+    border-radius: 12px;
+  }
+  .certificate-panel {
+    padding: 12px;
+  }
+  .certificate-actions {
+    width: 100%;
+  }
+  .certificate-actions button {
+    flex: 1;
+  }
+  .certificate-toolbar label {
+    min-width: 100%;
+  }
+  .certificate-heading {
+    align-items: flex-start;
+  }
+}
+.certificate-verification {
+  max-width: 760px;
+  margin: 40px auto;
+  padding: 20px;
+}
+.certificate-verification dl {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.4fr) 1fr;
+  gap: 14px;
+}
+.certificate-verification dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.certificate-center input[type="checkbox"]{width:20px;height:20px;accent-color:#a47e26;cursor:pointer}.certificate-center th label:has(input[type="checkbox"]){display:flex;align-items:center;gap:8px;white-space:nowrap}
