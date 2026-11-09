@@ -483,3 +483,179 @@ test("a persisted production match cannot lose its required schedule", async () 
     assert.equal(f.writes.length, before);
     assert.equal(f.matches[0].starts_at, original);
   }));
+
+test("pending group qualifiers accept a schedule without creating fake participants", async () =>
+  fixture(async (f) => {
+    f.competitions[0].registration_policy.management.fixtures = [
+      {
+        id: a,
+        round: "รองชนะเลิศ",
+        home: "ที่ 1 สาย A",
+        away: "ที่ 2 ดีที่สุด",
+        phase: "knockout",
+        sourceNumber: 7,
+        startsAt: "",
+        venue: "",
+      },
+    ];
+    const response = await post({
+      action: "schedule",
+      id,
+      fixtureId: a,
+      startsAt: "2026-11-10T09:00",
+      venue: "สนาม",
+    });
+    assert.equal(response.status, 200, JSON.stringify(await response.json()));
+    assert.equal(f.matches.length, 0);
+  }));
+test("qualifier choices are validated against group membership and preserve labels", async () =>
+  fixture(async (f) => {
+    const m = f.competitions[0].registration_policy.management;
+    m.groups = [
+      { name: "A", teams: [a, b] },
+      { name: "B", teams: [c, d] },
+    ];
+    m.fixtures = [
+      {
+        id: a,
+        round: "รองชนะเลิศ",
+        home: "ที่ 1 สาย A",
+        away: "ที่ 2 สาย B",
+        startsAt: "",
+        venue: "",
+      },
+    ];
+    const base = {
+      action: "schedule",
+      id,
+      fixtureId: a,
+      startsAt: "2026-11-10T09:00",
+      venue: "สนาม",
+    };
+    assert.equal((await post({ ...base, resolvedHome: c })).status, 400);
+    assert.equal(
+      (await post({ ...base, resolvedHome: a, resolvedAway: d })).status,
+      200,
+    );
+    assert.equal(f.matches[0].home_school_id, a);
+    assert.equal(m.fixtures[0].home, "ที่ 1 สาย A");
+    assert.equal(
+      f.competitions[0].registration_policy.management.fixtures[0].resolvedHome,
+      a,
+    );
+  }));
+test("source numbers propagate confirmed losers into the bronze fixture", async () =>
+  fixture(async (f) => {
+    const m = f.competitions[0].registration_policy.management;
+    m.fixtures = [
+      {
+        id: a,
+        round: "รองชนะเลิศ",
+        home: a,
+        away: b,
+        sourceNumber: 9,
+        startsAt: "",
+        venue: "",
+      },
+      {
+        id: c,
+        round: "ชิงที่ 3",
+        home: "ผู้แพ้คู่ 9",
+        away: d,
+        sourceNumber: 12,
+        startsAt: "2026-11-10T10:00",
+        venue: "สนาม",
+      },
+    ];
+    f.matches.push({
+      id: a,
+      competition_id: id,
+      home_school_id: a,
+      away_school_id: b,
+      status: "finished",
+      home_score: 2,
+      away_score: 0,
+    });
+    const res = await post({ action: "advance", matchId: a });
+    assert.equal(res.status, 200, JSON.stringify(await res.json()));
+    assert.equal(f.matches[1].home_school_id, b);
+  }));
+
+test("manual qualification cannot override winner or loser references", async () =>
+  fixture(async (f) => {
+    f.competitions[0].registration_policy.management.fixtures = [
+      {
+        id: a,
+        round: "รอบชิง",
+        home: "ผู้ชนะคู่ 1",
+        away: "ผู้แพ้คู่ 2",
+        startsAt: "",
+        venue: "",
+      },
+    ];
+    const res = await post({
+      action: "schedule",
+      id,
+      fixtureId: a,
+      startsAt: "2026-11-10T09:00",
+      venue: "สนาม",
+      resolvedHome: b,
+    });
+    assert.equal(res.status, 400);
+    assert.equal(f.writes.length, 0);
+  }));
+test("materialized qualifier participants cannot be replaced", async () =>
+  fixture(async (f) => {
+    f.competitions[0].registration_policy.management.fixtures = [
+      {
+        id: a,
+        round: "รอบชิง",
+        home: "ที่ 1 สาย A",
+        away: "ที่ 2 สาย B",
+        resolvedHome: a,
+        resolvedAway: c,
+        startsAt: "",
+        venue: "",
+      },
+    ];
+    f.matches.push({
+      id: a,
+      competition_id: id,
+      home_school_id: a,
+      away_school_id: c,
+      status: "scheduled",
+      revision: 1,
+    });
+    const res = await post({
+      action: "schedule",
+      id,
+      fixtureId: a,
+      startsAt: "2026-11-10T09:00",
+      venue: "สนาม",
+      resolvedHome: b,
+    });
+    assert.equal(res.status, 409);
+    assert.equal(f.writes.length, 0);
+  }));
+
+test("management rejects malformed phase and duplicate source numbers", async () => {
+  const { readManagement } = await import("../lib/production-competitions");
+  await fixture(async (f) => {
+    const m = f.competitions[0].registration_policy.management;
+    const base = {
+      id: a,
+      round: "A",
+      home: a,
+      away: b,
+      startsAt: "",
+      venue: "",
+    };
+    m.fixtures = [{ ...base, phase: "pretend" }];
+    assert.equal(readManagement(f.competitions[0].registration_policy), null);
+    m.fixtures = [
+      { ...base, sourceNumber: 2 },
+      { ...base, id: c, sourceNumber: 2 },
+    ];
+    assert.equal(readManagement(f.competitions[0].registration_policy), null);
+  });
+});

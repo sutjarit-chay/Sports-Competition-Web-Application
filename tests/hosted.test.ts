@@ -512,3 +512,36 @@ test("hosted athletics lower/higher direction maps to UI ranking and back", asyn
   assert.equal(storedRaceDirection("desc"), "higher");
   assert.throws(() => normalizedRaceDirection("unknown"));
 });
+
+test("managed decoding preserves trusted phase, format and expected fixture count", () => {
+  const fixtures = Array.from({ length: 10 }, (_, i) => ({
+    id: i === 0 ? "m1" : `m${i + 1}`,
+    round: "A",
+    home: school.id,
+    away: "s2",
+    startsAt: "",
+    venue: "",
+    phase: "group",
+  }));
+  const state = decodeHosted({
+    ...raw,
+    competitions: [
+      {
+        ...c,
+        registration_policy: {
+          management: {
+            revision: 1,
+            format: "round_robin",
+            teamLimit: 5,
+            details: "",
+            teams: [school.id, "s2"],
+            fixtures,
+          },
+        },
+      },
+    ],
+  } as any);
+  assert.equal(state.matches[0].expectedFixtureCount, 10);
+  assert.equal(state.matches[0].phase, "group");
+  assert.equal(state.matches[0].format, "round_robin");
+});

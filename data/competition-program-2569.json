@@ -1,0 +1,866 @@
+{
+  "version": 1,
+  "year": 2569,
+  "sourceImages": [
+    "Screenshot 2026-11-09 112820_0.png",
+    "Screenshot 2026-11-09 112855_0.png"
+  ],
+  "sourceVenueLabel": "สนามกีฬาโรงเรียนบ้านหนองแดน",
+  "sourceStartHint": "09.00 น. เป็นต้นไป",
+  "scheduleStatus": "pending-organizer-confirmation",
+  "schools": {
+    "maduea": "โรงเรียนมะเดื่อชุมพร",
+    "thakhun": "โรงเรียนบ้านท่าคูณ",
+    "nonsombun": "โรงเรียนบ้านโนนสมบูรณ์",
+    "khlongmueang": "โรงเรียนบ้านคลองเมือง",
+    "khongsom": "โรงเรียนบ้านคงซ่อม",
+    "nongwuadam": "โรงเรียนบ้านหนองวัวดำ",
+    "kosamphi": "โรงเรียนบ้านโกสัมพี",
+    "lokoh": "โรงเรียนบ้านโละโคะ",
+    "nongdaen": "โรงเรียนบ้านหนองแดน",
+    "railampang": "โรงเรียนบ้านไร่ลำปาง",
+    "kosamphiwit": "โรงเรียนโกสัมพีวิทยา"
+  },
+  "pendingAthletics": {
+    "genderAgeTablePending": true,
+    "individualQuotaPerSchoolPerEvent": 1,
+    "maxEventsPerAthlete": null,
+    "relayTeamsPerSchool": 1,
+    "relayStarters": 4,
+    "relayReserves": 4
+  },
+  "competitions": [
+    {
+      "key": "football-primary-male",
+      "name": "ฟุตบอล 7 คน ประถมชาย",
+      "ruleId": "football-male",
+      "gender": "ชาย",
+      "level": "ประถมศึกษา",
+      "format": "knockout",
+      "sourcePage": 1,
+      "teams": [
+        "maduea",
+        "thakhun",
+        "nonsombun",
+        "khlongmueang",
+        "khongsom",
+        "nongwuadam",
+        "kosamphi",
+        "lokoh",
+        "nongdaen",
+        "railampang"
+      ],
+      "groups": [
+        {
+          "name": "A",
+          "teams": ["maduea", "thakhun", "nonsombun"]
+        },
+        {
+          "name": "B",
+          "teams": ["khlongmueang", "khongsom", "nongwuadam"]
+        },
+        {
+          "name": "C",
+          "teams": ["kosamphi", "lokoh", "nongdaen", "railampang"]
+        }
+      ],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "kosamphi",
+          "away": "nongdaen",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "lokoh",
+          "away": "railampang",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "maduea",
+          "away": "thakhun",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "khlongmueang",
+          "away": "khongsom",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "kosamphi",
+          "away": "lokoh",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 6,
+          "home": "nongdaen",
+          "away": "railampang",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 7,
+          "home": "maduea",
+          "away": "nonsombun",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 8,
+          "home": "khlongmueang",
+          "away": "nongwuadam",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 9,
+          "home": "kosamphi",
+          "away": "railampang",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 10,
+          "home": "lokoh",
+          "away": "nongdaen",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 11,
+          "home": "thakhun",
+          "away": "nonsombun",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 12,
+          "home": "khongsom",
+          "away": "nongwuadam",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 13,
+          "home": "ที่ 1 สาย A",
+          "away": "ที่ 1 สาย C",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 14,
+          "home": "ที่ 1 สาย B",
+          "away": "ที่ 2 ดีที่สุด",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 15,
+          "home": "ผู้แพ้คู่ 13",
+          "away": "ผู้แพ้คู่ 14",
+          "round": "ชิงอันดับ 3",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 16,
+          "home": "ผู้ชนะคู่ 13",
+          "away": "ผู้ชนะคู่ 14",
+          "round": "ชิงชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        }
+      ]
+    },
+    {
+      "key": "football-secondary-male",
+      "name": "ฟุตบอล 7 คน มัธยมชาย",
+      "ruleId": "football-male",
+      "gender": "ชาย",
+      "level": "มัธยมศึกษา",
+      "format": "round_robin",
+      "sourcePage": 2,
+      "teams": ["nongdaen", "thakhun", "khongsom", "nonsombun", "kosamphiwit"],
+      "groups": [],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "nongdaen",
+          "away": "thakhun",
+          "round": "รอบแรก",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "khongsom",
+          "away": "nonsombun",
+          "round": "รอบแรก",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "nongdaen",
+          "away": "kosamphiwit",
+          "round": "รอบแรก",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "thakhun",
+          "away": "khongsom",
+          "round": "รอบแรก",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "nonsombun",
+          "away": "kosamphiwit",
+          "round": "รอบแรก",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 9,
+          "home": "nongdaen",
+          "away": "khongsom",
+          "round": "รอบแรก",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 10,
+          "home": "thakhun",
+          "away": "nonsombun",
+          "round": "รอบแรก",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 12,
+          "home": "khongsom",
+          "away": "kosamphiwit",
+          "round": "รอบแรก",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 15,
+          "home": "nongdaen",
+          "away": "nonsombun",
+          "round": "รอบแรก",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 16,
+          "home": "thakhun",
+          "away": "kosamphiwit",
+          "round": "รอบแรก",
+          "sourceBlock": 2
+        }
+      ]
+    },
+    {
+      "key": "volleyball-primary-female",
+      "name": "วอลเลย์บอล ประถมหญิง",
+      "ruleId": "volleyball-female",
+      "gender": "หญิง",
+      "level": "ประถมศึกษา",
+      "format": "knockout",
+      "sourcePage": 3,
+      "teams": [
+        "nongdaen",
+        "lokoh",
+        "khongsom",
+        "thakhun",
+        "railampang",
+        "nonsombun"
+      ],
+      "groups": [
+        {
+          "name": "A",
+          "teams": ["nongdaen", "lokoh", "khongsom"]
+        },
+        {
+          "name": "B",
+          "teams": ["thakhun", "railampang", "nonsombun"]
+        }
+      ],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "nongdaen",
+          "away": "lokoh",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "thakhun",
+          "away": "railampang",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "nongdaen",
+          "away": "khongsom",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "thakhun",
+          "away": "nonsombun",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "lokoh",
+          "away": "khongsom",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 6,
+          "home": "railampang",
+          "away": "nonsombun",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 7,
+          "home": "ที่ 1 สาย A",
+          "away": "ที่ 2 สาย B",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 8,
+          "home": "ที่ 1 สาย B",
+          "away": "ที่ 2 สาย A",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 9,
+          "home": "ผู้แพ้คู่ 7",
+          "away": "ผู้แพ้คู่ 8",
+          "round": "ชิงอันดับ 3",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 10,
+          "home": "ผู้ชนะคู่ 7",
+          "away": "ผู้ชนะคู่ 8",
+          "round": "ชิงชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        }
+      ]
+    },
+    {
+      "key": "volleyball-primary-male",
+      "name": "วอลเลย์บอล ประถมชาย",
+      "ruleId": "volleyball-male",
+      "gender": "ชาย",
+      "level": "ประถมศึกษา",
+      "format": "knockout",
+      "sourcePage": 3,
+      "teams": [
+        "lokoh",
+        "nonsombun",
+        "nongdaen",
+        "railampang",
+        "thakhun",
+        "kosamphi",
+        "khongsom"
+      ],
+      "groups": [],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "lokoh",
+          "away": "nonsombun",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "nongdaen",
+          "away": "railampang",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "thakhun",
+          "away": "kosamphi",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "khongsom",
+          "away": "ผู้ชนะคู่ 1",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "ผู้ชนะคู่ 2",
+          "away": "ผู้ชนะคู่ 3",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 6,
+          "home": "ผู้แพ้คู่ 4",
+          "away": "ผู้แพ้คู่ 5",
+          "round": "ชิงอันดับ 3",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 7,
+          "home": "ผู้ชนะคู่ 4",
+          "away": "ผู้ชนะคู่ 5",
+          "round": "ชิงชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        }
+      ]
+    },
+    {
+      "key": "takraw-primary-male",
+      "name": "เซปักตะกร้อ ประถมชาย ประเภททีมเดี่ยว",
+      "ruleId": "takraw-male",
+      "gender": "ชาย",
+      "level": "ประถมศึกษา",
+      "format": "knockout",
+      "sourcePage": 4,
+      "teams": [
+        "thakhun",
+        "nongwuadam",
+        "railampang",
+        "lokoh",
+        "kosamphi",
+        "khongsom",
+        "nongdaen",
+        "nonsombun"
+      ],
+      "groups": [],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "thakhun",
+          "away": "nongwuadam",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "railampang",
+          "away": "lokoh",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "kosamphi",
+          "away": "khongsom",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "nongdaen",
+          "away": "nonsombun",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "ผู้ชนะคู่ 1",
+          "away": "ผู้ชนะคู่ 3",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 6,
+          "home": "ผู้ชนะคู่ 2",
+          "away": "ผู้ชนะคู่ 4",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 7,
+          "home": "ผู้แพ้คู่ 5",
+          "away": "ผู้แพ้คู่ 6",
+          "round": "ชิงอันดับ 3",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 8,
+          "home": "ผู้ชนะคู่ 5",
+          "away": "ผู้ชนะคู่ 6",
+          "round": "ชิงชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        }
+      ]
+    },
+    {
+      "key": "takraw-primary-female",
+      "name": "เซปักตะกร้อ ประถมหญิง ประเภททีมเดี่ยว",
+      "ruleId": "takraw-female",
+      "gender": "หญิง",
+      "level": "ประถมศึกษา",
+      "format": "knockout",
+      "sourcePage": 4,
+      "teams": [
+        "railampang",
+        "thakhun",
+        "khongsom",
+        "nonsombun",
+        "nongwuadam",
+        "lokoh"
+      ],
+      "groups": [],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "railampang",
+          "away": "thakhun",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "khongsom",
+          "away": "nonsombun",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "nongwuadam",
+          "away": "ผู้ชนะคู่ 1",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "lokoh",
+          "away": "ผู้ชนะคู่ 2",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "ผู้แพ้คู่ 3",
+          "away": "ผู้แพ้คู่ 4",
+          "round": "ชิงอันดับ 3",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 6,
+          "home": "ผู้ชนะคู่ 3",
+          "away": "ผู้ชนะคู่ 4",
+          "round": "ชิงชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        }
+      ]
+    },
+    {
+      "key": "chairball-primary-female",
+      "name": "แชร์บอล ประถมหญิง",
+      "ruleId": "chairball-female",
+      "gender": "หญิง",
+      "level": "ประถมศึกษา",
+      "format": "knockout",
+      "sourcePage": 5,
+      "teams": [
+        "khongsom",
+        "nonsombun",
+        "nongdaen",
+        "thakhun",
+        "railampang",
+        "maduea",
+        "lokoh",
+        "kosamphi",
+        "khlongmueang"
+      ],
+      "groups": [
+        {
+          "name": "A",
+          "teams": ["khongsom", "nonsombun", "nongdaen"]
+        },
+        {
+          "name": "B",
+          "teams": ["thakhun", "railampang", "maduea"]
+        },
+        {
+          "name": "C",
+          "teams": ["lokoh", "kosamphi", "khlongmueang"]
+        }
+      ],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "khongsom",
+          "away": "nonsombun",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "thakhun",
+          "away": "railampang",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "lokoh",
+          "away": "kosamphi",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "khongsom",
+          "away": "nongdaen",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "thakhun",
+          "away": "maduea",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 6,
+          "home": "lokoh",
+          "away": "khlongmueang",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 7,
+          "home": "nonsombun",
+          "away": "nongdaen",
+          "round": "รอบแรก สาย A",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 8,
+          "home": "railampang",
+          "away": "maduea",
+          "round": "รอบแรก สาย B",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 9,
+          "home": "kosamphi",
+          "away": "khlongmueang",
+          "round": "รอบแรก สาย C",
+          "phase": "group",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 10,
+          "home": "ที่ 1 สาย A",
+          "away": "ที่ 1 สาย C",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 11,
+          "home": "ที่ 1 สาย B",
+          "away": "ที่ 2 ดีที่สุด",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 12,
+          "home": "ผู้แพ้คู่ 10",
+          "away": "ผู้แพ้คู่ 11",
+          "round": "ชิงอันดับ 3",
+          "phase": "knockout",
+          "sourceBlock": 2
+        },
+        {
+          "sourceNumber": 13,
+          "home": "ผู้ชนะคู่ 10",
+          "away": "ผู้ชนะคู่ 11",
+          "round": "ชิงชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 2
+        }
+      ]
+    },
+    {
+      "key": "throwball-kindergarten-mixed",
+      "name": "โยนบอล ระดับอนุบาล ทีมผสม",
+      "ruleId": "throwball-mixed",
+      "gender": "ผสม",
+      "level": "อนุบาล",
+      "format": "knockout",
+      "sourcePage": 6,
+      "teams": [
+        "lokoh",
+        "kosamphi",
+        "railampang",
+        "maduea",
+        "nonsombun",
+        "nongdaen",
+        "khlongmueang",
+        "nongwuadam",
+        "khongsom",
+        "thakhun"
+      ],
+      "groups": [],
+      "fixtures": [
+        {
+          "sourceNumber": 1,
+          "home": "lokoh",
+          "away": "kosamphi",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 2,
+          "home": "railampang",
+          "away": "maduea",
+          "round": "รอบแรก",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 3,
+          "home": "nonsombun",
+          "away": "nongdaen",
+          "round": "รอบก่อนรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 4,
+          "home": "khlongmueang",
+          "away": "nongwuadam",
+          "round": "รอบก่อนรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 5,
+          "home": "khongsom",
+          "away": "ผู้ชนะคู่ 1",
+          "round": "รอบก่อนรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 6,
+          "home": "thakhun",
+          "away": "ผู้ชนะคู่ 2",
+          "round": "รอบก่อนรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 7,
+          "home": "ผู้ชนะคู่ 3",
+          "away": "ผู้ชนะคู่ 5",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 8,
+          "home": "ผู้ชนะคู่ 4",
+          "away": "ผู้ชนะคู่ 6",
+          "round": "รอบรองชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 9,
+          "home": "ผู้แพ้คู่ 7",
+          "away": "ผู้แพ้คู่ 8",
+          "round": "ชิงอันดับ 3",
+          "phase": "knockout",
+          "sourceBlock": 1
+        },
+        {
+          "sourceNumber": 10,
+          "home": "ผู้ชนะคู่ 7",
+          "away": "ผู้ชนะคู่ 8",
+          "round": "ชิงชนะเลิศ",
+          "phase": "knockout",
+          "sourceBlock": 1
+        }
+      ]
+    }
+  ]
+}

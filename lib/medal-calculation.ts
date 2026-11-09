@@ -117,7 +117,18 @@ function assignRoundRobinMedals(
   awards: Award[],
   points: Points,
 ) {
-  if (!matches.length || matches.some((match) => !isComplete(match))) return;
+  if (
+    !matches.length ||
+    matches.some(
+      (match) =>
+        !isComplete(match) ||
+        (match.expectedFixtureCount !== undefined &&
+          matches.length !== match.expectedFixtureCount) ||
+        match.phase === "group" ||
+        match.format === "knockout",
+    )
+  )
+    return;
   if (
     !matches.every((match) => match.format === "round_robin") &&
     new Set(matches.map((match) => match.pool)).size > 1

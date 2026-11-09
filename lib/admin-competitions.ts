@@ -11,6 +11,10 @@ export type ManagedFixture = {
   startsAt: string;
   venue: string;
   referee_id?: string;
+  phase?: "group" | "knockout";
+  sourceNumber?: number;
+  resolvedHome?: string;
+  resolvedAway?: string;
 };
 
 export type ManagedCompetition = {
@@ -29,6 +33,7 @@ export type ManagedCompetition = {
   lossPoints: number;
   teams: string[];
   fixtures: ManagedFixture[];
+  groups?: { name: string; teams: string[] }[];
 };
 
 export function isManagedCompetition(
@@ -92,10 +97,10 @@ export function fixturesConflict(
 ) {
   if (!first.startsAt || first.startsAt !== second.startsAt) return false;
   const firstTeams = [first.home, first.away].filter(
-    (team) => team && !team.startsWith("ผู้ชนะคู่"),
+    (team) => team && !/^(ผู้ชนะคู่|ผู้แพ้คู่|ที่ [12])/.test(team),
   );
   const secondTeams = [second.home, second.away].filter(
-    (team) => team && !team.startsWith("ผู้ชนะคู่"),
+    (team) => team && !/^(ผู้ชนะคู่|ผู้แพ้คู่|ที่ [12])/.test(team),
   );
   const sameTeam = firstTeams.some((team) => secondTeams.includes(team));
   const sameVenue = !!first.venue && first.venue === second.venue;

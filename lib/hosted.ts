@@ -1,4 +1,7 @@
-import { readManagement } from "./production-competitions";
+import {
+  readManagement,
+  isEliminationFixture,
+} from "./production-competitions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Athlete, Match, Race, Award, State } from "./domain";
 import {
@@ -167,6 +170,9 @@ export function decodeHosted(rows: HostedRows): State {
     gender: c(id).gender,
     competition_id: id,
   });
+  const management = new Map(
+    rows.competitions.map((c) => [c.id, readManagement(c.registration_policy)]),
+  );
   const athletes = rows.registrations.map((r) => ({
     id: r.id,
     name: r.athlete_name,
@@ -182,6 +188,16 @@ export function decodeHosted(rows: HostedRows): State {
     matches: rows.matches.map((m) => ({
       id: m.id,
       ...scope(m.competition_id),
+      ...(management.get(m.competition_id)
+        ? {
+            format: management.get(m.competition_id)!.format,
+            phase: management
+              .get(m.competition_id)!
+              .fixtures.find((f) => f.id === m.id)?.phase,
+            expectedFixtureCount: management.get(m.competition_id)!.fixtures
+              .length,
+          }
+        : {}),
       pool: m.group_name,
       home: m.home_school_id,
       away: m.away_school_id,
@@ -529,7 +545,7 @@ export async function writeHosted<K extends keyof State>(
         rows.competitions.find((c) => c.id === existing.competition_id)
           ?.registration_policy,
       );
-      if (management?.format === "knockout") {
+      if (isEliminationFixture(management, existing.id)) {
         if (
           ["finished", "confirmed"].includes(payload.status) &&
           payload.home_score === payload.away_score

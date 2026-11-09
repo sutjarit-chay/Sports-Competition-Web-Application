@@ -316,3 +316,47 @@ test("multiple pools wait for a final before overall medals are calculated", () 
     false,
   );
 });
+
+test("a completed single group in a mixed competition cannot award medals", () => {
+  assert.deepEqual(
+    calculateMedalAwards({
+      matches: [makeMatch({ format: "knockout", phase: "group" })],
+      races: [],
+      athletes: [],
+    }),
+    [],
+  );
+});
+
+test("completed initial knockout rounds do not receive round-robin medals", () => {
+  assert.deepEqual(
+    calculateMedalAwards({
+      matches: [makeMatch({ format: "knockout", pool: "รอบแรก" })],
+      races: [],
+      athletes: [],
+    }),
+    [],
+  );
+});
+
+test("round-robin medals wait for all ten managed fixtures to materialize", () => {
+  const matches = Array.from({ length: 10 }, (_, i) =>
+    makeMatch({
+      format: "round_robin",
+      expectedFixtureCount: 10,
+      home: `school-${i}`,
+      away: `school-${(i + 1) % 10}`,
+    }),
+  );
+  assert.deepEqual(
+    calculateMedalAwards({
+      matches: matches.slice(0, 2),
+      races: [],
+      athletes: [],
+    }),
+    [],
+  );
+  assert.ok(
+    calculateMedalAwards({ matches, races: [], athletes: [] }).length > 0,
+  );
+});

@@ -5,6 +5,7 @@ import { fromBangkokInput, readHosted, writeHosted } from "./hosted";
 import { fixturesConflict } from "./admin-competitions";
 import {
   performCompetitionAction,
+  isEliminationFixture,
   readManagement,
 } from "./production-competitions";
 const record = (value: unknown): Record<string, unknown> =>
@@ -171,7 +172,10 @@ export async function saveMatchResult(
   );
   if (
     input.status === "finished" &&
-    readManagement(competition?.registration_policy)?.format === "knockout"
+    isEliminationFixture(
+      readManagement(competition?.registration_policy),
+      actual.id,
+    )
   ) {
     try {
       await performCompetitionAction(

@@ -40,6 +40,8 @@ export type Match = {
   referee_id?: string;
   format?: "round_robin" | "knockout";
   managed?: boolean;
+  expectedFixtureCount?: number;
+  phase?: "group" | "knockout";
 };
 export type Race = {
   id: string;

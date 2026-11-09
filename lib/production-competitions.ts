@@ -20,7 +20,22 @@ export type Management = {
   details: string;
   teams: string[];
   fixtures: ManagedFixture[];
+  groups?: { name: string; teams: string[] }[];
 };
+export function isGroupQualifier(label: string) {
+  return /^ที่ [12] สาย [A-Za-z]+$/.test(label) || label === "ที่ 2 ดีที่สุด";
+}
+export function isEliminationFixture(
+  management: Management | null,
+  id: string,
+) {
+  const fixture = management?.fixtures.find((f) => f.id === id);
+  return (
+    !!management &&
+    management.format === "knockout" &&
+    fixture?.phase !== "group"
+  );
+}
 export class CompetitionError extends Error {
   constructor(
     message: string,
@@ -47,10 +62,38 @@ export function readManagement(policy: unknown): Management | null {
     !Array.isArray(m.fixtures) ||
     !m.fixtures.every((x) => {
       const f = object(x);
-      return ["id", "round", "home", "away", "startsAt", "venue"].every(
-        (k) => typeof f[k] === "string",
+      return (
+        (f.phase === undefined ||
+          f.phase === "group" ||
+          f.phase === "knockout") &&
+        (f.sourceNumber === undefined ||
+          (Number.isSafeInteger(f.sourceNumber) &&
+            Number(f.sourceNumber) > 0)) &&
+        (f.resolvedHome === undefined || uuid(f.resolvedHome)) &&
+        (f.resolvedAway === undefined || uuid(f.resolvedAway)) &&
+        ["id", "round", "home", "away", "startsAt", "venue"].every(
+          (k) => typeof f[k] === "string",
+        )
       );
     })
+  )
+    return null;
+  const fixtures = m.fixtures as ManagedFixture[];
+  const numbers = fixtures.map((f, i) => f.sourceNumber || i + 1);
+  if (new Set(numbers).size !== numbers.length) return null;
+  if (
+    m.groups !== undefined &&
+    (!Array.isArray(m.groups) ||
+      !m.groups.every((value) => {
+        const g = object(value);
+        return (
+          typeof g.name === "string" &&
+          Array.isArray(g.teams) &&
+          g.teams.every(
+            (t) => typeof t === "string" && (m.teams as string[]).includes(t),
+          )
+        );
+      }))
   )
     return null;
   return m as unknown as Management;
@@ -94,14 +137,19 @@ export function managedFromHosted(
       teams: m?.teams || [
         ...new Set(actual.flatMap((x) => [x.home_school_id, x.away_school_id])),
       ],
+      groups: m?.groups,
       fixtures:
         m?.fixtures.map((f) => {
           const match = actual.find((x) => x.id === f.id);
           return match
             ? {
                 ...f,
-                home: match.home_school_id,
-                away: match.away_school_id,
+                ...(isGroupQualifier(f.home)
+                  ? { resolvedHome: match.home_school_id }
+                  : {}),
+                ...(isGroupQualifier(f.away)
+                  ? { resolvedAway: match.away_school_id }
+                  : {}),
                 startsAt: localTime(match.starts_at),
                 venue: match.venue || "",
                 referee_id: match.referee_id || undefined,
@@ -189,7 +237,12 @@ async function savePolicy(
     );
 }
 function checkConflicts(fixtures: ManagedFixture[], matches: HostedMatch[]) {
-  for (const f of fixtures) {
+  for (const original of fixtures) {
+    const f = {
+      ...original,
+      home: original.resolvedHome || original.home,
+      away: original.resolvedAway || original.away,
+    };
     if (!f.startsAt) continue;
     const candidate = {
       ...f,
@@ -216,6 +269,8 @@ function checkConflicts(fixtures: ManagedFixture[], matches: HostedMatch[]) {
       if (
         fixturesConflict(candidate, {
           ...other,
+          home: other.resolvedHome || other.home,
+          away: other.resolvedAway || other.away,
           startsAt: new Date(
             other.startsAt +
               (/[zZ]|[+-]\d\d:\d\d$/.test(other.startsAt) ? "" : "+07:00"),
@@ -236,13 +291,17 @@ async function materialize(
   matches: HostedMatch[],
 ) {
   const resolved = new Map<string, string>();
-  const resolve = (v: string) =>
-    v.startsWith("ผู้ชนะคู่ ") ? resolved.get(v) : v;
+  const resolve = (v: string, selected?: string) => {
+    if (/^ผู้(ชนะ|แพ้)คู่ \d+$/.test(v)) return resolved.get(v);
+    if (isGroupQualifier(v)) return selected;
+    if (!uuid(v)) throw new CompetitionError("โรงเรียนในสายแข่งขันไม่ถูกต้อง");
+    return v;
+  };
   const ready: ManagedFixture[] = [];
   for (let index = 0; index < m.fixtures.length; index++) {
     const fixture = m.fixtures[index],
-      home = resolve(fixture.home),
-      away = resolve(fixture.away);
+      home = resolve(fixture.home, fixture.resolvedHome),
+      away = resolve(fixture.away, fixture.resolvedAway);
     const actual = matches.find((x) => x.id === fixture.id);
     if (
       !!actual &&
@@ -250,13 +309,20 @@ async function materialize(
       actual.home_score !== null &&
       actual.away_score !== null &&
       actual.home_score !== actual.away_score
-    )
+    ) {
       resolved.set(
-        `ผู้ชนะคู่ ${index + 1}`,
+        `ผู้ชนะคู่ ${fixture.sourceNumber || index + 1}`,
         actual.home_score > actual.away_score
           ? actual.home_school_id
           : actual.away_school_id,
       );
+      resolved.set(
+        `ผู้แพ้คู่ ${fixture.sourceNumber || index + 1}`,
+        actual.home_score > actual.away_score
+          ? actual.away_school_id
+          : actual.home_school_id,
+      );
+    }
     if (!home || !away) continue;
     if (!uuid(home) || !uuid(away) || home === away)
       throw new CompetitionError("โรงเรียนในสายแข่งขันไม่ถูกต้อง");
@@ -405,7 +471,7 @@ export async function performCompetitionAction(
     if (
       !old ||
       old.format !== "knockout" ||
-      !old.fixtures.some((f) => f.id === source?.id)
+      !isEliminationFixture(old, source!.id)
     )
       throw new CompetitionError("ไม่พบสายคัดออกสำหรับคู่นี้", 409);
     checkConflicts(management.fixtures, matches);
@@ -470,6 +536,53 @@ export async function performCompetitionAction(
       );
     const f = management.fixtures.find((x) => x.id === body.fixtureId);
     if (!f) throw new CompetitionError("ไม่พบคู่แข่งขัน", 404);
+    for (const [key, side] of [
+      ["resolvedHome", "home"],
+      ["resolvedAway", "away"],
+    ] as const) {
+      if (body[key] === undefined) continue;
+      if (!isGroupQualifier(f[side]))
+        throw new CompetitionError("เลือกทีมได้เฉพาะช่องผู้ผ่านรอบแบ่งกลุ่ม");
+      const selected = body[key];
+      if (selected === "" || selected === null) {
+        if (actual)
+          throw new CompetitionError(
+            "ไม่สามารถเปลี่ยนทีมที่มีคู่แข่งขันแล้ว",
+            409,
+          );
+        delete f[key];
+        continue;
+      }
+      const groupName = /^ที่ [12] สาย (.+)$/.exec(f[side])?.[1];
+      const group = management.groups?.find((g) => g.name === groupName);
+      if (
+        !uuid(selected) ||
+        !management.teams.includes(selected as string) ||
+        (group && !group.teams.includes(selected as string))
+      )
+        throw new CompetitionError("โรงเรียนไม่อยู่ในสายที่เลือก");
+      if (
+        actual &&
+        selected !==
+          actual[side === "home" ? "home_school_id" : "away_school_id"]
+      )
+        throw new CompetitionError(
+          "ไม่สามารถเปลี่ยนทีมที่มีคู่แข่งขันแล้ว",
+          409,
+        );
+      f[key] = selected as string;
+    }
+    if ((f.resolvedHome || f.home) === (f.resolvedAway || f.away))
+      throw new CompetitionError("โรงเรียนแข่งกับตัวเองไม่ได้");
+    const participants = management.fixtures
+      .filter((x) => x.round === f.round)
+      .flatMap((x) => [x.resolvedHome || x.home, x.resolvedAway || x.away])
+      .filter(uuid);
+    if (
+      new Set(participants).size !== participants.length &&
+      f.phase === "knockout"
+    )
+      throw new CompetitionError("โรงเรียนซ้ำในรอบคัดออก");
     const startsAt = text(body.startsAt, 30);
     if (
       !startsAt ||

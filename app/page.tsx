@@ -322,7 +322,13 @@ export default function Home() {
         (c) => c.id === match.competition_id,
       )?.registration_policy;
       const management = readManagement(policy);
-      return management ? { ...match, format: management.format } : match;
+      return management
+        ? {
+            ...match,
+            format: management.format,
+            phase: management.fixtures.find((f) => f.id === match.id)?.phase,
+          }
+        : match;
     });
     if (!mounted.current || generation !== refreshGeneration.current) return;
     setLoadFailed(false);
@@ -485,6 +491,7 @@ export default function Home() {
           throw Error("รอทราบทีมผู้ชนะจากรอบก่อน จึงจะบันทึกผลคู่นี้ได้");
         if (
           match.format === "knockout" &&
+          match.phase !== "group" &&
           match.status === "finished" &&
           match.home_score === match.away_score
         )

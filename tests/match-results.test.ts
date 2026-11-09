@@ -474,3 +474,49 @@ test("a concurrent revision change between trusted read and write cannot be over
     assert.equal(f.tables.matches[0].home_score, 5);
     assert.equal(f.tables.matches[0].revision, 4);
   }));
+
+test("trusted group phase allows draws in a mixed knockout competition", async () =>
+  fixture(async (f) => {
+    knockout(f);
+    f.tables.competitions[0].registration_policy.management.fixtures[0].phase =
+      "group";
+    const res = await post({
+      ...f.match,
+      status: "finished",
+      home_score: 1,
+      away_score: 1,
+    });
+    assert.equal(res.status, 200, JSON.stringify(await res.json()));
+    assert.equal(f.tables.matches[0].home_score, 1);
+  }));
+
+test("client group phase cannot bypass trusted knockout tie rejection", async () =>
+  fixture(async (f) => {
+    knockout(f);
+    const res = await post({
+      ...f.match,
+      phase: "group",
+      status: "finished",
+      home_score: 1,
+      away_score: 1,
+    });
+    assert.equal(res.status, 409);
+  }));
+test("a finished group result can change its winner", async () =>
+  fixture(async (f) => {
+    knockout(f);
+    f.tables.competitions[0].registration_policy.management.fixtures[0].phase =
+      "group";
+    Object.assign(f.tables.matches[0], {
+      status: "finished",
+      home_score: 2,
+      away_score: 0,
+    });
+    const res = await post({
+      ...f.match,
+      status: "finished",
+      home_score: 0,
+      away_score: 2,
+    });
+    assert.equal(res.status, 200, JSON.stringify(await res.json()));
+  }));
