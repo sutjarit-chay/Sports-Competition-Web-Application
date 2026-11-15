@@ -1,3 +1,4 @@
+import type { SetScore } from "./set-scores";
 import Papa from "papaparse";
 import type { RosterDetails } from "./registration";
 import { compatibleRules, ATHLETICS_EVENTS } from "./registration";
@@ -32,6 +33,8 @@ export type Match = {
   away: string;
   starts_at: string;
   venue: string;
+  setScores?: SetScore[];
+  updated_at?: string;
   home_score?: number;
   away_score?: number;
   status: string;

@@ -230,6 +230,11 @@ async function savePolicy(
   q = old
     ? q.eq("registration_policy->management->>revision", String(old.revision))
     : q.is("registration_policy->management->>revision", null);
+  const reportsVersion = object(c.registration_policy).matchReportsVersion;
+  q =
+    reportsVersion == null
+      ? q.is("registration_policy->>matchReportsVersion", null)
+      : q.eq("registration_policy->>matchReportsVersion", reportsVersion);
   const result = await q.select("id");
   dbError(result.error);
   if (!result.data?.length)

@@ -1,3 +1,4 @@
+import { readSetReport } from "./set-scores";
 import {
   readManagement,
   isEliminationFixture,
@@ -40,6 +41,7 @@ export type HostedMatch = {
   home_score: number | null;
   away_score: number | null;
   revision: number;
+  updated_at?: string;
   referee_id?: string | null;
 };
 export type AthleticsEvent = {
@@ -90,7 +92,7 @@ export const COLUMNS = {
     "id,sport,name,age_group,gender,win_points,draw_points,loss_points",
   registrations: "id,school_id,competition_id,athlete_name,bib",
   matches:
-    "id,competition_id,group_name,home_school_id,away_school_id,starts_at,venue,status,home_score,away_score,revision,referee_id",
+    "id,competition_id,group_name,home_school_id,away_school_id,starts_at,venue,status,home_score,away_score,revision,referee_id,updated_at",
   athletics_events:
     "id,competition_id,name,kind,round,heat,direction,unit,starts_at,venue,referee_id",
   athletics_results: "id,event_id,school_id,bib,value,status",
@@ -206,6 +208,13 @@ export function decodeHosted(rows: HostedRows): State {
       status: m.status === "confirmed" ? "finished" : m.status,
       home_score: m.home_score ?? undefined,
       away_score: m.away_score ?? undefined,
+      updated_at: m.updated_at,
+      setScores: readSetReport(
+        rows.competitions.find((c) => c.id === m.competition_id)
+          ?.registration_policy,
+        m,
+        scope(m.competition_id).sport,
+      ),
       revision: m.revision,
       referee_id: m.referee_id || undefined,
     })),
@@ -305,9 +314,15 @@ export async function readHosted(
           table === "matches" &&
           columns !== LEGACY_MATCH_COLUMNS &&
           ["42703", "PGRST204"].includes(error.code) &&
-          error.message.includes("referee_id")
+          (error.message.includes("referee_id") ||
+            error.message.includes("updated_at"))
         ) {
-          columns = LEGACY_MATCH_COLUMNS;
+          columns = error.message.includes("updated_at")
+            ? columns
+                .split(",")
+                .filter((c) => c !== "updated_at")
+                .join(",")
+            : LEGACY_MATCH_COLUMNS;
           all.length = 0;
           continue;
         }
@@ -391,16 +406,46 @@ export async function writeRegistrationPolicy(
   competitionId: string,
   policy: RegistrationPolicy,
 ) {
-  const { data, error } = await client
-    .from("competitions")
-    .update({ registration_policy: policy })
-    .eq("id", competitionId)
-    .select("id");
-  if (error) throw Error(`ตั้งค่ากติกาไม่สำเร็จ: ${error.message}`);
-  if (!data?.length)
-    throw Error(
-      "ไม่มีสิทธิ์ตั้งค่ารายการแข่งขันนี้ กรุณาติดต่อผู้ดูแลฐานข้อมูล",
-    );
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const fresh = await client
+      .from("competitions")
+      .select("registration_policy")
+      .eq("id", competitionId)
+      .single();
+    if (fresh.error || !fresh.data) throw Error("โหลดกติกาไม่สำเร็จ");
+    const current = (fresh.data.registration_policy || {}) as Record<
+      string,
+      any
+    >;
+    const version = current.matchReportsVersion;
+    const revision = current.management?.revision;
+    // Only registration fields belong to this editor. Keep reports, management and unknown keys.
+    const next = {
+      ...current,
+      ruleId: policy.ruleId,
+      reserves: policy.reserves,
+      eventQuotas: policy.eventQuotas,
+      maxEventsPerAthlete: policy.maxEventsPerAthlete,
+      matchReportsVersion: (typeof version === "number" ? version : 0) + 1,
+    };
+    let query = client
+      .from("competitions")
+      .update({ registration_policy: next })
+      .eq("id", competitionId);
+    query =
+      version == null
+        ? query.is("registration_policy->>matchReportsVersion", null)
+        : query.eq("registration_policy->>matchReportsVersion", version);
+    query =
+      revision == null
+        ? query.is("registration_policy->management->>revision", null)
+        : query.eq("registration_policy->management->>revision", revision);
+    const result = await query.select("id");
+    if (result.error)
+      throw Error(`ตั้งค่ากติกาไม่สำเร็จ: ${result.error.message}`);
+    if (result.data?.length) return;
+  }
+  throw Error("ข้อมูลรายการเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลใหม่");
 }
 export async function writeAthleticsReferee(
   client: SupabaseClient,
@@ -428,6 +473,7 @@ export async function writeHosted<K extends keyof State>(
   snapshot: Snapshot,
   table: K,
   values: State[K],
+  options?: { matchUpdatedAt?: string },
 ) {
   const rows = snapshot.rows,
     state = snapshot.state;
@@ -577,7 +623,13 @@ export async function writeHosted<K extends keyof State>(
       const updated = await checked(
         client
           .from("matches")
-          .update({ ...patch, revision: m.revision! + 1 })
+          .update({
+            ...patch,
+            revision: m.revision! + 1,
+            ...(options?.matchUpdatedAt
+              ? { updated_at: options.matchUpdatedAt }
+              : {}),
+          })
           .eq("id", id)
           .eq("revision", m.revision)
           .select("id"),

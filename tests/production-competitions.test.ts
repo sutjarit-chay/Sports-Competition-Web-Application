@@ -98,7 +98,9 @@ async function fixture(
         const v =
           key === "registration_policy->management->>revision"
             ? row.registration_policy?.management?.revision
-            : row[key];
+            : key === "registration_policy->>matchReportsVersion"
+              ? row.registration_policy?.matchReportsVersion
+              : row[key];
         return val === "is.null"
           ? v == null
           : val.startsWith("eq.")
@@ -860,4 +862,41 @@ test("venue-only saves retain source session metadata when the actual exact time
     assert.equal(saved.venue, "สนามใหม่");
     assert.equal(saved.startsAt, "2026-11-10T10:00");
     assert.equal(f.matches[0].venue, "สนามใหม่");
+  }));
+
+test("admin policy CAS refuses to clobber a report staged after its snapshot", async () =>
+  fixture(async (f) => {
+    const previous = globalThis.fetch;
+    let raced = false;
+    globalThis.fetch = async (input, init) => {
+      if (
+        !raced &&
+        String(input).includes("/rest/v1/competitions") &&
+        init?.method === "PATCH"
+      ) {
+        raced = true;
+        Object.assign(f.competitions[0].registration_policy, {
+          matchReportsVersion: 1,
+          matchReports: { winner: { retained: true } },
+        });
+      }
+      return previous(input, init);
+    };
+    const result = await post({
+      action: "policy",
+      id,
+      revision: 1,
+      policy: {
+        ruleId: "football-male",
+        reserves: 3,
+        eventQuotas: {},
+        maxEventsPerAthlete: null,
+      },
+    });
+    assert.equal(result.status, 409);
+    assert.deepEqual(
+      f.competitions[0].registration_policy.matchReports.winner,
+      { retained: true },
+    );
+    assert.equal(f.competitions[0].registration_policy.management.revision, 1);
   }));

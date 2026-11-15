@@ -86,6 +86,10 @@ import {
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
 import { buildScheduleMatches } from "@/lib/schedule-view";
+import { MatchResultForm } from "@/components/match-result-form";
+import MatchResultsReport, {
+  MatchResultDialog,
+} from "@/components/match-results-report";
 import AthleticsProgram from "@/components/athletics-program";
 import CertificateCenter from "@/components/certificate-center";
 import SpiderSchedule from "@/components/spider-schedule";
@@ -108,14 +112,15 @@ const tabs = [
   "ข้อมูลโรงเรียน",
   "นักกีฬาและครูผู้ฝึกซ้อม",
   "เกียรติบัตร",
+  "ผลการแข่งขัน",
 ];
-const viewerTabIndices = [0, 2, 5, 6, 7];
+const viewerTabIndices = [0, 2, 5, 6, 7, 12];
 function availableTabIndices(role: string) {
   if (role === "viewer") return viewerTabIndices;
-  if (role === "recorder" || role === "referee") return [0, 2, 3, 4, 7];
+  if (role === "recorder" || role === "referee") return [0, 2, 3, 4, 7, 12];
   if (role === "school" || role === "school_admin")
-    return [0, 1, 2, 5, 6, 7, 9, 10, 11];
-  if (role === "admin") return [0, 1, 2, 3, 4, 5, 6, 7, 8, 11];
+    return [0, 1, 2, 5, 6, 7, 9, 10, 11, 12];
+  if (role === "admin") return [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12];
   return viewerTabIndices;
 }
 const icons = [
@@ -131,6 +136,7 @@ const icons = [
   School,
   Users,
   Medal,
+  Trophy,
 ];
 const mobileTabLabels: Record<number, string> = {
   0: "ภาพรวม",
@@ -143,6 +149,8 @@ const mobileTabLabels: Record<number, string> = {
   8: "รายการ",
   9: "ข้อมูล",
   10: "รายชื่อ",
+  11: "เกียรติบัตร",
+  12: "ผลการแข่งขัน",
 };
 const sportIcons = [
   Goal,
@@ -235,6 +243,7 @@ export default function Home() {
   }, [menuOpen]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [profileId, setProfileId] = useState("");
+  const [selectedResultId, setSelectedResultId] = useState("");
   const [competitionId, setCompetitionId] = useState("");
   const [eventId, setEventId] = useState("");
   const [eventKind, setEventKind] = useState("track");
@@ -805,6 +814,27 @@ export default function Home() {
   const schoolMatches = data.matches.filter(
     (match) => match.home === school || match.away === school,
   );
+  const reportMatches = buildScheduleMatches(
+    managedCompetitions,
+    data.matches,
+  ).filter(
+    (match) =>
+      !match.fixtureOnly &&
+      (schoolRole
+        ? match.home === school || match.away === school
+        : refereeRole
+          ? match.referee_id === profileId
+          : true),
+  );
+  const selectedResult =
+    reportMatches.find(
+      (match) => match.id === selectedResultId && match.status === "finished",
+    ) || null;
+  const selectedResultCompetition = snapshot?.rows.competitions.find(
+    (c) => c.id === selectedResult?.competition_id,
+  );
+  const reportCompetitionName = (id: string | undefined) =>
+    snapshot?.rows.competitions.find((c) => c.id === id)?.name || "";
   const medalMatches = schoolRole
     ? schoolMatches
     : refereeRole
@@ -907,6 +937,21 @@ export default function Home() {
   }
   return (
     <div className="shell">
+      <MatchResultDialog
+        match={selectedResult}
+        schoolName={schoolName}
+        competitionName={reportCompetitionName}
+        onClose={() => setSelectedResultId("")}
+        points={
+          selectedResultCompetition
+            ? {
+                win: selectedResultCompetition.win_points,
+                draw: selectedResultCompetition.draw_points,
+                loss: selectedResultCompetition.loss_points,
+              }
+            : undefined
+        }
+      />
       <a className="skip-link" href="#main-content">
         ข้ามไปเนื้อหาหลัก
       </a>
@@ -1075,6 +1120,26 @@ export default function Home() {
                 โหลดข้อมูลใหม่
               </button>
             </section>
+          )}
+          {tab === 12 && (
+            <>
+              {filter}
+              <section className="panel">
+                <h2>ผลการแข่งขัน</h2>
+                <p className="muted">
+                  คะแนนจบคู่และแต้มรายเซตจากผลที่ยืนยันแล้ว
+                  คลิกเพื่อดูรายละเอียด
+                </p>
+                <MatchResultsReport
+                  matches={reportMatches.filter(
+                    (m) => m.competition_id === competitionId,
+                  )}
+                  schoolName={schoolName}
+                  competitionName={reportCompetitionName}
+                  onSelect={(match) => setSelectedResultId(match.id)}
+                />
+              </section>
+            </>
           )}
           {tab === 11 && (admin || schoolRole) && (
             <CertificateCenter
@@ -1400,37 +1465,15 @@ export default function Home() {
                         <Trophy aria-hidden="true" />
                         ผลการแข่งขันที่จบแล้ว
                       </h3>
-                      {(schoolRole
-                        ? schoolMatches
-                        : refereeRole
-                          ? assignedMatches
-                          : data.matches
-                      )
-                        .filter((m) => m.status === "finished")
-                        .slice(-3)
-                        .reverse()
-                        .map((m) => (
-                          <div className="result-card" key={m.id}>
-                            <p>
-                              {m.sport} · {m.division} · {m.gender}
-                            </p>
-                            <div>
-                              <span>{schoolName(m.home)}</span>
-                              <strong>
-                                {m.home_score} : {m.away_score}
-                              </strong>
-                              <span>{schoolName(m.away)}</span>
-                            </div>
-                            <small>จบการแข่งขัน</small>
-                          </div>
-                        ))}
-                      {!(
-                        schoolRole
-                          ? schoolMatches
-                          : refereeRole
-                            ? assignedMatches
-                            : data.matches
-                      ).some((m) => m.status === "finished") && <Empty />}
+                      <MatchResultsReport
+                        matches={reportMatches
+                          .filter((m) => m.status === "finished")
+                          .slice(-3)
+                          .reverse()}
+                        schoolName={schoolName}
+                        competitionName={reportCompetitionName}
+                        onSelect={(match) => setSelectedResultId(match.id)}
+                      />
                     </div>
                   </div>
                 </section>
@@ -1715,12 +1758,17 @@ export default function Home() {
                                 match.home === school || match.away === school,
                             )
                           : refereeRole
-                            ? selectedMatches
+                            ? scheduleMatches.filter(
+                                (match) =>
+                                  !match.fixtureOnly &&
+                                  match.referee_id === profileId,
+                              )
                             : scheduleMatches
                       }
                       schoolName={(id) =>
                         data.schools.find((item) => item.id === id)?.name || id
                       }
+                      onViewResult={(match) => setSelectedResultId(match.id)}
                       canEdit={admin}
                       busy={busy}
                       canAssign={admin}
@@ -1789,74 +1837,29 @@ export default function Home() {
                 )}
                 {selectedMatches.length === 0 && <Empty />}
                 {selectedMatches.map((m) => (
-                  <form
-                    className="match-form"
-                    key={m.id}
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      const homeScore = Number(f.get("home"));
-                      const awayScore = Number(f.get("away"));
-                      if (
-                        !window.confirm(
-                          `ตรวจสอบผลก่อนยืนยัน:\n${schoolName(m.home)} ${homeScore} – ${awayScore} ${schoolName(m.away)}\n${m.starts_at || "ไม่ระบุเวลา"} · ${m.venue || "ไม่ระบุสนาม"}`,
-                        )
-                      )
-                        return;
+                  <MatchResultForm
+                    key={`${m.id}-${m.revision}`}
+                    match={
+                      reportMatches.find((match) => match.id === m.id) || m
+                    }
+                    schoolName={schoolName}
+                    busy={busy}
+                    canEdit={edit}
+                    onViewResult={(match) => setSelectedResultId(match.id)}
+                    onSubmit={(home, away, setScores) =>
                       run(() =>
                         save("matches", [
                           {
                             ...m,
-                            home_score: homeScore,
-                            away_score: awayScore,
+                            home_score: home,
+                            away_score: away,
                             status: "finished",
+                            setScores,
                           },
                         ]),
-                      );
-                    }}
-                  >
-                    <b>
-                      สาย {m.pool} · {schoolName(m.home)} — {schoolName(m.away)}
-                    </b>
-                    <small className="muted">
-                      {m.starts_at || "ไม่ระบุเวลา"} ·{" "}
-                      {m.venue || "ไม่ระบุสนาม"}
-                    </small>
-                    <label>
-                      เจ้าบ้าน
-                      <input
-                        type="number"
-                        name="home"
-                        min="0"
-                        step="1"
-                        required
-                        defaultValue={m.home_score}
-                        disabled={!edit}
-                      />
-                    </label>
-                    <label>
-                      ทีมเยือน
-                      <input
-                        type="number"
-                        name="away"
-                        min="0"
-                        step="1"
-                        required
-                        defaultValue={m.away_score}
-                        disabled={!edit}
-                      />
-                    </label>
-                    <span className="badge">
-                      {m.status === "finished"
-                        ? `ยืนยันผลแล้ว · ${m.home_score} – ${m.away_score}`
-                        : "รอส่งผล"}
-                    </span>
-                    {edit && (
-                      <button className="primary" disabled={busy}>
-                        ยืนยันผล
-                      </button>
-                    )}
-                  </form>
+                      )
+                    }
+                  />
                 ))}
               </section>
             </>

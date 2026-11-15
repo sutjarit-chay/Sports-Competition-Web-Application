@@ -1,3 +1,8 @@
+import {
+  allocateMatchStamp,
+  normalizedMatchStamp,
+  validateSetScores,
+} from "./set-scores";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Match } from "./domain";
 import { AccountError } from "./account-server";
@@ -149,8 +154,45 @@ export async function saveMatchResult(
       }
     }
   }
+  let setScores;
+  try {
+    setScores = validateSetScores(
+      input.setScores,
+      homeScore,
+      awayScore,
+      original.sport,
+    );
+  } catch (error) {
+    throw new AccountError(
+      error instanceof Error ? error.message : "คะแนนเซตไม่ถูกต้อง",
+    );
+  }
+  const competition = snapshot.rows.competitions.find(
+    (c) => c.id === actual.competition_id,
+  );
+  const management = readManagement(competition?.registration_policy);
+  if (
+    isEliminationFixture(management, actual.id) &&
+    input.status === "finished"
+  ) {
+    if (homeScore === awayScore)
+      throw new AccountError(
+        "รอบคัดออกต้องมีผู้ชนะ ไม่สามารถบันทึกผลเสมอ",
+        409,
+      );
+    if (
+      ["finished", "confirmed"].includes(actual.status) &&
+      actual.home_score! > actual.away_score! !==
+        (homeScore as number) > (awayScore as number)
+    )
+      throw new AccountError(
+        "ไม่สามารถเปลี่ยนผู้ชนะของผลคัดออกที่ยืนยันแล้ว",
+        409,
+      );
+  }
   const match: Match = {
     ...original,
+    setScores,
     starts_at: startsAt,
     venue,
     referee_id: refereeId,
@@ -160,16 +202,75 @@ export async function saveMatchResult(
     revision: actual.revision,
   };
   try {
-    await writeHosted(client, snapshot, "matches", [match]);
+    let matchUpdatedAt: string | undefined;
+    if (setScores) {
+      let policy = record(competition?.registration_policy);
+      let staged = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const version = policy.matchReportsVersion;
+        const managementRevision = record(policy.management).revision;
+        matchUpdatedAt = allocateMatchStamp(policy.matchReportsStamp);
+        const previousEntry = record(record(policy.matchReports)[actual.id]);
+        const attempts = previousEntry.updatedAt
+          ? { [normalizedMatchStamp(previousEntry.updatedAt)!]: previousEntry }
+          : previousEntry;
+        const nextPolicy = {
+          ...policy,
+          matchReportsStamp: matchUpdatedAt,
+          matchReportsVersion: (typeof version === "number" ? version : 0) + 1,
+          matchReports: {
+            ...record(policy.matchReports),
+            [actual.id]: {
+              ...attempts,
+              [matchUpdatedAt]: {
+                revision: actual.revision + 1,
+                updatedAt: matchUpdatedAt,
+                homeScore,
+                awayScore,
+                sets: setScores,
+              },
+            },
+          },
+        };
+        let query = client
+          .from("competitions")
+          .update({ registration_policy: nextPolicy })
+          .eq("id", actual.competition_id);
+        query =
+          version == null
+            ? query.is("registration_policy->>matchReportsVersion", null)
+            : query.eq("registration_policy->>matchReportsVersion", version);
+        query =
+          managementRevision == null
+            ? query.is("registration_policy->management->>revision", null)
+            : query.eq(
+                "registration_policy->management->>revision",
+                managementRevision,
+              );
+        const result = await query.select("id");
+        if (result.error) throw Error("matches: บันทึกคะแนนเซตไม่สำเร็จ");
+        if (result.data?.length) {
+          staged = true;
+          break;
+        }
+        const fresh = await client
+          .from("competitions")
+          .select("registration_policy")
+          .eq("id", actual.competition_id)
+          .single();
+        if (fresh.error || !fresh.data)
+          throw Error("matches: โหลดคะแนนเซตไม่สำเร็จ");
+        policy = record(fresh.data.registration_policy);
+      }
+      if (!staged) throw Error("ข้อมูลรายการเปลี่ยนแปลงแล้ว กรุณาลองใหม่");
+    }
+    await writeHosted(client, snapshot, "matches", [match], { matchUpdatedAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.startsWith("matches:"))
       throw new AccountError("บันทึกผลไม่สำเร็จ กรุณาลองใหม่", 503);
     throw new AccountError(message || "บันทึกผลไม่สำเร็จ", 409);
   }
-  const competition = snapshot.rows.competitions.find(
-    (c) => c.id === actual.competition_id,
-  );
   if (
     input.status === "finished" &&
     isEliminationFixture(

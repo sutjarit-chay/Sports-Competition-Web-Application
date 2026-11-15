@@ -17,12 +17,14 @@ export default function SpiderSchedule({
   busy,
   canAssign,
   onSave,
+  onViewResult,
 }: {
   matches: ScheduleMatch[];
   schoolName: (id: string) => string;
   canEdit: boolean;
   busy: boolean;
   canAssign: boolean;
+  onViewResult?: (match: Match) => void;
   onSave: (
     match: Match,
     startsAt: string,
@@ -342,6 +344,11 @@ export default function SpiderSchedule({
                       {match.venue || "รอกำหนดสนาม"}
                     </span>
                   </div>
+                  {match.status === "finished" && onViewResult && (
+                    <button type="button" onClick={() => onViewResult(match)}>
+                      ดูผลการแข่งขัน
+                    </button>
+                  )}
                   {canEdit && (
                     <form
                       className="spider-edit-form"

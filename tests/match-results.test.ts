@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createClient } from "@supabase/supabase-js";
+import { readHosted, writeRegistrationPolicy } from "../lib/hosted";
 import { POST } from "../app/api/match-results/route";
 const actor = "10000000-0000-4000-8000-000000000001",
   competition = "20000000-0000-4000-8000-000000000001",
@@ -147,10 +148,14 @@ async function fixture(
     const rows = tables[table];
     assert.ok(rows, table);
     const selected = rows.filter((row) =>
-      [...url.searchParams].every(
-        ([key, val]) =>
-          !val.startsWith("eq.") || String(row[key]) === val.slice(3),
-      ),
+      [...url.searchParams].every(([key, val]) => {
+        const path = key.split(/->>?/);
+        let value: any = row;
+        for (const part of path) value = value?.[part];
+        return val === "is.null"
+          ? value == null
+          : !val.startsWith("eq.") || String(value) === val.slice(3);
+      }),
     );
     if (method === "PATCH") {
       selected.forEach((row) => Object.assign(row, body));
@@ -519,4 +524,375 @@ test("a finished group result can change its winner", async () =>
       away_score: 2,
     });
     assert.equal(res.status, 200, JSON.stringify(await res.json()));
+  }));
+
+const sets = [
+  { home: 25, away: 20 },
+  { home: 25, away: 23 },
+];
+function volleyball(f: { match: Row; tables: Record<string, Row[]> }) {
+  f.match.sport = "วอลเลย์บอล";
+  f.tables.competitions[0].sport = "วอลเลย์บอล";
+}
+test("assigned referee set scores round trip through trusted revision and timestamp binding", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    f.setRole("referee");
+    const result = await post({
+      ...f.match,
+      status: "finished",
+      home_score: 2,
+      away_score: 0,
+      setScores: sets,
+    });
+    assert.equal(result.status, 200, JSON.stringify(await result.json()));
+    const client = createClient(
+      "https://match-fixture.invalid",
+      "service-fixture",
+      { auth: { persistSession: false } },
+    );
+    assert.deepEqual(
+      (await readHosted(client, false)).state.matches[0].setScores,
+      sets,
+    );
+    f.tables.matches[0].updated_at = "2020-01-01T00:00:00Z";
+    assert.equal(
+      (await readHosted(client, false)).state.matches[0].setScores,
+      undefined,
+    );
+  }));
+test("invalid and unassigned set reports never write metadata", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    for (const setScores of [
+      [],
+      [
+        { home: 1, away: 1 },
+        { home: 2, away: 0 },
+      ],
+      sets.concat({ home: 25, away: 0 }),
+    ]) {
+      assert.equal(
+        (
+          await post({
+            ...f.match,
+            status: "finished",
+            home_score: 2,
+            away_score: 0,
+            setScores,
+          })
+        ).status,
+        400,
+      );
+    }
+    f.setRole("referee");
+    f.tables.matches[0].referee_id = away;
+    assert.equal(
+      (
+        await post({
+          ...f.match,
+          status: "finished",
+          home_score: 2,
+          away_score: 0,
+          setScores: sets,
+        })
+      ).status,
+      403,
+    );
+    assert.equal(f.writes.length, 0);
+  }));
+test("a failed match CAS leaves staged sets invisible", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    const previous = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (
+        String(input).includes("/rest/v1/matches") &&
+        init?.method === "PATCH"
+      )
+        f.tables.matches[0].revision = 4;
+      return previous(input, init);
+    };
+    assert.equal(
+      (
+        await post({
+          ...f.match,
+          status: "finished",
+          home_score: 2,
+          away_score: 0,
+          setScores: sets,
+        })
+      ).status,
+      409,
+    );
+    const client = createClient(
+      "https://match-fixture.invalid",
+      "service-fixture",
+      { auth: { persistSession: false } },
+    );
+    assert.equal(
+      (await readHosted(client, false)).state.matches[0].setScores,
+      undefined,
+    );
+    assert.ok(
+      f.tables.competitions[0].registration_policy.matchReports[matchId],
+    );
+  }));
+test("policy CAS retries preserve another match report and unrelated policy fields", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    const previous = globalThis.fetch;
+    let raced = false;
+    globalThis.fetch = async (input, init) => {
+      if (
+        !raced &&
+        String(input).includes("/rest/v1/competitions") &&
+        init?.method === "PATCH"
+      ) {
+        raced = true;
+        Object.assign(f.tables.competitions[0].registration_policy, {
+          matchReportsVersion: 1,
+          matchReports: { other: { keep: true } },
+          unknownField: "preserved",
+        });
+      }
+      return previous(input, init);
+    };
+    const result = await post({
+      ...f.match,
+      status: "finished",
+      home_score: 2,
+      away_score: 0,
+      setScores: sets,
+    });
+    assert.equal(result.status, 200, JSON.stringify(await result.json()));
+    const policy = f.tables.competitions[0].registration_policy;
+    assert.equal(policy.matchReportsVersion, 2);
+    assert.equal(policy.unknownField, "preserved");
+    assert.deepEqual(policy.matchReports.other, { keep: true });
+    assert.equal(policy.reserves, 3);
+  }));
+
+test("a later overall-only correction invalidates previous set reports", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    assert.equal(
+      (
+        await post({
+          ...f.match,
+          status: "finished",
+          home_score: 2,
+          away_score: 0,
+          setScores: sets,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await post({
+          ...f.match,
+          revision: 4,
+          status: "finished",
+          home_score: 2,
+          away_score: 1,
+        })
+      ).status,
+      200,
+    );
+    const client = createClient(
+      "https://match-fixture.invalid",
+      "service-fixture",
+      { auth: { persistSession: false } },
+    );
+    assert.equal(
+      (await readHosted(client, false)).state.matches[0].setScores,
+      undefined,
+    );
+  }));
+
+test("metadata write failure never writes the match result", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    const previous = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (
+        String(input).includes("/rest/v1/competitions") &&
+        init?.method === "PATCH"
+      )
+        return new Response(
+          JSON.stringify({ message: "unavailable", code: "XX000" }),
+          { status: 503, headers: { "content-type": "application/json" } },
+        );
+      return previous(input, init);
+    };
+    assert.equal(
+      (
+        await post({
+          ...f.match,
+          status: "finished",
+          home_score: 2,
+          away_score: 0,
+          setScores: sets,
+        })
+      ).status,
+      503,
+    );
+    assert.equal(f.tables.matches[0].revision, 3);
+    assert.equal(f.tables.matches[0].home_score, null);
+  }));
+
+test("two staged attempts retain the sets of the attempt whose match CAS wins", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    const previous = globalThis.fetch;
+    let releaseA!: () => void, releaseB!: () => void, stagedA!: () => void;
+    const aReady = new Promise<void>((resolve) => {
+      stagedA = resolve;
+    });
+    const allowA = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const allowB = new Promise<void>((resolve) => {
+      releaseB = resolve;
+    });
+    let matchPatches = 0;
+    globalThis.fetch = async (input, init) => {
+      if (
+        String(input).includes("/rest/v1/matches") &&
+        init?.method === "PATCH"
+      ) {
+        matchPatches++;
+        if (matchPatches === 1) {
+          stagedA();
+          await allowA;
+        } else {
+          releaseA();
+          await allowB;
+        }
+      }
+      return previous(input, init);
+    };
+    const first = post({
+      ...f.match,
+      status: "finished",
+      home_score: 2,
+      away_score: 0,
+      setScores: sets,
+    });
+    await aReady;
+    const differentSets = [
+      { home: 25, away: 10 },
+      { home: 25, away: 11 },
+    ];
+    const second = post({
+      ...f.match,
+      status: "finished",
+      home_score: 2,
+      away_score: 0,
+      setScores: differentSets,
+    });
+    assert.equal((await first).status, 200);
+    releaseB();
+    assert.equal((await second).status, 409);
+    const client = createClient(
+      "https://match-fixture.invalid",
+      "service-fixture",
+      { auth: { persistSession: false } },
+    );
+    assert.deepEqual(
+      (await readHosted(client, false)).state.matches[0].setScores,
+      sets,
+    );
+    assert.equal(
+      Object.keys(
+        f.tables.competitions[0].registration_policy.matchReports[matchId],
+      ).length,
+      2,
+    );
+  }));
+
+test("persisted stamp allocator gives separate saves unique stamps with a frozen clock", async () =>
+  fixture(async (f) => {
+    volleyball(f);
+    const previousNow = Date.now;
+    Date.now = () => 1794700000000;
+    try {
+      assert.equal(
+        (
+          await post({
+            ...f.match,
+            status: "finished",
+            home_score: 2,
+            away_score: 0,
+            setScores: sets,
+          })
+        ).status,
+        200,
+      );
+      const first = f.tables.matches[0].updated_at;
+      assert.equal(
+        (
+          await post({
+            ...f.match,
+            revision: 4,
+            status: "finished",
+            home_score: 2,
+            away_score: 0,
+            setScores: sets,
+          })
+        ).status,
+        200,
+      );
+      assert.notEqual(first, f.tables.matches[0].updated_at);
+      assert.equal(
+        f.tables.competitions[0].registration_policy.matchReportsStamp,
+        f.tables.matches[0].updated_at,
+      );
+    } finally {
+      Date.now = previousNow;
+    }
+  }));
+
+test("legacy registration editor merges fresh reports and retries concurrent policy changes", async () =>
+  fixture(async (f) => {
+    const policy = f.tables.competitions[0].registration_policy;
+    policy.management = { revision: 7, custom: "management" };
+    policy.unknown = "keep";
+    const previous = globalThis.fetch;
+    let raced = false;
+    globalThis.fetch = async (input, init) => {
+      if (
+        !raced &&
+        String(input).includes("/rest/v1/competitions") &&
+        init?.method === "PATCH"
+      ) {
+        raced = true;
+        Object.assign(f.tables.competitions[0].registration_policy, {
+          matchReportsVersion: 1,
+          matchReports: { other: { retained: true } },
+          matchReportsStamp: "2026-11-15T00:00:00.000001Z",
+        });
+      }
+      return previous(input, init);
+    };
+    const client = createClient(
+      "https://match-fixture.invalid",
+      "service-fixture",
+      { auth: { persistSession: false } },
+    );
+    await writeRegistrationPolicy(client, competition, {
+      ruleId: "football-male",
+      reserves: 4,
+      eventQuotas: {},
+      maxEventsPerAthlete: null,
+    });
+    const saved = f.tables.competitions[0].registration_policy;
+    assert.equal(saved.reserves, 4);
+    assert.equal(saved.unknown, "keep");
+    assert.equal(saved.management.revision, 7);
+    assert.equal(saved.management.custom, "management");
+    assert.equal(saved.matchReportsVersion, 2);
+    assert.deepEqual(saved.matchReports.other, { retained: true });
+    assert.equal(saved.matchReportsStamp, "2026-11-15T00:00:00.000001Z");
   }));

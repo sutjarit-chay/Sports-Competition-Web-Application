@@ -84,6 +84,7 @@ export async function fixture(page: Page, fail = false, rosters = false) {
       "away_score",
       "revision",
       "referee_id",
+      "updated_at",
     ],
     athletics_events: [
       "id",
