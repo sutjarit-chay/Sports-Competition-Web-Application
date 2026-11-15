@@ -86,6 +86,7 @@ import {
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
 import { buildScheduleMatches } from "@/lib/schedule-view";
+import AthleticsProgram from "@/components/athletics-program";
 import CertificateCenter from "@/components/certificate-center";
 import SpiderSchedule from "@/components/spider-schedule";
 import AccountLogin from "@/components/account-login";
@@ -645,6 +646,13 @@ export default function Home() {
     competition?.registration_policy?.ruleId === activeRuleId
       ? competition.registration_policy
       : undefined;
+  const programRegistrationPending = (
+    competition?.registration_policy as
+      | (RegistrationPolicy & {
+          management?: { registrationPendingReason?: string };
+        })
+      | undefined
+  )?.management?.registrationPendingReason;
   const catalogPolicies: Record<string, RegistrationPolicy> = activePolicy
     ? { [activePolicy.ruleId]: activePolicy }
     : {};
@@ -1436,6 +1444,11 @@ export default function Home() {
           )}
           {tab === 1 && (
             <>
+              {programRegistrationPending && (
+                <p className="notice" role="status">
+                  {programRegistrationPending}
+                </p>
+              )}
               <RegistrationRulesTable policies={catalogPolicies} />
               <section className="panel registration-chooser">
                 <label>
@@ -1687,67 +1700,75 @@ export default function Home() {
                 <h2>
                   {schoolRole ? "ตารางแข่งขันของโรงเรียน" : "ตารางแข่งขัน"}
                 </h2>
-                <SpiderSchedule
-                  matches={
-                    schoolRole
-                      ? scheduleMatches.filter(
-                          (match) =>
-                            match.home === school || match.away === school,
-                        )
-                      : refereeRole
-                        ? selectedMatches
-                        : scheduleMatches
-                  }
-                  schoolName={(id) =>
-                    data.schools.find((item) => item.id === id)?.name || id
-                  }
-                  canEdit={admin}
-                  busy={busy}
-                  canAssign={admin}
-                  onSave={(match, startsAt, venue, refereeId) =>
-                    run(async () => {
-                      if (
-                        refereeId &&
-                        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-                          refereeId,
-                        )
-                      )
-                        throw Error(
-                          "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
-                        );
-                      const managed = managedCompetitions.find(
-                        (c) => c.id === match.competition_id,
-                      );
-                      if (
-                        managed?.fixtures.some((f) => f.id === match.id) &&
-                        readManagement(
-                          snapshot?.rows.competitions.find(
-                            (c) => c.id === match.competition_id,
-                          )?.registration_policy,
-                        )
-                      ) {
-                        await mutateCompetition({
-                          action: "schedule",
-                          id: match.competition_id,
-                          fixtureId: match.id,
-                          startsAt,
-                          venue,
-                          refereeId: refereeId || null,
-                          revision: managed.managementRevision,
-                        });
-                        return;
-                      }
-                      await save("matches", [
-                        {
-                          ...match,
-                          starts_at: startsAt,
-                          venue,
-                          referee_id: refereeId || undefined,
-                        },
-                      ]);
-                    })
-                  }
+                <AthleticsProgram
+                  competitions={(snapshot?.rows.competitions || []).filter(
+                    (c) => c.id === competitionId,
+                  )}
                 />
+                {sport !== "กรีฑา" &&
+                  (sport !== "เปตอง" || scheduleMatches.length > 0) && (
+                    <SpiderSchedule
+                      matches={
+                        schoolRole
+                          ? scheduleMatches.filter(
+                              (match) =>
+                                match.home === school || match.away === school,
+                            )
+                          : refereeRole
+                            ? selectedMatches
+                            : scheduleMatches
+                      }
+                      schoolName={(id) =>
+                        data.schools.find((item) => item.id === id)?.name || id
+                      }
+                      canEdit={admin}
+                      busy={busy}
+                      canAssign={admin}
+                      onSave={(match, startsAt, venue, refereeId) =>
+                        run(async () => {
+                          if (
+                            refereeId &&
+                            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                              refereeId,
+                            )
+                          )
+                            throw Error(
+                              "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
+                            );
+                          const managed = managedCompetitions.find(
+                            (c) => c.id === match.competition_id,
+                          );
+                          if (
+                            managed?.fixtures.some((f) => f.id === match.id) &&
+                            readManagement(
+                              snapshot?.rows.competitions.find(
+                                (c) => c.id === match.competition_id,
+                              )?.registration_policy,
+                            )
+                          ) {
+                            await mutateCompetition({
+                              action: "schedule",
+                              id: match.competition_id,
+                              fixtureId: match.id,
+                              startsAt,
+                              venue,
+                              refereeId: refereeId || null,
+                              revision: managed.managementRevision,
+                            });
+                            return;
+                          }
+                          await save("matches", [
+                            {
+                              ...match,
+                              starts_at: startsAt,
+                              venue,
+                              referee_id: refereeId || undefined,
+                            },
+                          ]);
+                        })
+                      }
+                    />
+                  )}
               </section>
             </>
           )}

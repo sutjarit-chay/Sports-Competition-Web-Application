@@ -659,3 +659,205 @@ test("management rejects malformed phase and duplicate source numbers", async ()
     assert.equal(readManagement(f.competitions[0].registration_policy), null);
   });
 });
+
+test("management validates complete session metadata and real calendar dates", async () => {
+  const { readManagement } = await import("../lib/production-competitions");
+  await fixture(async (f) => {
+    const policy = f.competitions[0].registration_policy;
+    const base = {
+      id: a,
+      round: "A",
+      home: a,
+      away: b,
+      startsAt: "",
+      venue: "สนาม",
+    };
+    const session = {
+      timeMode: "session",
+      competitionDate: "2028-02-29",
+      sessionStart: "09:00",
+    };
+    for (const metadata of [
+      session,
+      { ...session, competitionDate: "2026-11-15", sessionStart: "23:59" },
+    ]) {
+      policy.management.fixtures = [{ ...base, ...metadata }];
+      assert.ok(readManagement(policy));
+    }
+    for (const metadata of [
+      { timeMode: "session" },
+      { competitionDate: "2026-11-15" },
+      { sessionStart: "09:00" },
+      { ...session, timeMode: "exact" },
+      { ...session, competitionDate: "2026-02-29" },
+      { ...session, competitionDate: "2026-04-31" },
+      { ...session, competitionDate: "2026-13-01" },
+      { ...session, competitionDate: "0000-01-01" },
+      { ...session, competitionDate: "2026-01-00" },
+      { ...session, competitionDate: "26-01-01" },
+      { ...session, sessionStart: "24:00" },
+      { ...session, sessionStart: "09:60" },
+      { ...session, sessionStart: "9:00" },
+      { ...session, competitionDate: null },
+    ]) {
+      policy.management.fixtures = [{ ...base, ...metadata }];
+      assert.equal(readManagement(policy), null, JSON.stringify(metadata));
+    }
+  });
+});
+
+test("session-only fixtures survive policy saves and do not materialize invented match times", async () =>
+  fixture(async (f) => {
+    const session = {
+      id: a,
+      round: "A",
+      home: a,
+      away: b,
+      startsAt: "",
+      venue: "สนาม",
+      timeMode: "session",
+      competitionDate: "2026-11-15",
+      sessionStart: "09:00",
+    };
+    f.competitions[0].registration_policy.management.fixtures = [session];
+    const saved = await post({
+      action: "policy",
+      id,
+      policy: f.competitions[0].registration_policy,
+    });
+    assert.equal(saved.status, 200, JSON.stringify(await saved.json()));
+    assert.deepEqual(
+      f.competitions[0].registration_policy.management.fixtures,
+      [session],
+    );
+    const res = await post({ action: "draw", id, teams: [a, b, c, d] });
+    assert.equal(res.status, 200, JSON.stringify(await res.json()));
+    assert.equal(f.matches.length, 0);
+    assert.deepEqual(
+      f.competitions[0].registration_policy.management.fixtures,
+      [session],
+    );
+  }));
+
+test("exact scheduling clears session metadata only for the edited fixture", async () =>
+  fixture(async (f) => {
+    const session = {
+      round: "A",
+      startsAt: "",
+      venue: "สนาม",
+      timeMode: "session",
+      competitionDate: "2026-11-15",
+      sessionStart: "09:00",
+    };
+    f.competitions[0].registration_policy.management.fixtures = [
+      { ...session, id: a, home: a, away: b },
+      { ...session, id: c, home: c, away: d },
+    ];
+    const res = await post({
+      action: "schedule",
+      id,
+      fixtureId: a,
+      startsAt: "2026-11-16T10:00",
+      venue: "สนาม",
+    });
+    assert.equal(res.status, 200, JSON.stringify(await res.json()));
+    const [edited, untouched] =
+      f.competitions[0].registration_policy.management.fixtures;
+    assert.equal(edited.startsAt, "2026-11-16T10:00");
+    for (const key of ["timeMode", "competitionDate", "sessionStart"])
+      assert.equal(key in edited, false);
+    assert.equal(untouched.timeMode, "session");
+    assert.equal(untouched.startsAt, "");
+    assert.equal(f.matches.length, 1);
+  }));
+
+test("session projections preserve actual times and confirmed matches remain unchanged", async () => {
+  const { managedFromHosted } = await import("../lib/production-competitions");
+  await fixture(async (f) => {
+    const session = {
+      id: a,
+      round: "A",
+      home: a,
+      away: b,
+      startsAt: "",
+      venue: "สนาม",
+      timeMode: "session",
+      competitionDate: "2026-11-15",
+      sessionStart: "09:00",
+    };
+    f.competitions[0].registration_policy.management.fixtures = [session];
+    const actual = {
+      id: a,
+      competition_id: id,
+      group_name: "A",
+      home_school_id: a,
+      away_school_id: b,
+      starts_at: "2026-11-10T10:00:00+07:00",
+      venue: "สนาม",
+      status: "confirmed",
+      home_score: 2,
+      away_score: 0,
+      revision: 3,
+    };
+    f.matches.push(actual);
+    const projected = managedFromHosted(
+      f.competitions as any,
+      f.matches as any,
+    )[0].fixtures[0];
+    assert.equal(projected.startsAt, "2026-11-10T10:00");
+    assert.equal(projected.competitionDate, "2026-11-15");
+    assert.equal(projected.sessionStart, "09:00");
+    const before = structuredClone(actual);
+    const res = await post({ action: "draw", id, teams: [a, b, c, d] });
+    assert.equal(res.status, 200, JSON.stringify(await res.json()));
+    assert.deepEqual(f.matches, [before]);
+  });
+});
+
+test("venue-only saves retain source session metadata when the actual exact time is unchanged", async () =>
+  fixture(async (f) => {
+    const metadata = {
+      timeMode: "session",
+      competitionDate: "2026-11-15",
+      sessionStart: "09:00",
+    };
+    f.competitions[0].registration_policy.management.fixtures = [
+      {
+        id: a,
+        round: "A",
+        home: a,
+        away: b,
+        startsAt: "",
+        venue: "สนามเดิม",
+        ...metadata,
+      },
+    ];
+    f.matches.push({
+      id: a,
+      competition_id: id,
+      group_name: "A",
+      home_school_id: a,
+      away_school_id: b,
+      starts_at: "2026-11-10T10:00:00+07:00",
+      venue: "สนามเดิม",
+      status: "scheduled",
+      revision: 1,
+      home_score: null,
+      away_score: null,
+    });
+    const res = await post({
+      action: "schedule",
+      id,
+      fixtureId: a,
+      startsAt: "2026-11-10T10:00",
+      venue: "สนามใหม่",
+    });
+    assert.equal(res.status, 200, JSON.stringify(await res.json()));
+    const saved = f.competitions[0].registration_policy.management.fixtures[0];
+    assert.equal(saved.timeMode, metadata.timeMode);
+    assert.equal(saved.competitionDate, metadata.competitionDate);
+    assert.equal(saved.sessionStart, metadata.sessionStart);
+    assert.equal(saved.venue, "สนามใหม่");
+    assert.equal(saved.startsAt, "2026-11-10T10:00");
+    assert.equal(f.matches[0].venue, "สนามใหม่");
+  }));

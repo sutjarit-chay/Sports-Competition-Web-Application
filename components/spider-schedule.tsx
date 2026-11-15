@@ -3,29 +3,12 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, MapPin, Trophy } from "lucide-react";
 import type { Match } from "@/lib/domain";
-import type { ScheduleMatch } from "@/lib/schedule-view";
-
-const MONTHS = [
-  "ม.ค.",
-  "ก.พ.",
-  "มี.ค.",
-  "เม.ย.",
-  "พ.ค.",
-  "มิ.ย.",
-  "ก.ค.",
-  "ส.ค.",
-  "ก.ย.",
-  "ต.ค.",
-  "พ.ย.",
-  "ธ.ค.",
-];
-
-function formatScheduleDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/.exec(value);
-  if (!match) return value || "รอกำหนดเวลา";
-  const [, year, month, day, time] = match;
-  return `${Number(day)} ${MONTHS[Number(month) - 1]} ${Number(year) + 543} · ${time} น.`;
-}
+import {
+  compareScheduleMatches,
+  formatProgramDate,
+  formatScheduleDate,
+  type ScheduleMatch,
+} from "@/lib/schedule-view";
 
 export default function SpiderSchedule({
   matches,
@@ -73,44 +56,28 @@ export default function SpiderSchedule({
   );
   const rounds = useMemo(() => {
     const groups = new Map<string, ScheduleMatch[]>();
-    for (const match of competitionMatches)
-      groups.set(match.pool, [...(groups.get(match.pool) || []), match]);
+    for (const match of competitionMatches) {
+      const key = match.competitionDate || match.pool;
+      groups.set(key, [...(groups.get(key) || []), match]);
+    }
     return [...groups]
-      .map(([name, fixtures]) => ({
-        name,
-        fixtures: [...fixtures].sort(
-          (first, second) =>
-            (first.sourceNumber !== undefined &&
-            second.sourceNumber !== undefined
-              ? first.sourceNumber - second.sourceNumber
-              : 0) ||
-            first.starts_at.localeCompare(second.starts_at) ||
-            first.home.localeCompare(second.home),
-        ),
-        sourceNumber: fixtures.find((f) => f.sourceNumber !== undefined)
-          ?.sourceNumber,
-        startsAt:
-          fixtures
-            .map((fixture) => fixture.starts_at)
-            .filter(Boolean)
-            .sort()[0] || "",
+      .map(([key, fixtures]) => ({
+        key,
+        name: fixtures[0].competitionDate ? formatProgramDate(key) : key,
+        fixtures: [...fixtures].sort(compareScheduleMatches),
       }))
-      .sort(
-        (first, second) =>
-          (first.sourceNumber !== undefined && second.sourceNumber !== undefined
-            ? first.sourceNumber - second.sourceNumber
-            : 0) ||
-          first.startsAt.localeCompare(second.startsAt) ||
-          first.name.localeCompare(second.name, "th"),
-      );
+      .sort((a, b) => compareScheduleMatches(a.fixtures[0], b.fixtures[0]));
   }, [competitionMatches]);
-  const round = rounds.find((item) => item.name === activeRound) || rounds[0];
-  const canMatrix =
-    !!round &&
-    round.fixtures.every((m) => m.phase === "group" || m.format !== "knockout");
-  const matrixMatches = competitionMatches.some((m) => m.format === "knockout")
-    ? round?.fixtures || []
-    : competitionMatches;
+  const round = rounds.find((item) => item.key === activeRound) || rounds[0];
+  const matrixEligible = (m: ScheduleMatch) =>
+    m.phase === "group" || (m.format !== "knockout" && m.phase !== "knockout");
+  const canMatrix = !!round && round.fixtures.every(matrixEligible);
+  const matrixMatches = (
+    round?.fixtures[0]?.competitionDate ||
+    competitionMatches.some((m) => m.format === "knockout")
+      ? round?.fixtures || []
+      : competitionMatches
+  ).filter(matrixEligible);
   const showBracket = view === "bracket" || !canMatrix;
   const matrixTeams = [
     ...new Set(matrixMatches.flatMap((match) => [match.home, match.away])),
@@ -152,12 +119,12 @@ export default function SpiderSchedule({
             </label>
           )}
           <div className="spider-round-picker" aria-label="เลือกรอบแข่งขัน">
-            {rounds.map((item, index) => (
+            {rounds.map((item) => (
               <button
                 type="button"
-                key={item.name}
-                aria-pressed={item.name === round?.name}
-                onClick={() => setActiveRound(item.name)}
+                key={item.key}
+                aria-pressed={item.key === round?.key}
+                onClick={() => setActiveRound(item.key)}
               >
                 <span>{item.name}</span>
                 <small>{item.fixtures.length} คู่</small>
@@ -263,7 +230,7 @@ export default function SpiderSchedule({
                             ? `${match.home_score} – ${match.away_score}`
                             : "พบกัน"}
                         </span>
-                        <small>{formatScheduleDate(match.starts_at)}</small>
+                        <small>{formatScheduleDate(match)}</small>
                         <small>{match.venue || "รอกำหนดสนาม"}</small>
                       </div>
                     ))}
@@ -314,7 +281,7 @@ export default function SpiderSchedule({
                               }
                               title={
                                 match
-                                  ? `${match.pool} · ${formatScheduleDate(match.starts_at)} · ${match.venue || "รอกำหนดสนาม"}`
+                                  ? `${match.pool} · ${formatScheduleDate(match)} · ${match.venue || "รอกำหนดสนาม"}`
                                   : undefined
                               }
                             >
@@ -336,7 +303,7 @@ export default function SpiderSchedule({
                 <article className="spider-match-card" key={match.id}>
                   <header>
                     <span>
-                      {round.name} · คู่ที่ {match.sourceNumber ?? index + 1}
+                      {match.pool} · คู่ที่ {match.sourceNumber ?? index + 1}
                     </span>
                     <small
                       className={
@@ -368,7 +335,7 @@ export default function SpiderSchedule({
                   <div className="spider-match-details">
                     <span>
                       <CalendarDays aria-hidden="true" />
-                      {formatScheduleDate(match.starts_at)}
+                      {formatScheduleDate(match)}
                     </span>
                     <span>
                       <MapPin aria-hidden="true" />

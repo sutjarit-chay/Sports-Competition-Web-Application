@@ -3808,3 +3808,30 @@ footer {
   overflow-wrap: anywhere;
 }
 .certificate-center input[type="checkbox"]{width:20px;height:20px;accent-color:#a47e26;cursor:pointer}.certificate-center th label:has(input[type="checkbox"]){display:flex;align-items:center;gap:8px;white-space:nowrap}
+
+.athletics-program {
+  margin-block: 1.5rem;
+}
+.athletics-program .table-scroll {
+  overflow-x: auto;
+}
+.athletics-program table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.athletics-program th,
+.athletics-program td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  vertical-align: top;
+}
+.athletics-program th {
+  white-space: nowrap;
+}
+.program-draw-notice {
+  padding: 1rem;
+  margin-block: 0.75rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 1rem;
+}

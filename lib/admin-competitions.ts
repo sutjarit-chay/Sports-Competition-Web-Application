@@ -9,6 +9,9 @@ export type ManagedFixture = {
   home: string;
   away: string;
   startsAt: string;
+  competitionDate?: string;
+  sessionStart?: string;
+  timeMode?: "session";
   venue: string;
   referee_id?: string;
   phase?: "group" | "knockout";
@@ -16,6 +19,34 @@ export type ManagedFixture = {
   resolvedHome?: string;
   resolvedAway?: string;
 };
+
+/** Session metadata describes a source programme, never a fixture timestamp. */
+export function validFixtureSession(value: Record<string, unknown>): boolean {
+  const { competitionDate, sessionStart, timeMode } = value;
+  if (
+    competitionDate === undefined &&
+    sessionStart === undefined &&
+    timeMode === undefined
+  )
+    return true;
+  if (
+    timeMode !== "session" ||
+    typeof competitionDate !== "string" ||
+    typeof sessionStart !== "string"
+  )
+    return false;
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(competitionDate) ||
+    competitionDate.startsWith("0000-") ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(sessionStart)
+  )
+    return false;
+  const date = new Date(competitionDate + "T00:00:00Z");
+  return (
+    Number.isFinite(date.getTime()) &&
+    date.toISOString().slice(0, 10) === competitionDate
+  );
+}
 
 export type ManagedCompetition = {
   id: string;
@@ -65,6 +96,7 @@ export function isManagedCompetition(
       if (typeof fixture !== "object" || fixture === null) return false;
       const item = fixture as Record<string, unknown>;
       return (
+        validFixtureSession(item) &&
         typeof item.id === "string" &&
         typeof item.round === "string" &&
         typeof item.home === "string" &&

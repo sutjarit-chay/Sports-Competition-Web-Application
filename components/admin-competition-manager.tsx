@@ -579,100 +579,128 @@ export function AdminCompetitionManager({
                   </button>
                 )}
                 <div className="admin-fixture-list">
-                  {selected.fixtures.map((f) => (
-                    <form
-                      className="admin-fixture-row"
-                      key={
-                        f.id +
-                        f.startsAt +
-                        f.venue +
-                        f.resolvedHome +
-                        f.resolvedAway
-                      }
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const data = new FormData(e.currentTarget);
-                        void mutate({
-                          action: "schedule",
-                          id: selected.id,
-                          revision: selected.managementRevision,
-                          fixtureId: f.id,
-                          startsAt: data.get("startsAt"),
-                          venue: data.get("venue"),
-                          ...(data.has("resolvedHome")
-                            ? { resolvedHome: data.get("resolvedHome") }
-                            : {}),
-                          ...(data.has("resolvedAway")
-                            ? { resolvedAway: data.get("resolvedAway") }
-                            : {}),
-                        });
-                      }}
-                    >
-                      <strong>
-                        {f.sourceNumber ? `คู่ ${f.sourceNumber} · ` : ""}
-                        {f.round}
-                      </strong>
-                      <span>
-                        {schoolName(f.home)} พบ {schoolName(f.away)}
-                      </span>
-                      {(["home", "away"] as const).map((side) => {
-                        const label = f[side];
-                        if (
-                          !/^ที่ [12] สาย [A-Za-z]+$/.test(label) &&
-                          label !== "ที่ 2 ดีที่สุด"
-                        )
-                          return null;
-                        const field =
-                          side === "home" ? "resolvedHome" : "resolvedAway";
-                        const groupName = /^ที่ [12] สาย (.+)$/.exec(
-                          label,
-                        )?.[1];
-                        const group = selected.groups?.find(
-                          (g) => g.name === groupName,
-                        );
-                        return (
-                          <label key={side}>
-                            {label}
-                            <select name={field} defaultValue={f[field] || ""}>
-                              <option value="">
-                                รอยืนยันโรงเรียนที่ผ่านเข้ารอบ
-                              </option>
-                              {schools
-                                .filter((s) =>
-                                  (group?.teams || selected.teams).includes(
-                                    s.id,
-                                  ),
-                                )
-                                .map((s) => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.name}
-                                  </option>
-                                ))}
-                            </select>
-                          </label>
-                        );
-                      })}
-                      <label>
-                        วันเวลา
-                        <input
-                          type="datetime-local"
-                          name="startsAt"
-                          defaultValue={f.startsAt}
-                        />
-                      </label>
-                      <label>
-                        สนาม
-                        <input
-                          name="venue"
-                          defaultValue={f.venue}
-                          maxLength={200}
-                        />
-                      </label>
-                      <button disabled={disabled} type="submit">
-                        บันทึกโปรแกรม
-                      </button>
-                    </form>
-                  ))}
+                  {[...selected.fixtures]
+                    .sort(
+                      (a, b) =>
+                        (
+                          a.competitionDate || a.startsAt.slice(0, 10)
+                        ).localeCompare(
+                          b.competitionDate || b.startsAt.slice(0, 10),
+                        ) ||
+                        (a.sourceNumber || selected.fixtures.indexOf(a) + 1) -
+                          (b.sourceNumber || selected.fixtures.indexOf(b) + 1),
+                    )
+                    .map((f) => (
+                      <form
+                        className="admin-fixture-row"
+                        key={
+                          f.id +
+                          f.startsAt +
+                          f.venue +
+                          f.resolvedHome +
+                          f.resolvedAway
+                        }
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const data = new FormData(e.currentTarget);
+                          void mutate({
+                            action: "schedule",
+                            id: selected.id,
+                            revision: selected.managementRevision,
+                            fixtureId: f.id,
+                            startsAt: data.get("startsAt"),
+                            venue: data.get("venue"),
+                            ...(data.has("resolvedHome")
+                              ? { resolvedHome: data.get("resolvedHome") }
+                              : {}),
+                            ...(data.has("resolvedAway")
+                              ? { resolvedAway: data.get("resolvedAway") }
+                              : {}),
+                          });
+                        }}
+                      >
+                        <strong>
+                          {f.sourceNumber ? `คู่ ${f.sourceNumber} · ` : ""}
+                          {f.round}
+                        </strong>
+                        <span>
+                          {schoolName(f.home)} พบ {schoolName(f.away)}
+                        </span>
+                        {(["home", "away"] as const).map((side) => {
+                          const label = f[side];
+                          if (
+                            !/^ที่ [12] สาย [A-Za-z]+$/.test(label) &&
+                            label !== "ที่ 2 ดีที่สุด"
+                          )
+                            return null;
+                          const field =
+                            side === "home" ? "resolvedHome" : "resolvedAway";
+                          const groupName = /^ที่ [12] สาย (.+)$/.exec(
+                            label,
+                          )?.[1];
+                          const group = selected.groups?.find(
+                            (g) => g.name === groupName,
+                          );
+                          return (
+                            <label key={side}>
+                              {label}
+                              <select
+                                name={field}
+                                defaultValue={f[field] || ""}
+                              >
+                                <option value="">
+                                  รอยืนยันโรงเรียนที่ผ่านเข้ารอบ
+                                </option>
+                                {schools
+                                  .filter((s) =>
+                                    (group?.teams || selected.teams).includes(
+                                      s.id,
+                                    ),
+                                  )
+                                  .map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+                          );
+                        })}
+                        {f.timeMode === "session" && (
+                          <span>
+                            ตามเอกสาร:{" "}
+                            {new Intl.DateTimeFormat("th-TH", {
+                              day: "numeric",
+                              month: "long",
+                              year: "numeric",
+                              timeZone: "Asia/Bangkok",
+                            }).format(
+                              new Date(f.competitionDate + "T00:00:00+07:00"),
+                            )}{" "}
+                            · {f.sessionStart} น. เป็นต้นไป
+                          </span>
+                        )}
+                        <label>
+                          วันเวลา
+                          <input
+                            type="datetime-local"
+                            name="startsAt"
+                            defaultValue={f.startsAt}
+                          />
+                        </label>
+                        <label>
+                          สนาม
+                          <input
+                            name="venue"
+                            defaultValue={f.venue}
+                            maxLength={200}
+                          />
+                        </label>
+                        <button disabled={disabled} type="submit">
+                          บันทึกโปรแกรม
+                        </button>
+                      </form>
+                    ))}
                 </div>
               </>
             ))}

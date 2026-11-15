@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Competition, HostedMatch } from "./hosted";
 import {
   generateFixtures,
+  validFixtureSession,
   fixturesConflict,
   type ManagedCompetition,
   type ManagedFixture,
@@ -63,6 +64,7 @@ export function readManagement(policy: unknown): Management | null {
     !m.fixtures.every((x) => {
       const f = object(x);
       return (
+        validFixtureSession(f) &&
         (f.phase === undefined ||
           f.phase === "group" ||
           f.phase === "knockout") &&
@@ -590,6 +592,11 @@ export async function performCompetitionAction(
       !Number.isFinite(new Date(startsAt + "+07:00").getTime())
     )
       throw new CompetitionError("วันเวลาไม่ถูกต้อง");
+    if (f.startsAt !== startsAt) {
+      delete f.timeMode;
+      delete f.competitionDate;
+      delete f.sessionStart;
+    }
     f.startsAt = startsAt;
     f.venue = text(body.venue);
     if (!f.venue) throw new CompetitionError("กรุณาระบุสนามแข่งขัน");

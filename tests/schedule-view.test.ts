@@ -130,3 +130,180 @@ test("every source round renders all its pairs with aligned connectors and origi
   }
   assert.equal(renderedPairs, 80);
 });
+
+test("source dates precede reset source numbers and survive persisted actual times", () => {
+  const c = structuredClone(comps[0]);
+  c.fixtures = [
+    {
+      ...c.fixtures[0],
+      sourceNumber: 1,
+      competitionDate: "2026-11-17",
+      sessionStart: "09:00",
+      timeMode: "session",
+    },
+    {
+      ...c.fixtures[1],
+      sourceNumber: 16,
+      competitionDate: "2026-11-16",
+      sessionStart: "09:00",
+      timeMode: "session",
+    },
+  ];
+  const rows = buildScheduleMatches([c], []);
+  assert.deepEqual(
+    rows.map((m) => m.sourceNumber),
+    [16, 1],
+  );
+  const actual = { ...rows[0], starts_at: "2026-12-01T14:30" };
+  const persisted = buildScheduleMatches([c], [actual]);
+  assert.equal(persisted[0].competitionDate, "2026-11-16");
+  const html = renderToStaticMarkup(
+    createElement(SpiderSchedule, {
+      matches: persisted,
+      schoolName: (id: string) => id,
+      canEdit: false,
+      busy: false,
+      canAssign: false,
+      onSave: () => {},
+    }),
+  );
+  assert.match(html, /16 พ.ย. 2569 · เริ่ม 09:00 น. เป็นต้นไป/);
+  assert.doesNotMatch(html, /14:30/);
+});
+
+test("one source day combines pools in source order and disables mixed knockout matrix", () => {
+  const c = structuredClone(comps[0]);
+  c.fixtures = c.fixtures.slice(0, 3).map((f, i) => ({
+    ...f,
+    sourceNumber: [3, 1, 2][i],
+    round: i === 1 ? "สาย B" : "สาย A",
+    phase: i === 2 ? "knockout" : "group",
+    competitionDate: "2026-11-16",
+    sessionStart: "09:00",
+    timeMode: "session",
+  }));
+  const html = renderToStaticMarkup(
+    createElement(SpiderSchedule, {
+      matches: buildScheduleMatches([c], []),
+      schoolName: (id: string) => id,
+      canEdit: false,
+      busy: false,
+      canAssign: false,
+      onSave: () => {},
+    }),
+  );
+  assert.match(html, /viewBox="0 0 104 456"/);
+  assert.ok(html.indexOf("คู่ที่ 1") < html.indexOf("คู่ที่ 2"));
+  assert.ok(html.indexOf("คู่ที่ 2") < html.indexOf("คู่ที่ 3"));
+  assert.match(html, /สาย B · คู่ที่ 1/);
+  assert.match(html, /disabled=""[^>]*>ผังพบกันหมด/);
+});
+
+test("athletics program keeps shared event numbers and session time for four mini categories", async () => {
+  const { default: AthleticsProgram } =
+    await import("../components/athletics-program");
+  const competitions = ["ป.1 ชาย", "ป.1 หญิง", "ป.2 ชาย", "ป.2 หญิง"].map(
+    (name, i) => ({
+      id: `mini-${i}`,
+      name,
+      sport: "กรีฑา",
+      age_group: name.split(" ")[0],
+      gender: name.split(" ")[1],
+      win_points: 3,
+      draw_points: 1,
+      loss_points: 0,
+      registration_policy: {
+        management: {
+          athleticsProgram: [
+            {
+              eventId: `mini-${i}`,
+              eventName: "วิ่ง 50 เมตร",
+              levelBand: "ป.1–ป.2",
+              date: "2026-11-16",
+              sessionStart: "09:00",
+              slots: [{ sourceNumber: 101, stage: "final", heat: 1 }],
+            },
+          ],
+        },
+      },
+    }),
+  );
+  const html = renderToStaticMarkup(
+    createElement(AthleticsProgram, { competitions: competitions as never }),
+  );
+  assert.equal((html.match(/<td>101<\/td>/g) || []).length, 4);
+  for (const c of competitions)
+    assert.ok(html.includes(c.age_group) && html.includes(c.gender));
+  assert.match(html, /เริ่ม 09:00 น. เป็นต้นไป/);
+  assert.doesNotMatch(html, /09:0[1-9]/);
+});
+
+test("pending petanque draw is an explicit dated notice without invented fixtures", async () => {
+  const { default: AthleticsProgram } =
+    await import("../components/athletics-program");
+  const html = renderToStaticMarkup(
+    createElement(AthleticsProgram, {
+      competitions: [
+        {
+          id: "petanque",
+          sport: "เปตอง",
+          name: "เปตอง ประถม ชาย",
+          age_group: "ประถม",
+          gender: "ชาย",
+          win_points: 3,
+          draw_points: 1,
+          loss_points: 0,
+          registration_policy: {
+            management: {
+              drawPending: true,
+              dateRange: { start: "2026-11-16", end: "2026-11-17" },
+            },
+          },
+        },
+      ] as never,
+    }),
+  );
+  assert.match(html, /รอจับสลาก/);
+  assert.match(html, /16 พ.ย. 2569/);
+  assert.match(html, /17 พ.ย. 2569/);
+  assert.doesNotMatch(html, /คู่ที่/);
+});
+
+test("exact dated matches sort with session dates before source numbers and unknown dates", () => {
+  const c = structuredClone(comps[0]);
+  c.fixtures = [
+    { ...c.fixtures[0], sourceNumber: 1, startsAt: "2026-11-18T10:00" },
+    {
+      ...c.fixtures[1],
+      sourceNumber: 2,
+      competitionDate: "2026-11-16",
+      sessionStart: "09:00",
+      timeMode: "session",
+    },
+    { ...c.fixtures[2], sourceNumber: 3, startsAt: "2026-11-15T10:00" },
+    { ...c.fixtures[3], sourceNumber: 4, startsAt: "" },
+  ];
+  assert.deepEqual(
+    buildScheduleMatches([c], []).map((row) => row.sourceNumber),
+    [3, 2, 1, 4],
+  );
+});
+
+test("latest source program renders every athletics slot and shared mini number", async () => {
+  const { default: AthleticsProgram } =
+    await import("../components/athletics-program");
+  const { buildLatestProgram } = await import("../lib/latest-program");
+  const html = renderToStaticMarkup(
+    createElement(AthleticsProgram, {
+      competitions: buildLatestProgram(schools),
+    }),
+  );
+  assert.equal((html.match(/<td>101<\/td>/g) || []).length, 4);
+  assert.equal(
+    (html.match(/<tbody>[\s\S]*?<\/tbody>/g) || []).join("").match(/<tr>/g)
+      ?.length,
+    44,
+  );
+  assert.match(html, /รอจับสลาก/);
+  assert.match(html, /ป\.1–3/);
+});
