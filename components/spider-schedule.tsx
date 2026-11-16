@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, MapPin, Trophy } from "lucide-react";
+import { sortCompetitionsByName } from "@/lib/competition-order";
 import type { Match } from "@/lib/domain";
 import {
   compareScheduleMatches,
@@ -39,16 +40,18 @@ export default function SpiderSchedule({
     const options = new Map<string, ScheduleMatch>();
     for (const match of matches)
       options.set(match.competition_id || "__unassigned", match);
-    return [...options].map(([id, match]) => {
-      return {
-        id,
-        name:
-          match.competitionName ||
-          `${match.sport} · ${match.division} · ${match.gender}${
-            options.size > 1 ? ` · ${id.slice(-6)}` : ""
-          }`,
-      };
-    });
+    return sortCompetitionsByName(
+      [...options].map(([id, match]) => {
+        return {
+          id,
+          name:
+            match.competitionName ||
+            `${match.sport} · ${match.division} · ${match.gender}${
+              options.size > 1 ? ` · ${id.slice(-6)}` : ""
+            }`,
+        };
+      }),
+    );
   }, [matches]);
   const competition =
     competitions.find((item) => item.id === activeCompetition) ||

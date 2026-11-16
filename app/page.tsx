@@ -84,6 +84,7 @@ import {
   isManagedCompetition,
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
+import { sortCompetitionsByName } from "@/lib/competition-order";
 import { buildScheduleMatches } from "@/lib/schedule-view";
 import { MatchResultProgram } from "@/components/match-result-program";
 import { MatchResultForm } from "@/components/match-result-form";
@@ -329,6 +330,7 @@ export default function Home() {
         !!profile && ["admin", "school", "school_admin"].includes(profile.role),
       );
     }
+    loaded.rows.competitions = sortCompetitionsByName(loaded.rows.competitions);
     const publicResponse = await fetch("/api/school-profile?public=1");
     const publicBody = await publicResponse.json();
     if (!publicResponse.ok)
