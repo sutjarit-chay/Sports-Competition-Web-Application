@@ -768,7 +768,7 @@ export default function Home() {
     data.matches,
   ).filter(scopeMatch);
   const assignedMatches = data.matches;
-  const selectedMatches = selected;
+  const selectedMatches = scheduleMatches.filter((match) => !match.fixtureOnly);
   const todayKey = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",

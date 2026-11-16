@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import type { Match } from "@/lib/domain";
-import { formatScheduleDate } from "@/lib/schedule-view";
+import { formatScheduleDate, type ScheduleMatch } from "@/lib/schedule-view";
 import { isSetSport, validateSetScores, type SetScore } from "@/lib/set-scores";
 
 type Props = {
-  match: Match;
+  match: ScheduleMatch;
   schoolName: (id: string) => string;
   busy: boolean;
   canEdit: boolean;
@@ -119,6 +119,7 @@ function ResultEntry({
       }}
     >
       <b>
+        {match.sourceNumber != null && `คู่ที่ ${match.sourceNumber} · `}
         สาย {match.pool} · {schoolName(match.home)} — {schoolName(match.away)}
       </b>
       <small className="muted">

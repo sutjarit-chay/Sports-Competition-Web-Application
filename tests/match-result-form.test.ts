@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MatchResultForm } from "../components/match-result-form";
 import type { Match } from "../lib/domain";
+import type { ScheduleMatch } from "../lib/schedule-view";
 
 const fixture: Match = {
   id: "set-entry",
@@ -17,7 +18,7 @@ const fixture: Match = {
   venue: "สนาม 1",
   status: "pending",
 };
-function render(match: Match) {
+function render(match: ScheduleMatch) {
   return renderToStaticMarkup(
     createElement(MatchResultForm, {
       match,
@@ -66,4 +67,10 @@ test("existing set points are prefilled and football keeps manual scores", () =>
   assert.match(html, /value="18"/);
   const football = render({ ...fixture, sport: "ฟุตบอล" });
   assert.doesNotMatch(football, /บันทึกแต้มรายเซต|readOnly/);
+});
+
+test("result form labels the original source match number", () => {
+  const html = render({ ...fixture, sourceNumber: 12 });
+  assert.match(html, /คู่ที่ 12/);
+  assert.match(html, /โรงเรียน ก — โรงเรียน ข/);
 });
