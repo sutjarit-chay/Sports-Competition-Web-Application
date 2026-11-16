@@ -904,11 +904,13 @@ export default function Home() {
           value={competitionId}
           onChange={(e) => chooseCompetition(e.target.value)}
         >
-          {snapshot?.rows.competitions?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} · {c.age_group} · {c.gender}
-            </option>
-          ))}
+          {sortCompetitionsByName(snapshot?.rows.competitions || []).map(
+            (c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} · {c.age_group} · {c.gender}
+              </option>
+            ),
+          )}
         </select>
       </label>
       {!snapshot?.rows.competitions.length && (
@@ -1502,7 +1504,7 @@ export default function Home() {
                     <option value="" disabled>
                       รายการเดิม / เลือกประเภทการแข่งขัน
                     </option>
-                    {RULES.map((r) => (
+                    {sortCompetitionsByName(RULES).map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name}
                       </option>

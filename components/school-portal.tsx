@@ -1,4 +1,5 @@
 "use client";
+import { sortCompetitionsByName } from "@/lib/competition-order";
 
 import { useEffect, useState, type FormEvent } from "react";
 import Papa from "papaparse";
@@ -534,7 +535,7 @@ export default function SchoolPortal({
               disabled={!competitions.length || busy || saving}
             >
               {!competitions.length && <option value="">ยังไม่มีรายการ</option>}
-              {competitions.map((item) => (
+              {sortCompetitionsByName(competitions).map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name} · {item.sport} · {item.age_group} · {item.gender}
                 </option>

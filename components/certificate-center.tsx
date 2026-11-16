@@ -1,4 +1,5 @@
 "use client";
+import { sortCompetitionsByName } from "@/lib/competition-order";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -286,7 +287,7 @@ export default function CertificateCenter({
             onChange={(e) => setCompetitionId(e.target.value)}
           >
             <option value="">เลือกรายการแข่งขัน</option>
-            {competitions.map((c) => (
+            {sortCompetitionsByName(competitions).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>

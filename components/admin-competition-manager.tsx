@@ -1,4 +1,5 @@
 "use client";
+import { sortCompetitionsByName } from "@/lib/competition-order";
 import { useState, type FormEvent } from "react";
 import { CalendarDays, Trophy, Save, FileUp } from "lucide-react";
 import { RULES, compatibleRules } from "../lib/registration";
@@ -219,7 +220,7 @@ export function AdminCompetitionManager({
             {competitions.length === 0 && (
               <p className="muted">ยังไม่มีรายการแข่งขัน</p>
             )}
-            {competitions.map((c) => (
+            {sortCompetitionsByName(competitions).map((c) => (
               <article className="admin-competition-card" key={c.id}>
                 <h3>{c.name}</h3>
                 <p>
@@ -343,7 +344,7 @@ export function AdminCompetitionManager({
                   value={form.ruleId}
                   onChange={(e) => selectRule(e.target.value)}
                 >
-                  {RULES.map((r) => (
+                  {sortCompetitionsByName(RULES).map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
                     </option>
@@ -460,7 +461,7 @@ export function AdminCompetitionManager({
             เลือกรายการแข่งขัน
             <select value={selectedId} onChange={(e) => choose(e.target.value)}>
               <option value="">เลือกรายการ</option>
-              {competitions.map((c) => (
+              {sortCompetitionsByName(competitions).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
