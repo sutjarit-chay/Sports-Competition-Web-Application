@@ -3,7 +3,6 @@ import type { Competition, HostedMatch } from "./hosted";
 import {
   generateFixtures,
   validFixtureSession,
-  fixturesConflict,
   type ManagedCompetition,
   type ManagedFixture,
 } from "./admin-competitions";
@@ -243,54 +242,6 @@ async function savePolicy(
       409,
     );
 }
-function checkConflicts(fixtures: ManagedFixture[], matches: HostedMatch[]) {
-  for (const original of fixtures) {
-    const f = {
-      ...original,
-      home: original.resolvedHome || original.home,
-      away: original.resolvedAway || original.away,
-    };
-    if (!f.startsAt) continue;
-    const candidate = {
-      ...f,
-      startsAt: new Date(
-        f.startsAt + (/[zZ]|[+-]\d\d:\d\d$/.test(f.startsAt) ? "" : "+07:00"),
-      ).toISOString(),
-    };
-    for (const match of matches) {
-      if (match.id === f.id || !match.starts_at) continue;
-      const other = {
-        home: match.home_school_id,
-        away: match.away_school_id,
-        venue: match.venue || "",
-        startsAt: new Date(match.starts_at).toISOString(),
-      };
-      if (fixturesConflict(candidate, other))
-        throw new CompetitionError(
-          "วันเวลาซ้ำกับโรงเรียนหรือสนามในโปรแกรมอื่น",
-          409,
-        );
-    }
-    for (const other of fixtures) {
-      if (other.id === f.id || !other.startsAt) continue;
-      if (
-        fixturesConflict(candidate, {
-          ...other,
-          home: other.resolvedHome || other.home,
-          away: other.resolvedAway || other.away,
-          startsAt: new Date(
-            other.startsAt +
-              (/[zZ]|[+-]\d\d:\d\d$/.test(other.startsAt) ? "" : "+07:00"),
-          ).toISOString(),
-        })
-      )
-        throw new CompetitionError(
-          "โปรแกรมแข่งขันมีวันเวลาโรงเรียนหรือสนามซ้ำ",
-          409,
-        );
-    }
-  }
-}
 async function materialize(
   client: SupabaseClient,
   c: Competition,
@@ -346,7 +297,6 @@ async function materialize(
     if (!fixture.startsAt || !fixture.venue) continue;
     ready.push({ ...fixture, home, away });
   }
-  checkConflicts(ready, matches);
   for (const fixture of ready) {
     const home = fixture.home,
       away = fixture.away;
@@ -481,7 +431,6 @@ export async function performCompetitionAction(
       !isEliminationFixture(old, source!.id)
     )
       throw new CompetitionError("ไม่พบสายคัดออกสำหรับคู่นี้", 409);
-    checkConflicts(management.fixtures, matches);
     await materialize(client, c, management, matches);
     return;
   }
@@ -623,7 +572,6 @@ export async function performCompetitionAction(
         f.referee_id = body.refereeId as string;
       } else delete f.referee_id;
     }
-    checkConflicts(management.fixtures, matches);
   } else if (body.action === "update") {
     const v = object(body.competition);
     if (v.name !== undefined) {

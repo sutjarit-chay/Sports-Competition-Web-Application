@@ -265,7 +265,7 @@ test("confirmed matches cannot be redrawn or rescheduled", async () =>
     );
     assert.equal(f.writes.length, 0);
   }));
-test("schedules reject school and venue conflicts across competitions", async () =>
+test("schedules allow simultaneous starts across competitions even in the same venue", async () =>
   fixture(async (f) => {
     f.competitions[0].registration_policy.management.fixtures = [
       { id: a, round: "รอบ 1", home: a, away: b, startsAt: "", venue: "" },
@@ -301,9 +301,9 @@ test("schedules reject school and venue conflicts across competitions", async ()
           venue: "สนาม",
         })
       ).status,
-      409,
+      200,
     );
-    assert.equal(f.writes.length, 0);
+    assert.ok(f.writes.length > 0);
   }));
 
 test("advancement refuses unassigned recorders and tied confirmed scores", async () =>
@@ -899,4 +899,36 @@ test("admin policy CAS refuses to clobber a report staged after its snapshot", a
       { retained: true },
     );
     assert.equal(f.competitions[0].registration_policy.management.revision, 1);
+  }));
+
+test("same competition materializes multiple fixtures sharing a start and venue", async () =>
+  fixture(async (f) => {
+    f.competitions[0].registration_policy.management.fixtures = [
+      { id: a, round: "รอบ 1", home: a, away: b, startsAt: "", venue: "" },
+      {
+        id: c,
+        round: "รอบ 1",
+        home: c,
+        away: d,
+        startsAt: "2026-11-16T09:00",
+        venue: "สนามร่วม",
+      },
+    ];
+    const response = await post({
+      action: "schedule",
+      id,
+      revision: 1,
+      fixtureId: a,
+      startsAt: "2026-11-16T09:00",
+      venue: "สนามร่วม",
+    });
+    assert.equal(response.status, 200);
+    assert.equal(f.matches.length, 2);
+    assert.ok(
+      f.matches.every(
+        (match) =>
+          match.starts_at === "2026-11-16T09:00+07:00" &&
+          match.venue === "สนามร่วม",
+      ),
+    );
   }));

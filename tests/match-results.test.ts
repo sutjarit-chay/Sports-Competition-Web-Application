@@ -277,7 +277,7 @@ test("referees cannot change schedule or assignments and malformed scores are re
     assert.equal((await post({ ...f.match, status: "unknown" })).status, 400);
     assert.equal(f.writes.length, 0);
   }));
-test("admin schedule changes enforce global conflicts and preserve confirmed schedules", async () =>
+test("admin schedule changes allow simultaneous school matches but preserve confirmed schedules", async () =>
   fixture(async (f) => {
     f.tables.matches.push({
       ...f.tables.matches[0],
@@ -296,8 +296,10 @@ test("admin schedule changes enforce global conflicts and preserve confirmed sch
           venue: "Court C",
         })
       ).status,
-      409,
+      200,
     );
+    f.match.revision = f.tables.matches[0].revision;
+    f.writes.length = 0;
     f.tables.matches[0].status = "finished";
     f.tables.matches[0].home_score = 2;
     f.tables.matches[0].away_score = 1;

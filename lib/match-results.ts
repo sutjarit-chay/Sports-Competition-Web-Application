@@ -7,7 +7,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Match } from "./domain";
 import { AccountError } from "./account-server";
 import { fromBangkokInput, readHosted, writeHosted } from "./hosted";
-import { fixturesConflict } from "./admin-competitions";
 import {
   performCompetitionAction,
   isEliminationFixture,
@@ -128,29 +127,6 @@ export async function saveMatchResult(
           !["referee", "recorder"].includes(profile.data.role)
         )
           throw new AccountError("บัญชีนี้ไม่ใช่กรรมการ");
-      }
-    }
-    if (scheduleChanged) {
-      const candidate = {
-        home: actual.home_school_id,
-        away: actual.away_school_id,
-        venue,
-        startsAt: fromBangkokInput(startsAt)!,
-      };
-      for (const other of snapshot.rows.matches) {
-        if (other.id === actual.id || !other.starts_at) continue;
-        if (
-          fixturesConflict(candidate, {
-            home: other.home_school_id,
-            away: other.away_school_id,
-            venue: other.venue || "",
-            startsAt: new Date(other.starts_at).toISOString(),
-          })
-        )
-          throw new AccountError(
-            "วันเวลาซ้ำกับโรงเรียนหรือสนามในโปรแกรมอื่น",
-            409,
-          );
       }
     }
   }
