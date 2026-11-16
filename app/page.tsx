@@ -118,7 +118,8 @@ const tabs = [
 const viewerTabIndices = [0, 2, 5, 6, 7, 12];
 function availableTabIndices(role: string) {
   if (role === "viewer") return viewerTabIndices;
-  if (role === "recorder" || role === "referee") return [0, 2, 3, 4, 7, 12];
+  if (role === "recorder" || role === "referee")
+    return [0, 2, 3, 4, 5, 7, 8, 12];
   if (role === "school" || role === "school_admin")
     return [0, 1, 2, 5, 6, 7, 9, 10, 11, 12];
   if (role === "admin") return [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12];
@@ -1150,7 +1151,7 @@ export default function Home() {
               competitions={snapshot?.rows.competitions || []}
             />
           )}
-          {tab === 8 && role === "admin" && (
+          {tab === 8 && edit && (
             <AdminCompetitionManager
               schools={displayedSchools}
               competitions={managedCompetitions}

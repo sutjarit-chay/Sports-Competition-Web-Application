@@ -406,9 +406,24 @@ for (const grantedRole of ["referee", "recorder"]) {
     );
     await enter(page);
     await login(page, "กรรมการ");
+    await page.getByRole("button", { name: "ตารางคะแนน", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "ตารางคะแนนแยกสาย", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "จัดการรายการแข่งขัน", exact: true })
+      .click();
+    await expect(page.locator(".admin-competition-manager")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "จัดสายแข่งขัน", exact: true }),
+    ).toBeVisible();
+
     await page
       .getByRole("button", { name: "ตารางแข่งขัน", exact: true })
       .click();
+    await page
+      .getByRole("combobox", { name: "รายการแข่งขัน", exact: true })
+      .selectOption(football);
     await expect(page.locator(".spider-match-card")).toHaveCount(1);
     await expect(
       page.locator(".spider-match-card").filter({ hasText: "สนามกลาง" }),

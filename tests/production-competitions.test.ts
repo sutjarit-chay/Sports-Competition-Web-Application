@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { POST } from "../app/api/competitions/route";
+import { GET, POST } from "../app/api/competitions/route";
 const id = "10000000-0000-4000-8000-000000000001";
 const a = "20000000-0000-4000-8000-000000000001",
   b = "20000000-0000-4000-8000-000000000002",
@@ -932,4 +932,32 @@ test("same competition materializes multiple fixtures sharing a start and venue"
           match.venue === "สนามร่วม",
       ),
     );
+  }));
+
+test("referees and recorders can load and edit competition management while school accounts cannot", async () =>
+  fixture(async (f) => {
+    const request = () =>
+      new Request("http://localhost/api/competitions", {
+        headers: { Authorization: "Bearer fixture-token" },
+      });
+    for (const role of ["school", "school_admin", "viewer"]) {
+      f.setRole(role);
+      assert.equal((await GET(request())).status, 403);
+      assert.equal((await post({ action: "draw", id })).status, 403);
+    }
+    assert.equal(f.writes.length, 0);
+    for (const role of ["referee", "recorder"]) {
+      f.setRole(role);
+      const read = await GET(request());
+      assert.equal(read.status, 200);
+      assert.equal((await read.json()).competitions.length, 1);
+      const result = await post({
+        action: "update",
+        id,
+        revision: f.competitions[0].registration_policy.management.revision,
+        competition: { name: `Football ${role}`, teamLimit: 4, details: "" },
+      });
+      assert.equal(result.status, 200, JSON.stringify(await result.json()));
+      assert.equal(f.competitions[0].name, `Football ${role}`);
+    }
   }));

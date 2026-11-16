@@ -1,3 +1,4 @@
+import { canManageCompetitions } from "./competition-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Competition, HostedMatch } from "./hosted";
 import {
@@ -334,8 +335,8 @@ export async function performCompetitionAction(
   body: Record<string, unknown>,
   actor: { id: string; role: string },
 ) {
-  if (body.action !== "advance" && actor.role !== "admin")
-    throw new CompetitionError("เฉพาะผู้ดูแลระบบเท่านั้น", 403);
+  if (!canManageCompetitions(actor.role))
+    throw new CompetitionError("ไม่มีสิทธิ์จัดการแข่งขัน", 403);
   const [cr, mr] = await Promise.all([
     client.from("competitions").select("*"),
     client.from("matches").select("*"),
