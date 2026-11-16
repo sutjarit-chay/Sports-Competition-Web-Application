@@ -86,6 +86,7 @@ import {
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
 import { buildScheduleMatches } from "@/lib/schedule-view";
+import { MatchResultProgram } from "@/components/match-result-program";
 import { MatchResultForm } from "@/components/match-result-form";
 import MatchResultsReport, {
   MatchResultDialog,
@@ -639,6 +640,50 @@ export default function Home() {
     } else await writeHosted(supabase, snapshot, table, rows);
     await refresh();
   }
+  const saveMatchSchedule = (
+    match: Match,
+    startsAt: string,
+    venue: string,
+    refereeId: string,
+  ) =>
+    run(async () => {
+      if (
+        refereeId &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          refereeId,
+        )
+      )
+        throw Error("รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง");
+      const managed = managedCompetitions.find(
+        (c) => c.id === match.competition_id,
+      );
+      if (
+        managed?.fixtures.some((f) => f.id === match.id) &&
+        readManagement(
+          snapshot?.rows.competitions.find((c) => c.id === match.competition_id)
+            ?.registration_policy,
+        )
+      ) {
+        await mutateCompetition({
+          action: "schedule",
+          id: match.competition_id,
+          fixtureId: match.id,
+          startsAt,
+          venue,
+          refereeId: refereeId || null,
+          revision: managed.managementRevision,
+        });
+        return;
+      }
+      await save("matches", [
+        {
+          ...match,
+          starts_at: startsAt,
+          venue,
+          referee_id: refereeId || undefined,
+        },
+      ]);
+    });
   const admin = role === "admin",
     refereeRole = role === "recorder" || role === "referee",
     edit = admin || refereeRole,
@@ -1772,49 +1817,7 @@ export default function Home() {
                       canEdit={admin}
                       busy={busy}
                       canAssign={admin}
-                      onSave={(match, startsAt, venue, refereeId) =>
-                        run(async () => {
-                          if (
-                            refereeId &&
-                            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-                              refereeId,
-                            )
-                          )
-                            throw Error(
-                              "รหัสผู้ใช้กรรมการต้องเป็น UUID ที่ถูกต้อง",
-                            );
-                          const managed = managedCompetitions.find(
-                            (c) => c.id === match.competition_id,
-                          );
-                          if (
-                            managed?.fixtures.some((f) => f.id === match.id) &&
-                            readManagement(
-                              snapshot?.rows.competitions.find(
-                                (c) => c.id === match.competition_id,
-                              )?.registration_policy,
-                            )
-                          ) {
-                            await mutateCompetition({
-                              action: "schedule",
-                              id: match.competition_id,
-                              fixtureId: match.id,
-                              startsAt,
-                              venue,
-                              refereeId: refereeId || null,
-                              revision: managed.managementRevision,
-                            });
-                            return;
-                          }
-                          await save("matches", [
-                            {
-                              ...match,
-                              starts_at: startsAt,
-                              venue,
-                              referee_id: refereeId || undefined,
-                            },
-                          ]);
-                        })
-                      }
+                      onSave={saveMatchSchedule}
                     />
                   )}
               </section>
@@ -1835,7 +1838,16 @@ export default function Home() {
                     แสดงเฉพาะคู่ที่มอบหมายให้บัญชีกรรมการนี้
                   </p>
                 )}
-                {selectedMatches.length === 0 && <Empty />}
+                <MatchResultProgram
+                  matches={scheduleMatches}
+                  admin={admin}
+                  profileId={profileId}
+                  busy={busy}
+                  schoolName={(id) =>
+                    data.schools.find((item) => item.id === id)?.name || id
+                  }
+                  onSave={saveMatchSchedule}
+                />
                 {selectedMatches.map((m) => (
                   <MatchResultForm
                     key={`${m.id}-${m.revision}`}
