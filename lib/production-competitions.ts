@@ -379,11 +379,7 @@ export async function performCompetitionAction(
       : null;
   if (body.action === "advance") {
     if (!source) throw new CompetitionError("ไม่พบคู่แข่งขัน", 404);
-    if (
-      actor.role !== "admin" &&
-      (!["recorder", "referee"].includes(actor.role) ||
-        source.referee_id !== actor.id)
-    )
+    if (!["admin", "recorder", "referee"].includes(actor.role))
       throw new CompetitionError("ไม่มีสิทธิ์เลื่อนทีมในคู่นี้", 403);
     if (
       !["finished", "confirmed"].includes(source.status) ||

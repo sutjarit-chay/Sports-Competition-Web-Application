@@ -229,6 +229,7 @@ test("draw keeps undated fixtures in metadata and scheduled ready matches advanc
         revision: 1,
       }),
     );
+    f.setRole("referee");
     res = await post({ action: "advance", matchId: f.matches[0].id });
     assert.equal(res.status, 200, JSON.stringify(await res.json()));
     assert.equal(f.matches.length, 3);
@@ -306,7 +307,7 @@ test("schedules allow simultaneous starts across competitions even in the same v
     assert.ok(f.writes.length > 0);
   }));
 
-test("advancement refuses unassigned recorders and tied confirmed scores", async () =>
+test("any recorder can advance another referee match but tied scores are still rejected", async () =>
   fixture(async (f) => {
     const draw = await post({
       action: "draw",
@@ -325,7 +326,7 @@ test("advancement refuses unassigned recorders and tied confirmed scores", async
     f.setRole("recorder");
     assert.equal(
       (await post({ action: "advance", matchId: f.matches[0].id })).status,
-      403,
+      409,
     );
     f.setRole("admin");
     assert.equal(

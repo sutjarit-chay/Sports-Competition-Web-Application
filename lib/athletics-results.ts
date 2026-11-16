@@ -67,23 +67,14 @@ export async function saveAthleticsResult(
     throw new AccountError("รายการกรีฑาไม่ตรงกับนักกีฬาหรือรอบ", 409);
   let sourceHeat: AthleticsEvent | undefined = undefined;
   if (actor.role !== "admin") {
-    if (event && event.referee_id !== actor.id)
-      throw new AccountError(
-        "ไม่มีสิทธิ์บันทึกผลรายการที่ไม่ได้รับมอบหมาย",
-        403,
-      );
     if (!event && r.stage !== "final")
-      throw new AccountError(
-        "สร้างได้เฉพาะรอบชิงต่อจากฮีตที่ได้รับมอบหมาย",
-        403,
-      );
+      throw new AccountError("สร้างได้เฉพาะรอบชิงต่อจากฮีต", 403);
     if (r.stage === "final") {
       const heats = snapshot.rows.athletics_events.filter(
         (x) =>
           x.competition_id === athlete.competition_id &&
           x.name === r.event &&
           x.round === "heat" &&
-          x.referee_id === actor.id &&
           (!r.source_event_id || x.id === r.source_event_id) &&
           snapshot.rows.athletics_results.some(
             (result) =>
@@ -104,7 +95,7 @@ export async function saveAthleticsResult(
         );
       if (!existingFinal && heats.length !== 1)
         throw new AccountError(
-          "นักกีฬาต้องมีผล OK จากฮีตที่ได้รับมอบหมายก่อนส่งเข้ารอบชิง",
+          "นักกีฬาต้องมีผล OK จากฮีตก่อนส่งเข้ารอบชิง",
           403,
         );
       sourceHeat = heats[0];

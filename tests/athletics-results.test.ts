@@ -126,7 +126,7 @@ test("athletics result endpoint refuses anonymous requests", async () => {
   );
   assert.equal(response.status, 401);
 });
-test("school and unassigned referee cannot write athletics results", async () => {
+test("school cannot write but any referee can save athletics results", async () => {
   const f = fixture();
   await assert.rejects(
     () =>
@@ -136,12 +136,9 @@ test("school and unassigned referee cannot write athletics results", async () =>
       }),
     /ไม่มีสิทธิ์/,
   );
-  await assert.rejects(
-    () =>
-      saveAthleticsResult(f.client, f.race, { id: school, role: "referee" }),
-    /ไม่ได้รับมอบหมาย/,
-  );
   assert.equal(f.writes.length, 0);
+  await saveAthleticsResult(f.client, f.race, { id: school, role: "referee" });
+  assert.equal(f.writes.length, 1);
 });
 test("assigned referee saves trusted athlete and event identity through backend", async () => {
   const f = fixture();

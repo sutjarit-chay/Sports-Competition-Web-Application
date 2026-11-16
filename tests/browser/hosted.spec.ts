@@ -367,7 +367,7 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
   ).toBe(false);
 });
 for (const grantedRole of ["referee", "recorder"]) {
-  test(`${grantedRole} sees and submits only assigned matches without schedule controls`, async ({
+  test(`${grantedRole} sees every match and submits an unassigned match without schedule controls`, async ({
     page,
   }) => {
     page.on("dialog", (dialog) => dialog.accept());
@@ -410,22 +410,27 @@ for (const grantedRole of ["referee", "recorder"]) {
       .getByRole("button", { name: "ตารางแข่งขัน", exact: true })
       .click();
     await expect(page.locator(".spider-match-card")).toHaveCount(1);
-    await expect(page.locator(".spider-match-card")).toContainText("สนามกลาง");
+    await expect(
+      page.locator(".spider-match-card").filter({ hasText: "สนามกลาง" }),
+    ).toHaveCount(1);
+    await page.getByRole("button", { name: "B 1 คู่", exact: true }).click();
+    await expect(page.locator(".spider-match-card")).toContainText("สนามอื่น");
     await expect(page.getByLabel("วันเวลา", { exact: true })).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
     ).toHaveCount(0);
     await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
-    await expect(page.locator(".match-form")).toHaveCount(1);
-    await expect(page.locator(".match-form")).toContainText("สนามกลาง");
-    await page.getByLabel("เจ้าบ้าน").fill("3");
-    await page.getByLabel("ทีมเยือน").fill("1");
-    await page.getByRole("button", { name: "ยืนยันผล" }).click();
-    await expect.poll(() => db.matches[0].status).toBe("finished");
-    expect(db.matches[0]).toMatchObject({
+    await expect(page.locator(".match-form")).toHaveCount(2);
+    const form = page.locator(".match-form").filter({ hasText: "สนามอื่น" });
+    await expect(form).toHaveCount(1);
+    await form.getByLabel("เจ้าบ้าน").fill("3");
+    await form.getByLabel("ทีมเยือน").fill("1");
+    await form.getByRole("button", { name: "ยืนยันผล" }).click();
+    await expect.poll(() => db.matches[1].status).toBe("finished");
+    expect(db.matches[1]).toMatchObject({
       home_score: 3,
       away_score: 1,
-      referee_id: refereeId,
+      referee_id: null,
     });
     await expect(
       page.getByRole("button", { name: "นักกีฬา", exact: true }),

@@ -52,9 +52,9 @@ test("admin sees imported programme and scheduling controls before match materia
   assert.match(html, /datetime-local/);
   assert.doesNotMatch(html, /ยืนยันผล/);
 });
-test("referee sees why planned or unassigned matches cannot accept results without acquiring edit rights", () => {
+test("referee sees planned fixtures awaiting activation without schedule edit rights", () => {
   const html = render([planned, { ...actual, referee_id: undefined }], false);
-  assert.match(html, /มอบหมาย/);
+  assert.match(html, /กรรมการทุกคน/);
   assert.match(html, /โรงเรียนบ้านหนองแดน/);
   assert.doesNotMatch(html, /datetime-local|ยืนยันผล/);
 });
@@ -67,12 +67,12 @@ test("empty programme explains pending draw or missing schedule", () => {
   assert.doesNotMatch(render([]), /datetime-local|ยืนยันผล/);
 });
 
-test("referee without assignments receives actionable instructions instead of generic empty state", () => {
+test("empty programme explains activation without requiring referee assignment", () => {
   const html = render([], false);
-  assert.match(html, /ยังไม่มีคู่แข่งขันที่มอบหมายให้บัญชีนี้/);
+  assert.match(html, /ยังไม่มีคู่แข่งขันในรายการนี้/);
   assert.match(html, /ผู้ดูแล/);
 });
-test("admin can assign existing unassigned matches from result entry", () => {
+test("unassigned actual matches need no assignment setup", () => {
   const html = render([{ ...actual, referee_id: undefined }]);
-  assert.match(html, /name="refereeId"/);
+  assert.equal(html, "");
 });

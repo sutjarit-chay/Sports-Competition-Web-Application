@@ -312,13 +312,24 @@ export default function Home() {
         }
       }
     }
-    const loaded = await readHosted(
-      supabase,
-      !!profile &&
-        ["admin", "recorder", "referee", "school", "school_admin"].includes(
-          profile.role,
-        ),
-    );
+    let loaded: Snapshot;
+    if (profile && ["referee", "recorder"].includes(profile.role)) {
+      const response = await fetch("/api/result-workspace", {
+        headers: {
+          Authorization: `Bearer ${session.session?.access_token || ""}`,
+        },
+        cache: "no-store",
+      });
+      const body = await response.json();
+      if (!response.ok)
+        throw Error(body.error || "โหลดรายการบันทึกผลไม่สำเร็จ");
+      loaded = body.snapshot;
+    } else {
+      loaded = await readHosted(
+        supabase,
+        !!profile && ["admin", "school", "school_admin"].includes(profile.role),
+      );
+    }
     const publicResponse = await fetch("/api/school-profile?public=1");
     const publicBody = await publicResponse.json();
     if (!publicResponse.ok)
@@ -360,23 +371,7 @@ export default function Home() {
       profile?.school_id ||
         (profile?.role === "admin" ? loaded.state.schools[0]?.id || "" : ""),
     );
-    const assignedCompetitionIds =
-      nextRole === "recorder" || nextRole === "referee"
-        ? new Set([
-            ...loaded.state.matches
-              .filter((match) => match.referee_id === profile?.id)
-              .map((match) => match.competition_id)
-              .filter((id): id is string => !!id),
-            ...loaded.rows.athletics_events
-              .filter((event) => event.referee_id === profile?.id)
-              .map((event) => event.competition_id),
-          ])
-        : undefined;
-    const availableCompetitions = assignedCompetitionIds
-      ? loaded.rows.competitions.filter((item) =>
-          assignedCompetitionIds.has(item.id),
-        )
-      : loaded.rows.competitions;
+    const availableCompetitions = loaded.rows.competitions;
     const c =
       availableCompetitions.find((item) => item.id === competitionId) ||
       availableCompetitions[0];
@@ -771,15 +766,12 @@ export default function Home() {
     snapshot?.rows.athletics_events.filter(
       (e) =>
         e.competition_id === competitionId &&
-        (!refereeRole || e.referee_id === profileId) &&
         e.name === event &&
         e.round === stage &&
         e.heat === heat,
     ) || [];
   const raceEvent = eventId
-    ? snapshot?.rows.athletics_events.find(
-        (e) => e.id === eventId && (!refereeRole || e.referee_id === profileId),
-      )
+    ? snapshot?.rows.athletics_events.find((e) => e.id === eventId)
     : eventCandidates.length === 1
       ? eventCandidates[0]
       : undefined;
@@ -795,12 +787,8 @@ export default function Home() {
     managedCompetitions,
     data.matches,
   ).filter(scopeMatch);
-  const assignedMatches = refereeRole
-    ? data.matches.filter((match) => match.referee_id === profileId)
-    : data.matches;
-  const selectedMatches = refereeRole
-    ? selected.filter((match) => match.referee_id === profileId)
-    : selected;
+  const assignedMatches = data.matches;
+  const selectedMatches = selected;
   const todayKey = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
@@ -842,10 +830,7 @@ export default function Home() {
   const awaitingMatchResults = assignedMatches.filter(
     (match) => match.status !== "finished",
   );
-  const assignedEvents =
-    snapshot?.rows.athletics_events.filter((event) =>
-      refereeRole ? event.referee_id === profileId : true,
-    ) || [];
+  const assignedEvents = snapshot?.rows.athletics_events || [];
   const assignedEventIds = new Set(assignedEvents.map((event) => event.id));
   const assignedEventsToday = assignedEvents.filter(
     (event) => event.starts_at?.slice(0, 10) === todayKey,
@@ -865,11 +850,7 @@ export default function Home() {
   ).filter(
     (match) =>
       !match.fixtureOnly &&
-      (schoolRole
-        ? match.home === school || match.away === school
-        : refereeRole
-          ? match.referee_id === profileId
-          : true),
+      (schoolRole ? match.home === school || match.away === school : true),
   );
   const selectedResult =
     reportMatches.find(
@@ -943,16 +924,7 @@ export default function Home() {
           value={competitionId}
           onChange={(e) => chooseCompetition(e.target.value)}
         >
-          {(refereeRole
-            ? snapshot?.rows.competitions.filter(
-                (c) =>
-                  assignedMatches.some(
-                    (match) => match.competition_id === c.id,
-                  ) ||
-                  assignedEvents.some((event) => event.competition_id === c.id),
-              )
-            : snapshot?.rows.competitions
-          )?.map((c) => (
+          {snapshot?.rows.competitions?.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name} · {c.age_group} · {c.gender}
             </option>
@@ -1802,13 +1774,7 @@ export default function Home() {
                               (match) =>
                                 match.home === school || match.away === school,
                             )
-                          : refereeRole
-                            ? scheduleMatches.filter(
-                                (match) =>
-                                  !match.fixtureOnly &&
-                                  match.referee_id === profileId,
-                              )
-                            : scheduleMatches
+                          : scheduleMatches
                       }
                       schoolName={(id) =>
                         data.schools.find((item) => item.id === id)?.name || id
@@ -1835,7 +1801,7 @@ export default function Home() {
                 </p>
                 {refereeRole && (
                   <p className="muted">
-                    แสดงเฉพาะคู่ที่มอบหมายให้บัญชีกรรมการนี้
+                    กรรมการทุกคนบันทึกผลได้ทุกคู่ โดยไม่ต้องมอบหมายรายคู่
                   </p>
                 )}
                 <MatchResultProgram
@@ -1910,11 +1876,7 @@ export default function Home() {
                         <option value="">สร้าง/ค้นหารายการตามชื่อและรอบ</option>
                       )}
                       {snapshot?.rows.athletics_events
-                        .filter(
-                          (e) =>
-                            e.competition_id === competitionId &&
-                            (!refereeRole || e.referee_id === profileId),
-                        )
+                        .filter((e) => e.competition_id === competitionId)
                         .map((e) => (
                           <option key={e.id} value={e.id}>
                             {e.name} · {e.round} · ฮีต {e.heat}
@@ -1974,7 +1936,8 @@ export default function Home() {
                 )}
                 {refereeRole && !raceEvent && (
                   <p className="muted">
-                    เลือกรายการกรีฑาที่มอบหมายให้บัญชีนี้ก่อนบันทึกผล
+                    เลือกรายการกรีฑาที่เปิดแข่งขันก่อนบันทึกผล
+                    กรรมการทุกคนบันทึกได้
                   </p>
                 )}
                 <div className="filters">

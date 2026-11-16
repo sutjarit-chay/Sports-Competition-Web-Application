@@ -3,6 +3,7 @@ import test from "node:test";
 import { createClient } from "@supabase/supabase-js";
 import { readHosted, writeRegistrationPolicy } from "../lib/hosted";
 import { POST } from "../app/api/match-results/route";
+import { GET as getWorkspace } from "../app/api/result-workspace/route";
 const actor = "10000000-0000-4000-8000-000000000001",
   competition = "20000000-0000-4000-8000-000000000001",
   home = "30000000-0000-4000-8000-000000000001",
@@ -223,13 +224,15 @@ test("production fixture denies direct browser match writes while authorized ser
     assert.equal(f.tables.matches[0].home_score, 2);
     assert.equal(f.tables.matches[0].revision, 4);
   }));
-test("unauthenticated, school, and unassigned referee score requests cannot write", async () =>
+test("unauthenticated and school are denied while any referee can save another referee match", async () =>
   fixture(async (f) => {
     assert.equal((await post(f.match, false)).status, 401);
     f.setRole("school");
     assert.equal((await post(f.match)).status, 403);
     f.setRole("referee");
+    assert.equal(f.writes.length, 0);
     f.tables.matches[0].referee_id = away;
+    f.match.referee_id = away;
     assert.equal(
       (
         await post({
@@ -239,9 +242,9 @@ test("unauthenticated, school, and unassigned referee score requests cannot writ
           away_score: 1,
         })
       ).status,
-      403,
+      200,
     );
-    assert.equal(f.writes.length, 0);
+    assert.ok(f.writes.length > 0);
   }));
 test("match identity and stale revision cannot be used to replace another team or overwrite a result", async () =>
   fixture(async (f) => {
@@ -563,7 +566,7 @@ test("assigned referee set scores round trip through trusted revision and timest
       undefined,
     );
   }));
-test("invalid and unassigned set reports never write metadata", async () =>
+test("invalid set reports are rejected while any referee can save valid sets", async () =>
   fixture(async (f) => {
     volleyball(f);
     for (const setScores of [
@@ -588,7 +591,9 @@ test("invalid and unassigned set reports never write metadata", async () =>
       );
     }
     f.setRole("referee");
+    assert.equal(f.writes.length, 0);
     f.tables.matches[0].referee_id = away;
+    f.match.referee_id = away;
     assert.equal(
       (
         await post({
@@ -599,9 +604,9 @@ test("invalid and unassigned set reports never write metadata", async () =>
           setScores: sets,
         })
       ).status,
-      403,
+      200,
     );
-    assert.equal(f.writes.length, 0);
+    assert.ok(f.writes.length > 0);
   }));
 test("a failed match CAS leaves staged sets invisible", async () =>
   fixture(async (f) => {
@@ -897,4 +902,47 @@ test("legacy registration editor merges fresh reports and retries concurrent pol
     assert.equal(saved.matchReportsVersion, 2);
     assert.deepEqual(saved.matchReports.other, { retained: true });
     assert.equal(saved.matchReportsStamp, "2026-11-15T00:00:00.000001Z");
+  }));
+
+test("result workspace authenticates and grants all result data only to trusted result roles", async () =>
+  fixture(async (f) => {
+    const request = () =>
+      new Request("http://localhost/api/result-workspace", {
+        headers: { Authorization: "Bearer fixture-token" },
+      });
+    assert.equal(
+      (await getWorkspace(new Request("http://localhost/api/result-workspace")))
+        .status,
+      401,
+    );
+    for (const role of ["viewer", "school", "school_admin"]) {
+      f.setRole(role);
+      assert.equal((await getWorkspace(request())).status, 403);
+    }
+    f.tables.matches[0].referee_id = away;
+    for (const role of ["admin", "referee", "recorder"]) {
+      f.setRole(role);
+      const response = await getWorkspace(request());
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.snapshot.rows.matches.length, 1);
+      assert.equal(body.snapshot.rows.competitions.length, 1);
+      assert.equal(body.snapshot.rows.matches[0].referee_id, away);
+    }
+    assert.equal(f.writes.length, 0);
+  }));
+
+test("any referee may score a match with no assigned referee without claiming its assignment", async () =>
+  fixture(async (f) => {
+    f.setRole("referee");
+    f.tables.matches[0].referee_id = null;
+    f.match.referee_id = undefined;
+    const response = await post({
+      ...f.match,
+      status: "finished",
+      home_score: 3,
+      away_score: 1,
+    });
+    assert.equal(response.status, 200);
+    assert.equal(f.tables.matches[0].referee_id, null);
   }));

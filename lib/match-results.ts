@@ -30,8 +30,6 @@ export async function saveMatchResult(
   const actual = snapshot.rows.matches.find((m) => m.id === input.id),
     original = snapshot.state.matches.find((m) => m.id === input.id);
   if (!actual || !original) throw new AccountError("ไม่พบคู่แข่งขัน", 404);
-  if (actor.role !== "admin" && actual.referee_id !== actor.id)
-    throw new AccountError("บันทึกได้เฉพาะคู่ที่ได้รับมอบหมาย", 403);
   for (const field of [
     "id",
     "competition_id",

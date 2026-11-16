@@ -260,6 +260,35 @@ export async function fixture(page: Page, fail = false, rosters = false) {
       });
     }
   });
+  await page.route("**/api/result-workspace", async (route) => {
+    expect(route.request().headers().authorization).toMatch(/^Bearer /);
+    if (
+      !["admin", "referee", "recorder"].includes(String(db.profiles[0]?.role))
+    ) {
+      await route.fulfill({ status: 403, json: { error: "ไม่มีสิทธิ์" } });
+      return;
+    }
+    const rows = Object.fromEntries(
+      [
+        "schools",
+        "competitions",
+        "matches",
+        "registrations",
+        "athletics_events",
+        "athletics_results",
+        "medals",
+      ].map((key) => [key, db[key]]),
+    ) as unknown as HostedRows;
+    await route.fulfill({
+      json: {
+        snapshot: {
+          rows,
+          state: decodeHosted(rows),
+          registrationExtension: rosters,
+        },
+      },
+    });
+  });
   await page.route("**/api/match-results", async (route) => {
     expect(route.request().headers().authorization).toMatch(/^Bearer /);
     const { match } = route.request().postDataJSON();
