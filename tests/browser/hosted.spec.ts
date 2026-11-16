@@ -367,7 +367,7 @@ test("normalized hosted workflow writes only contract columns with school UUIDs 
   ).toBe(false);
 });
 for (const grantedRole of ["referee", "recorder"]) {
-  test(`${grantedRole} sees every match and submits an unassigned match without schedule controls`, async ({
+  test(`${grantedRole} records an unassigned match despite simultaneous school and venue fixtures`, async ({
     page,
   }) => {
     page.on("dialog", (dialog) => dialog.accept());
@@ -395,8 +395,8 @@ for (const grantedRole of ["referee", "recorder"]) {
         group_name: "B",
         home_school_id: sid2,
         away_school_id: sid,
-        starts_at: "2026-11-05T06:30:00Z",
-        venue: "สนามอื่น",
+        starts_at: "2026-11-05T05:30:00Z",
+        venue: "สนามกลาง",
         status: "scheduled",
         home_score: null,
         away_score: null,
@@ -414,14 +414,14 @@ for (const grantedRole of ["referee", "recorder"]) {
       page.locator(".spider-match-card").filter({ hasText: "สนามกลาง" }),
     ).toHaveCount(1);
     await page.getByRole("button", { name: "B 1 คู่", exact: true }).click();
-    await expect(page.locator(".spider-match-card")).toContainText("สนามอื่น");
+    await expect(page.locator(".spider-match-card")).toContainText("สนามกลาง");
     await expect(page.getByLabel("วันเวลา", { exact: true })).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "สร้างตารางแข่งขัน" }),
     ).toHaveCount(0);
     await page.getByRole("button", { name: "บันทึกผล", exact: true }).click();
     await expect(page.locator(".match-form")).toHaveCount(2);
-    const form = page.locator(".match-form").filter({ hasText: "สนามอื่น" });
+    const form = page.locator(".match-form").filter({ hasText: "สาย B" });
     await expect(form).toHaveCount(1);
     await form.getByLabel("เจ้าบ้าน").fill("3");
     await form.getByLabel("ทีมเยือน").fill("1");

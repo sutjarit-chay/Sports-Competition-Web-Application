@@ -82,7 +82,6 @@ import {
 } from "@/lib/production-competitions";
 import {
   isManagedCompetition,
-  fixturesConflict,
   type ManagedCompetition,
 } from "@/lib/admin-competitions";
 import { buildScheduleMatches } from "@/lib/schedule-view";
@@ -507,27 +506,6 @@ export default function Home() {
         )
           throw Error(
             "รอบคัดออกต้องมีผู้ชนะ กรุณาบันทึกผลตัดสินหลังต่อเวลาหรือดวลจุดโทษ",
-          );
-        const proposed = {
-          home: match.home,
-          away: match.away,
-          startsAt: match.starts_at,
-          venue: match.venue,
-        };
-        if (
-          data.matches.some(
-            (other) =>
-              other.id !== match.id &&
-              fixturesConflict(proposed, {
-                home: other.home,
-                away: other.away,
-                startsAt: other.starts_at,
-                venue: other.venue,
-              }),
-          )
-        )
-          throw Error(
-            "เวลานี้มีโรงเรียนแข่งขันซ้อนหรือสนามถูกใช้งานในรายการอื่นแล้ว",
           );
       }
     }
