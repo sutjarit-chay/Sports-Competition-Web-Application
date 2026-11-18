@@ -4336,3 +4336,23 @@ footer {
   .progress-scroll-hint { display: block; font-size: 12px; }
   .competition-progress th, .competition-progress td { padding: 12px; }
 }
+
+/* School medal drill-down keeps table semantics and a native keyboard trigger. */
+.school-medal-row { cursor: pointer; }
+.school-medal-row:hover, .school-medal-row:focus-within { background: #fbf6e8; }
+.school-medal-trigger { width: 100%; min-height: 44px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-weight: 600; text-align: left; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; box-shadow: none; }
+.school-medal-trigger:focus-visible { outline: 3px solid #8d681c; outline-offset: 3px; }
+.school-medal-summary { display: flex; flex-wrap: wrap; gap: 10px 18px; color: #5c471c; }
+.school-medal-detail-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.school-medal-detail-table caption { padding: 8px 0; text-align: left; font-weight: 600; }
+.school-medal-detail-table th, .school-medal-detail-table td { padding: 12px 8px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+.school-medal-detail-table th:first-child { width: 44%; text-align: left; }
+.school-medal-detail-table thead th:nth-child(2) { width: 24%; }
+.school-medal-detail-table thead th:nth-child(3) { width: 12%; }
+.school-medal-detail-table thead th:nth-child(4) { width: 20%; }
+.school-medal-detail-table small { display: block; color: #655a49; font-size: 12px; margin-top: 4px; font-weight: 400; }
+.school-medal-detail-table .medal-label { display: inline-block; white-space: normal; }
+@media (max-width: 480px) {
+  .school-medal-detail-table th, .school-medal-detail-table td { padding: 10px 4px; font-size: 12px; }
+}
+.school-medal-dialog { margin: auto; }

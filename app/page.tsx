@@ -91,6 +91,10 @@ import { MatchResultForm } from "@/components/match-result-form";
 import MatchResultsReport, {
   MatchResultDialog,
 } from "@/components/match-results-report";
+import {
+  MedalStandingsTable,
+  SchoolMedalDialog,
+} from "@/components/school-medal-details";
 import CompetitionProgress from "@/components/competition-progress";
 import AthleticsProgram from "@/components/athletics-program";
 import CertificateCenter from "@/components/certificate-center";
@@ -246,6 +250,9 @@ export default function Home() {
   }, [menuOpen]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [profileId, setProfileId] = useState("");
+  const [selectedMedalSchoolId, setSelectedMedalSchoolId] = useState<
+    string | null
+  >(null);
   const [selectedResultId, setSelectedResultId] = useState("");
   const [competitionId, setCompetitionId] = useState("");
   const [eventId, setEventId] = useState("");
@@ -880,15 +887,12 @@ export default function Home() {
           medal: award.medal,
         })),
     );
-  const medalSummary = (rows: ReturnType<typeof medals>) =>
-    rows.map((row, index) => [
-      index + 1,
-      schoolName(row.school),
-      row.gold,
-      row.silver,
-      row.bronze,
-      row.gold + row.silver + row.bronze,
-    ]);
+  const selectedMedalSchool =
+    selectedMedalSchoolId && (!schoolRole || selectedMedalSchoolId === school)
+      ? data.schools.find((item) => item.id === selectedMedalSchoolId) || null
+      : null;
+  const fullSchoolName = (id: string) =>
+    data.schools.find((item) => item.id === id)?.name || id;
   const athletes = data.athletes.filter(
     (a) => scopeMatch(a) && (!schoolRole || a.school_id === school),
   );
@@ -938,6 +942,12 @@ export default function Home() {
   }
   return (
     <div className="shell">
+      <SchoolMedalDialog
+        school={selectedMedalSchool}
+        awards={visibleAwards}
+        competitionName={reportCompetitionName}
+        onClose={() => setSelectedMedalSchoolId(null)}
+      />
       <MatchResultDialog
         match={selectedResult}
         schoolName={schoolName}
@@ -1448,31 +1458,16 @@ export default function Home() {
                         <Medal aria-hidden="true" />
                         ทำเนียบเหรียญรางวัล
                       </h3>
-                      <Table
-                        heads={[
-                          "อันดับ",
-                          "โรงเรียน",
-                          "ทอง",
-                          "เงิน",
-                          "ทองแดง",
-                          "รวม",
-                        ]}
+                      <MedalStandingsTable
                         rows={medalsForSchools(
                           schoolRole
                             ? school
                               ? [school]
                               : []
-                            : data.schools.map((s) => s.id),
-                        )
-                          .slice(0, 5)
-                          .map((r, i) => [
-                            i + 1,
-                            schoolName(r.school),
-                            r.gold,
-                            r.silver,
-                            r.bronze,
-                            r.gold + r.silver + r.bronze,
-                          ])}
+                            : data.schools.map((item) => item.id),
+                        ).slice(0, 5)}
+                        schoolName={fullSchoolName}
+                        onSelect={setSelectedMedalSchoolId}
                       />
                     </div>
                     <div>
@@ -2345,24 +2340,16 @@ export default function Home() {
                     ? "เหรียญรางวัลของโรงเรียน"
                     : "ผลรวมเหรียญทุกโรงเรียน"}
                 </h3>
-                <Table
-                  heads={[
-                    "อันดับ",
-                    "โรงเรียน",
-                    "🥇 ทอง",
-                    "🥈 เงิน",
-                    "🥉 ทองแดง",
-                    "รวม",
-                  ]}
-                  rows={medalSummary(
-                    medalsForSchools(
-                      schoolRole
-                        ? school
-                          ? [school]
-                          : []
-                        : data.schools.map((school) => school.id),
-                    ),
+                <MedalStandingsTable
+                  rows={medalsForSchools(
+                    schoolRole
+                      ? school
+                        ? [school]
+                        : []
+                      : data.schools.map((item) => item.id),
                   )}
+                  schoolName={fullSchoolName}
+                  onSelect={setSelectedMedalSchoolId}
                 />
                 {!schoolRole && (
                   <div className="medal-category-grid">
@@ -2386,16 +2373,10 @@ export default function Home() {
                         >
                           <h3>{category.title}</h3>
                           {rows.length ? (
-                            <Table
-                              heads={[
-                                "อันดับ",
-                                "โรงเรียน",
-                                "ทอง",
-                                "เงิน",
-                                "ทองแดง",
-                                "รวม",
-                              ]}
-                              rows={medalSummary(rows)}
+                            <MedalStandingsTable
+                              rows={rows}
+                              schoolName={fullSchoolName}
+                              onSelect={setSelectedMedalSchoolId}
                             />
                           ) : (
                             <p className="muted">
