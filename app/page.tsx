@@ -1873,7 +1873,8 @@ export default function Home() {
                   คู่ที่เชื่อมต่อรอบถัดไปยังต้องคงผู้ชนะเดิม · คะแนนลีก: ชนะ{" "}
                   {points.win} · เสมอ {points.draw} · แพ้ {points.loss} |
                   เหรียญคำนวณจากผลที่ยืนยันแล้ว
-                  หรือจากผลอันดับโดยตรงเมื่อผู้ดูแลเปิดโหมดนั้น
+                  {admin &&
+                    " หรือจากผลอันดับโดยตรงเมื่อผู้ดูแลเปิดโหมดนั้น"}
                 </p>
                 {competition && isDirectPlacementSport(competition.sport) && (
                   <DirectPlacementPanel

@@ -42,7 +42,8 @@ export function DirectPlacementPanel({
     (own !== "third" && third.includes(id));
   const tooMany = third.length > PLACEMENT_LIMITS.third;
 
-  if (!current.enabled)
+  if (!current.enabled) {
+    if (!canToggle) return null;
     return (
       <section className="panel" aria-label="โหมดผลอันดับโดยตรง">
         <h3>ผลอันดับโดยตรง</h3>
@@ -50,27 +51,29 @@ export function DirectPlacementPanel({
           ปิดอยู่ · ตารางเหรียญ รายละเอียดโรงเรียน และเกียรติบัตรของ{" "}
           {competitionName} คำนวณจากผังและคะแนนตามเดิม
         </p>
-        {canToggle ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onToggle(true, current.revision)}
-          >
-            เปิดโหมดผลอันดับโดยตรง
-          </button>
-        ) : (
-          <p className="muted">เฉพาะผู้ดูแลเท่านั้นที่เปิดโหมดนี้ได้</p>
-        )}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onToggle(true, current.revision)}
+        >
+          เปิดโหมดผลอันดับโดยตรง
+        </button>
       </section>
     );
+  }
 
   return (
-    <section className="panel" aria-label="โหมดผลอันดับโดยตรง">
-      <h3>ผลอันดับโดยตรง · เปิดใช้งาน</h3>
-      <p className="notice">
-        เหรียญ รายละเอียดโรงเรียน
-        และเกียรติบัตรของรายการนี้ใช้อันดับที่บันทึกด้านล่างแทนผลคะแนน
-        ผังและคะแนนเดิมยังอยู่ครบและไม่ถูกนับเหรียญซ้ำ
+    <section
+      className="panel"
+      aria-label={canToggle ? "โหมดผลอันดับโดยตรง" : "บันทึกผลอันดับการแข่งขัน"}
+    >
+      <h3>
+        {canToggle ? "ผลอันดับโดยตรง · เปิดใช้งาน" : "บันทึกผลอันดับการแข่งขัน"}
+      </h3>
+      <p className={canToggle ? "notice" : "muted"}>
+        {canToggle
+          ? "เหรียญ รายละเอียดโรงเรียน และเกียรติบัตรของรายการนี้ใช้อันดับที่บันทึกด้านล่างแทนผลคะแนน ผังและคะแนนเดิมยังอยู่ครบและไม่ถูกนับเหรียญซ้ำ"
+          : "เลือกโรงเรียนที่ได้รับอันดับ 1–3 ของรายการนี้ แล้วกดบันทึกอันดับ"}
       </p>
       <div className="filters">
         <label>
