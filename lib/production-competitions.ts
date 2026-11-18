@@ -231,6 +231,17 @@ async function savePolicy(
     ? q.eq("registration_policy->management->>revision", String(old.revision))
     : q.is("registration_policy->management->>revision", null);
   const reportsVersion = object(c.registration_policy).matchReportsVersion;
+  // Never overwrite a direct-placements edit that landed after our snapshot.
+  const placementsRevision = object(
+    object(c.registration_policy).directPlacements,
+  ).revision;
+  q =
+    placementsRevision == null
+      ? q.is("registration_policy->directPlacements->>revision", null)
+      : q.eq(
+          "registration_policy->directPlacements->>revision",
+          String(placementsRevision),
+        );
   q =
     reportsVersion == null
       ? q.is("registration_policy->>matchReportsVersion", null)

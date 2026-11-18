@@ -90,6 +90,13 @@ import {
 import { sortCompetitionsByName } from "@/lib/competition-order";
 import { buildScheduleMatches } from "@/lib/schedule-view";
 import { MatchResultProgram } from "@/components/match-result-program";
+import { DirectPlacementPanel } from "@/components/direct-placement-panel";
+import {
+  applyDirectPlacements,
+  directPlacementsEnabled,
+  isDirectPlacementSport,
+  readDirectPlacements,
+} from "@/lib/direct-placements";
 import { MatchResultForm } from "@/components/match-result-form";
 import MatchResultsReport, {
   MatchResultDialog,
@@ -684,6 +691,45 @@ export default function Home() {
   const competition = snapshot?.rows.competitions.find(
     (c) => c.id === competitionId,
   );
+  const directPlacements = readDirectPlacements(
+    competition?.registration_policy,
+  );
+  const directParticipants = [
+    ...new Set([
+      ...(readManagement(competition?.registration_policy)?.teams || []),
+      ...data.matches
+        .filter((m) => m.competition_id === competitionId)
+        .flatMap((m) => [m.home, m.away]),
+      ...data.athletes
+        .filter((a) => a.competition_id === competitionId)
+        .map((a) => a.school_id),
+    ]),
+  ]
+    .map((id) => ({
+      id,
+      name: data.schools.find((item) => item.id === id)?.name || id,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "th"));
+  async function postDirectPlacements(payload: Record<string, unknown>) {
+    const current = await supabase?.auth.getSession();
+    const token = current?.data.session?.access_token;
+    if (!token) throw Error("กรุณาเข้าสู่ระบบใหม่");
+    const response = await fetch("/api/direct-placements", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ competitionId, ...payload }),
+    });
+    const body = await response.json();
+    try {
+      await refresh();
+    } catch {
+      /* Keep the original result visible. */
+    }
+    if (!response.ok) throw Error(body.error || "บันทึกอันดับไม่สำเร็จ");
+  }
   const ruleCandidates = compatibleRules(sport, gender, division);
   const activeRuleId = ruleCandidates.some((r) => r.id === registrationRuleId)
     ? registrationRuleId
@@ -859,11 +905,14 @@ export default function Home() {
   );
   const reportCompetitionName = (id: string | undefined) =>
     snapshot?.rows.competitions.find((c) => c.id === id)?.name || "";
-  const medalMatches = schoolRole
-    ? schoolMatches
-    : refereeRole
-      ? assignedMatches
-      : data.matches;
+  const directCompetitionIds = new Set(
+    (snapshot?.rows.competitions || [])
+      .filter((item) => directPlacementsEnabled(item))
+      .map((item) => item.id),
+  );
+  const medalMatches = (
+    schoolRole ? schoolMatches : refereeRole ? assignedMatches : data.matches
+  ).filter((match) => !directCompetitionIds.has(match.competition_id || ""));
   const schoolAthletes = data.athletes.filter(
     (athlete) => athlete.school_id === school,
   );
@@ -877,12 +926,15 @@ export default function Home() {
       },
     ]),
   );
-  const calculatedAwards = calculateMedalAwards({
-    matches: data.matches,
-    races: data.races,
-    athletes: data.athletes,
-    pointsByCompetition,
-  });
+  const calculatedAwards = applyDirectPlacements(
+    calculateMedalAwards({
+      matches: data.matches,
+      races: data.races,
+      athletes: data.athletes,
+      pointsByCompetition,
+    }),
+    snapshot?.rows.competitions || [],
+  );
   const visibleAwards = schoolRole
     ? calculatedAwards.filter((award) => award.school_id === school)
     : calculatedAwards;
@@ -1830,7 +1882,44 @@ export default function Home() {
                   คู่ที่เชื่อมต่อรอบถัดไปยังต้องคงผู้ชนะเดิม · คะแนนลีก: ชนะ{" "}
                   {points.win} · เสมอ {points.draw} · แพ้ {points.loss} |
                   เหรียญคำนวณจากผลที่ยืนยันแล้ว
+                  หรือจากผลอันดับโดยตรงเมื่อผู้ดูแลเปิดโหมดนั้น
                 </p>
+                {competition && isDirectPlacementSport(competition.sport) && (
+                  <DirectPlacementPanel
+                    key={`${competition.id}-${directPlacements?.revision ?? 0}`}
+                    competitionName={competition.name}
+                    placements={directPlacements}
+                    schools={directParticipants}
+                    canToggle={admin}
+                    busy={busy}
+                    onToggle={(enabled, revision) =>
+                      run(
+                        () =>
+                          postDirectPlacements({
+                            action: "mode",
+                            enabled,
+                            revision,
+                          }),
+                        false,
+                        enabled
+                          ? "เปิดโหมดผลอันดับโดยตรงแล้ว"
+                          : "ปิดโหมดผลอันดับโดยตรงแล้ว",
+                      )
+                    }
+                    onSave={(placements, revision) =>
+                      run(
+                        () =>
+                          postDirectPlacements({
+                            action: "placements",
+                            ...placements,
+                            revision,
+                          }),
+                        false,
+                        "บันทึกอันดับเรียบร้อย",
+                      )
+                    }
+                  />
+                )}
                 {refereeRole && (
                   <p className="muted">
                     กรรมการทุกคนบันทึกผลได้ทุกคู่ โดยไม่ต้องมอบหมายรายคู่
@@ -2333,7 +2422,17 @@ export default function Home() {
                   คำนวณอัตโนมัติจากผลที่กรรมการยืนยันแล้ว: อันดับ 1 เหรียญทอง ·
                   อันดับ 2 เหรียญเงิน · อันดับ 3 เหรียญทองแดง
                   ไม่มีการเพิ่มหรือบันทึกเหรียญด้วยตนเอง
+                  ยกเว้นรายการที่ผู้ดูแลเปิดโหมดผลอันดับโดยตรง
                 </p>
+                {directCompetitionIds.size > 0 && (
+                  <p className="notice">
+                    รายการที่ใช้ผลอันดับโดยตรง:{" "}
+                    {(snapshot?.rows.competitions || [])
+                      .filter((item) => directCompetitionIds.has(item.id))
+                      .map((item) => item.name)
+                      .join(", ")}
+                  </p>
+                )}
                 <p className="notice">
                   {medalMatches.length === 0
                     ? "ยังไม่มีตารางแข่งขันให้คำนวณเหรียญ"

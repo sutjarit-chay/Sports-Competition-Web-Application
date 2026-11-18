@@ -6,6 +6,11 @@ import type {
 } from "./certificate-types";
 import { calculateMedalAwards } from "./medal-calculation";
 import { rankRace } from "./domain";
+import {
+  directPlacementsEnabled,
+  placementAwards,
+  readDirectPlacements,
+} from "./direct-placements";
 import { readManagement } from "./production-competitions";
 import { ATHLETICS_EVENTS } from "./registration";
 
@@ -72,51 +77,67 @@ export function buildCertificateCandidates(
       const rawManagement =
         competition.registration_policy &&
         "management" in competition.registration_policy;
+      // Direct placements replace score/bracket completeness checks; the
+      // bracket and scores themselves stay untouched.
+      const direct = directPlacementsEnabled(competition)
+        ? readDirectPlacements(competition.registration_policy)
+        : null;
       if (
-        (rawManagement && !management) ||
-        !matches.length ||
-        (management &&
-          (!management.fixtures.length ||
-            management.fixtures.length !== matches.length ||
-            management.fixtures.some(
-              (f) => !matches.some((m) => m.id === f.id),
-            ))) ||
-        matches.some(
-          (m) =>
-            m.status !== "finished" ||
-            !Number.isFinite(m.home_score) ||
-            !Number.isFinite(m.away_score) ||
-            (m.expectedFixtureCount !== undefined &&
-              m.expectedFixtureCount !== matches.length) ||
-            ((m.phase === "knockout" ||
-              (m.format === "knockout" && m.phase !== "group") ||
-              (management?.format === "knockout" &&
-                management.fixtures.find((f) => f.id === m.id)?.phase !==
-                  "group") ||
-              /รอบชิง|รอบรอง|semi|final|third|อันดับ/i.test(m.pool)) &&
-              m.home_score === m.away_score),
-        )
+        !direct &&
+        ((rawManagement && !management) ||
+          !matches.length ||
+          (management &&
+            (!management.fixtures.length ||
+              management.fixtures.length !== matches.length ||
+              management.fixtures.some(
+                (f) => !matches.some((m) => m.id === f.id),
+              ))) ||
+          matches.some(
+            (m) =>
+              m.status !== "finished" ||
+              !Number.isFinite(m.home_score) ||
+              !Number.isFinite(m.away_score) ||
+              (m.expectedFixtureCount !== undefined &&
+                m.expectedFixtureCount !== matches.length) ||
+              ((m.phase === "knockout" ||
+                (m.format === "knockout" && m.phase !== "group") ||
+                (management?.format === "knockout" &&
+                  management.fixtures.find((f) => f.id === m.id)?.phase !==
+                    "group") ||
+                /รอบชิง|รอบรอง|semi|final|third|อันดับ/i.test(m.pool)) &&
+                m.home_score === m.away_score),
+          ))
       ) {
         fail("การแข่งขันยังไม่ครบหรือผลการแข่งขันยังไม่ยืนยัน");
         continue;
       }
-      const awards = calculateMedalAwards({
-        matches,
-        races: [],
-        athletes,
-        pointsByCompetition: {
-          [competition.id]: {
-            win: competition.win_points,
-            draw: competition.draw_points,
-            loss: competition.loss_points,
-          },
-        },
-      });
-      if (!awards.length) {
-        fail("ยังไม่มีผลตัดสินรางวัลที่สมบูรณ์");
+      const awards = direct
+        ? placementAwards(competition, direct)
+        : calculateMedalAwards({
+            matches,
+            races: [],
+            athletes,
+            pointsByCompetition: {
+              [competition.id]: {
+                win: competition.win_points,
+                draw: competition.draw_points,
+                loss: competition.loss_points,
+              },
+            },
+          });
+      if (
+        !awards.length ||
+        (direct && (!direct.first.length || !direct.second.length))
+      ) {
+        fail(
+          direct
+            ? "ยังไม่ได้บันทึกอันดับ 1 และ 2 ของรายการนี้"
+            : "ยังไม่มีผลตัดสินรางวัลที่สมบูรณ์",
+        );
         continue;
       }
       if (
+        !direct &&
         athletes.some(
           (a) =>
             !matches.some(
