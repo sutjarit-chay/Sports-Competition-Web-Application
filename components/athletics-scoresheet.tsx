@@ -1,7 +1,24 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Printer, UserPlus, Trophy, RotateCcw, Search, Check, Medal } from "lucide-react";
+import {
+  Printer,
+  UserPlus,
+  Trophy,
+  RotateCcw,
+  Search,
+  Check,
+  ArrowRight,
+  Medal,
+} from "lucide-react";
+
+export type LaneEntry = {
+  lane: number;
+  bib: string;
+  athleteName: string;
+  schoolName: string;
+  rank?: string; // "1", "2", "3", etc.
+};
 
 export type AthleticsRow = {
   id: number;
@@ -10,15 +27,12 @@ export type AthleticsRow = {
   name: string;
   grade: string;
   type: string;
-  r1: string[]; // 5 lanes
+  r1: string[]; // 5 lanes (display text)
   r2: string[]; // 5 lanes
   r3: string[]; // 6 lanes (finals)
-  // Lane assignments: { laneIndex: { schoolName, athleteName, bib } }
-  assignments?: Record<
-    string,
-    { schoolId?: string; schoolName: string; athleteName: string; bib: string }
-  >;
-  // Final winners: [1st, 2nd, 3rd]
+  r1Lanes: LaneEntry[];
+  r2Lanes: LaneEntry[];
+  r3Lanes: LaneEntry[];
   winners?: {
     rank: number;
     athleteName: string;
@@ -28,27 +42,37 @@ export type AthleticsRow = {
   }[];
 };
 
+function defaultLanes(count: number): LaneEntry[] {
+  return Array.from({ length: count }, (_, i) => ({
+    lane: i + 1,
+    bib: "",
+    athleteName: "",
+    schoolName: "",
+    rank: "",
+  }));
+}
+
 export const INITIAL_ATHLETICS_DATA: AthleticsRow[] = [
-  { id: 1, no: "๑", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 2, no: "๒", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 3, no: "๓", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 4, no: "๔", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 5, no: "๕", sourceNumber: 106, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 6, no: "๖", sourceNumber: 107, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 7, no: "๗", sourceNumber: 112, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 8, no: "๘", sourceNumber: 113, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 9, no: "๙", sourceNumber: 118, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 10, no: "๑๐", sourceNumber: 119, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 11, no: "๑๑", sourceNumber: 124, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 12, no: "๑๒", sourceNumber: 125, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 13, no: "๑๓", sourceNumber: 130, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 14, no: "๑๔", sourceNumber: 131, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 15, no: "๑๕", sourceNumber: 132, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 16, no: "๑๖", sourceNumber: 133, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 17, no: "๑๗", sourceNumber: 138, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 18, no: "๑๘", sourceNumber: 139, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 19, no: "๑๙", sourceNumber: 140, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
-  { id: 20, no: "๒๐", sourceNumber: 141, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""] },
+  { id: 1, no: "๑", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 2, no: "๒", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 3, no: "๓", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 4, no: "๔", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 5, no: "๕", sourceNumber: 106, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 6, no: "๖", sourceNumber: 107, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 7, no: "๗", sourceNumber: 112, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 8, no: "๘", sourceNumber: 113, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 9, no: "๙", sourceNumber: 118, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 10, no: "๑๐", sourceNumber: 119, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 11, no: "๑๑", sourceNumber: 124, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 12, no: "๑๒", sourceNumber: 125, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 13, no: "๑๓", sourceNumber: 130, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 14, no: "๑๔", sourceNumber: 131, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 15, no: "๑๕", sourceNumber: 132, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 16, no: "๑๖", sourceNumber: 133, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 17, no: "๑๗", sourceNumber: 138, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 18, no: "๑๘", sourceNumber: 139, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 19, no: "๑๙", sourceNumber: 140, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 20, no: "๒๐", sourceNumber: 141, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
 ];
 
 export function AthleticsScoresheet({
@@ -60,6 +84,7 @@ export function AthleticsScoresheet({
   const [rows, setRows] = useState<AthleticsRow[]>(INITIAL_ATHLETICS_DATA);
   const [search, setSearch] = useState("");
   const [selectedRow, setSelectedRow] = useState<AthleticsRow | null>(null);
+  const [modalRound, setModalRound] = useState<"r1" | "r2" | "r3">("r1");
   const [toast, setToast] = useState<string | null>(null);
 
   // Load from local storage preview
@@ -67,7 +92,15 @@ export function AthleticsScoresheet({
     try {
       const saved = localStorage.getItem("nkg2569_athletics_preview");
       if (saved) {
-        setRows(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        // Ensure lane structures exist
+        const updated = parsed.map((item: AthleticsRow) => ({
+          ...item,
+          r1Lanes: item.r1Lanes || defaultLanes(5),
+          r2Lanes: item.r2Lanes || defaultLanes(5),
+          r3Lanes: item.r3Lanes || defaultLanes(6),
+        }));
+        setRows(updated);
       }
     } catch {}
   }, []);
@@ -83,6 +116,7 @@ export function AthleticsScoresheet({
     }
   }
 
+  // Handle direct inline cell edit on the main sheet
   function handleCellChange(
     rowId: number,
     roundKey: "r1" | "r2" | "r3",
@@ -93,7 +127,14 @@ export function AthleticsScoresheet({
       if (r.id !== rowId) return r;
       const round = [...r[roundKey]];
       round[subIndex] = value;
-      return { ...r, [roundKey]: round };
+      // Also update the bib in the lane entry
+      const lanesKey =
+        roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
+      const updatedLanes = [...r[lanesKey]];
+      if (updatedLanes[subIndex]) {
+        updatedLanes[subIndex] = { ...updatedLanes[subIndex], bib: value };
+      }
+      return { ...r, [roundKey]: round, [lanesKey]: updatedLanes };
     });
     saveRows(next);
   }
@@ -114,18 +155,13 @@ export function AthleticsScoresheet({
       (r.sourceNumber && String(r.sourceNumber).includes(search)),
   );
 
-  // Aggregate school scores for page 34
+  // Aggregate school scores for summary report
   const schoolScoreMap: Record<string, number> = {};
-  const schoolGradeMap: Record<string, Record<string, number>> = {};
-
   rows.forEach((r) => {
     (r.winners || []).forEach((w) => {
       if (w.schoolName) {
         schoolScoreMap[w.schoolName] =
           (schoolScoreMap[w.schoolName] || 0) + (w.score || 0);
-        if (!schoolGradeMap[w.schoolName]) schoolGradeMap[w.schoolName] = {};
-        schoolGradeMap[w.schoolName][r.grade] =
-          (schoolGradeMap[w.schoolName][r.grade] || 0) + (w.score || 0);
       }
     });
   });
@@ -136,6 +172,92 @@ export function AthleticsScoresheet({
       totalScore,
     }))
     .sort((a, b) => b.totalScore - a.totalScore);
+
+  // Helper inside modal to update lane data
+  function updateModalLane(
+    roundKey: "r1" | "r2" | "r3",
+    index: number,
+    field: keyof LaneEntry,
+    val: string,
+  ) {
+    if (!selectedRow) return;
+    const lanesKey =
+      roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
+    const lanes = [...selectedRow[lanesKey]];
+    lanes[index] = { ...lanes[index], [field]: val };
+
+    // Sync BIB to main display cell
+    const roundCells = [...selectedRow[roundKey]];
+    if (field === "bib") {
+      roundCells[index] = val;
+    }
+
+    // If in finals (r3) and rank is assigned (1, 2, or 3), update winners automatically
+    let winners = selectedRow.winners ? [...selectedRow.winners] : [];
+    if (roundKey === "r3") {
+      winners = [1, 2, 3].map((rankNum) => {
+        const matchingLane = lanes.find(
+          (l) => l.rank === String(rankNum) || l.rank === `ที่ ${rankNum}`,
+        );
+        return {
+          rank: rankNum,
+          athleteName: matchingLane?.athleteName || "",
+          schoolName: matchingLane?.schoolName || "",
+          score: rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1,
+          note: matchingLane?.bib ? `BIB ${matchingLane.bib}` : "",
+        };
+      });
+    }
+
+    setSelectedRow({
+      ...selectedRow,
+      [lanesKey]: lanes,
+      [roundKey]: roundCells,
+      winners: roundKey === "r3" ? winners : selectedRow.winners,
+    });
+  }
+
+  // Advance qualifiers from current round to next round
+  function advanceQualifiers(sourceRound: "r1" | "r2", targetRound: "r2" | "r3") {
+    if (!selectedRow) return;
+    const sourceLanes =
+      sourceRound === "r1" ? selectedRow.r1Lanes : selectedRow.r2Lanes;
+    const targetLanesKey = targetRound === "r2" ? "r2Lanes" : "r3Lanes";
+    const targetCells = [...selectedRow[targetRound]];
+    const nextTargetLanes = [...selectedRow[targetLanesKey]];
+
+    // Find top 3 (ranks "1", "2", "3")
+    const qualifiers = sourceLanes
+      .filter((l) => ["1", "2", "3", "ที่ 1", "ที่ 2", "ที่ 3"].includes(l.rank || ""))
+      .sort((a, b) => (parseInt(a.rank || "99") || 99) - (parseInt(b.rank || "99") || 99));
+
+    if (qualifiers.length === 0) {
+      alert("กรุณาระบุอันดับที่เข้าเส้นชัย (1, 2, 3) ในลู่วิ่งก่อนส่งไปรอบถัดไป");
+      return;
+    }
+
+    qualifiers.forEach((q, idx) => {
+      if (idx < nextTargetLanes.length) {
+        nextTargetLanes[idx] = {
+          ...nextTargetLanes[idx],
+          bib: q.bib,
+          athleteName: q.athleteName,
+          schoolName: q.schoolName,
+          rank: "",
+        };
+        targetCells[idx] = q.bib || q.athleteName || q.schoolName;
+      }
+    });
+
+    setSelectedRow({
+      ...selectedRow,
+      [targetLanesKey]: nextTargetLanes,
+      [targetRound]: targetCells,
+    });
+    setModalRound(targetRound);
+    setToast(`ส่งผู้เข้ารอบเข้าสู่${targetRound === "r2" ? "รอบ ๒" : "รอบชิงชนะเลิศ"}เรียบร้อย`);
+    setTimeout(() => setToast(null), 2500);
+  }
 
   return (
     <div className="athletics-container" style={{ marginTop: "1rem" }}>
@@ -232,7 +354,8 @@ export function AthleticsScoresheet({
                 ตารางบันทึกการแข่งขันกรีฑา (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
               </h2>
               <p className="muted" style={{ margin: "4px 0 0" }}>
-                พิมพ์หมายเลขลู่หรือหมายเลขประจำตัวนักกีฬา (BIB) ลงในแต่ละช่องได้ทันที
+                คลิกปุ่ม <strong>"ลงทะเบียน/จัดลู่"</strong> เพื่อระบุรายชื่อนักกีฬา โรงเรียน และลู่วิ่ง
+                หรือพิมพ์หมายเลขประจำตัวนักกีฬา (BIB) ลงในช่องได้ทันที
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -364,10 +487,10 @@ export function AthleticsScoresheet({
                     style={{
                       padding: "8px",
                       border: "1px solid #334155",
-                      width: "90px",
+                      width: "130px",
                     }}
                   >
-                    จัดลู่/ผล
+                    ลงทะเบียน/จัดลู่
                   </th>
                 </tr>
                 <tr style={{ background: "#475569", color: "#fff", fontSize: "12px" }}>
@@ -541,10 +664,19 @@ export function AthleticsScoresheet({
                       <button
                         type="button"
                         className="ui-button-outline ui-button-sm"
-                        style={{ fontSize: "11px", padding: "4px 8px" }}
-                        onClick={() => setSelectedRow(item)}
+                        style={{
+                          fontSize: "12px",
+                          padding: "4px 10px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                        onClick={() => {
+                          setSelectedRow(item);
+                          setModalRound("r1");
+                        }}
                       >
-                        <UserPlus size={12} style={{ display: "inline" }} /> จัดลู่/สรุป
+                        <UserPlus size={13} /> จัดลู่/นักกีฬา
                       </button>
                     </td>
                   </tr>
@@ -580,9 +712,9 @@ export function AthleticsScoresheet({
           >
             {rows.slice(0, 20).map((r) => {
               const winners = r.winners || [
-                { rank: 1, athleteName: r.assignments?.["r3-0"]?.athleteName || "", schoolName: r.assignments?.["r3-0"]?.schoolName || "", score: 3, note: "" },
-                { rank: 2, athleteName: r.assignments?.["r3-1"]?.athleteName || "", schoolName: r.assignments?.["r3-1"]?.schoolName || "", score: 2, note: "" },
-                { rank: 3, athleteName: r.assignments?.["r3-2"]?.athleteName || "", schoolName: r.assignments?.["r3-2"]?.schoolName || "", score: 1, note: "" },
+                { rank: 1, athleteName: r.r3Lanes?.[0]?.athleteName || "", schoolName: r.r3Lanes?.[0]?.schoolName || "", score: 3, note: "" },
+                { rank: 2, athleteName: r.r3Lanes?.[1]?.athleteName || "", schoolName: r.r3Lanes?.[1]?.schoolName || "", score: 2, note: "" },
+                { rank: 3, athleteName: r.r3Lanes?.[2]?.athleteName || "", schoolName: r.r3Lanes?.[2]?.schoolName || "", score: 1, note: "" },
               ];
 
               return (
@@ -604,7 +736,7 @@ export function AthleticsScoresheet({
                       textAlign: "center",
                     }}
                   >
-                    รายการที่ {r.sourceNumber || r.no} {r.name} {r.grade}
+                    รายการที่ {r.sourceNumber || r.no} {r.name} {r.grade}{" "}
                     {r.type}
                   </div>
                   <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "center" }}>
@@ -762,7 +894,7 @@ export function AthleticsScoresheet({
             style={{
               background: "#fff",
               borderRadius: "12px",
-              maxWidth: "620px",
+              maxWidth: "760px",
               width: "100%",
               maxHeight: "90vh",
               overflowY: "auto",
@@ -784,7 +916,7 @@ export function AthleticsScoresheet({
             >
               <div>
                 <h3 style={{ margin: 0, fontSize: "16px" }}>
-                  จัดลู่วิ่งและผลการแข่งขัน · รายการที่ {selectedRow.no}
+                  ลงทะเบียนนักกีฬาและจัดลู่วิ่ง · รายการที่ {selectedRow.no}
                 </h3>
                 <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#94a3b8" }}>
                   {selectedRow.name} · {selectedRow.grade} · {selectedRow.type}
@@ -807,71 +939,257 @@ export function AthleticsScoresheet({
 
             {/* Modal Body */}
             <div style={{ padding: "18px" }}>
-              <h4 style={{ margin: "0 0 10px", fontSize: "14px", color: "#0f766e" }}>
-                🏆 กำหนดผู้ชนะรอบชิงชนะเลิศ (คะแนน ๓, ๒, ๑)
-              </h4>
-
-              <div style={{ display: "grid", gap: "10px", marginBottom: "20px" }}>
-                {[1, 2, 3].map((rank, i) => {
-                  const currentWinner = selectedRow.winners?.[i] || {
-                    rank,
-                    athleteName: "",
-                    schoolName: "",
-                    score: rank === 1 ? 3 : rank === 2 ? 2 : 1,
-                    note: "",
-                  };
-                  return (
-                    <div
-                      key={rank}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "70px 1fr 1fr",
-                        gap: "8px",
-                        alignItems: "center",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, fontSize: "13px" }}>
-                        {rank === 1 ? "🥇 ที่ ๑" : rank === 2 ? "🥈 ที่ ๒" : "🥉 ที่ ๓"}
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="ชื่อ-สกุล นักกีฬา"
-                        value={currentWinner.athleteName}
-                        onChange={(e) => {
-                          const winners = [...(selectedRow.winners || [
-                            { rank: 1, athleteName: "", schoolName: "", score: 3, note: "" },
-                            { rank: 2, athleteName: "", schoolName: "", score: 2, note: "" },
-                            { rank: 3, athleteName: "", schoolName: "", score: 1, note: "" },
-                          ])];
-                          winners[i] = { ...winners[i], athleteName: e.target.value };
-                          setSelectedRow({ ...selectedRow, winners });
-                        }}
-                        style={{ padding: "6px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-                      />
-                      <select
-                        value={currentWinner.schoolName}
-                        onChange={(e) => {
-                          const winners = [...(selectedRow.winners || [
-                            { rank: 1, athleteName: "", schoolName: "", score: 3, note: "" },
-                            { rank: 2, athleteName: "", schoolName: "", score: 2, note: "" },
-                            { rank: 3, athleteName: "", schoolName: "", score: 1, note: "" },
-                          ])];
-                          winners[i] = { ...winners[i], schoolName: e.target.value };
-                          setSelectedRow({ ...selectedRow, winners });
-                        }}
-                        style={{ padding: "6px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-                      >
-                        <option value="">-- เลือกโรงเรียน --</option>
-                        {schools.map((s) => (
-                          <option key={s.id} value={s.name}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  );
-                })}
+              {/* Round Selector Tabs */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginBottom: "16px",
+                  borderBottom: "1px solid #cbd5e1",
+                  paddingBottom: "8px",
+                }}
+              >
+                <button
+                  type="button"
+                  className={modalRound === "r1" ? "primary" : "ui-button-outline ui-button-sm"}
+                  onClick={() => setModalRound("r1")}
+                >
+                  🏃 รอบ ๑ (๕ ลู่)
+                </button>
+                <button
+                  type="button"
+                  className={modalRound === "r2" ? "primary" : "ui-button-outline ui-button-sm"}
+                  onClick={() => setModalRound("r2")}
+                >
+                  🏃 รอบ ๒ (๕ ลู่)
+                </button>
+                <button
+                  type="button"
+                  className={modalRound === "r3" ? "primary" : "ui-button-outline ui-button-sm"}
+                  onClick={() => setModalRound("r3")}
+                >
+                  🏆 รอบชิงชนะเลิศ (๖ ลู่)
+                </button>
               </div>
+
+              {/* Instructions */}
+              <div
+                style={{
+                  background: modalRound === "r3" ? "#fefce8" : "#f0fdf4",
+                  border: `1px solid ${modalRound === "r3" ? "#fef08a" : "#bbf7d0"}`,
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  marginBottom: "16px",
+                  fontSize: "13px",
+                  color: modalRound === "r3" ? "#854d0e" : "#166534",
+                }}
+              >
+                {modalRound === "r3" ? (
+                  <>
+                    🏆 <strong>รอบชิงชนะเลิศ:</strong> กรอกข้อมูลนักกีฬาและระบุ{" "}
+                    <strong>อันดับ 1, 2, 3</strong> ในช่องผลการแข่งขัน
+                    เพื่อสรุปเหรียญทอง เงิน ทองแดง และคะแนน ๓, ๒, ๑ โดยอัตโนมัติ
+                  </>
+                ) : (
+                  <>
+                    📋 <strong>{modalRound === "r1" ? "รอบ ๑" : "รอบ ๒"}:</strong>{" "}
+                    กรรมการลงทะเบียนนักกีฬา โรงเรียน และหมายเลข BIB ประจำแต่ละลู่
+                    เมื่อวิ่งเสร็จ เลือกลำดับ 1, 2, 3 แล้วกดปุ่ม{" "}
+                    <strong>"ส่งผู้เข้ารอบเข้าสู่รอบถัดไป"</strong>
+                  </>
+                )}
+              </div>
+
+              {/* Lane Assignment Form Table */}
+              <div
+                style={{
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  marginBottom: "16px",
+                }}
+              >
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #cbd5e1" }}>
+                      <th style={{ padding: "8px", width: "60px", textAlign: "center" }}>ลู่</th>
+                      <th style={{ padding: "8px", width: "100px", textAlign: "center" }}>หมายเลข BIB</th>
+                      <th style={{ padding: "8px", textAlign: "left" }}>ชื่อ - นามสกุล นักกีฬา</th>
+                      <th style={{ padding: "8px", textAlign: "left" }}>โรงเรียน</th>
+                      <th style={{ padding: "8px", width: "130px", textAlign: "center" }}>
+                        {modalRound === "r3" ? "อันดับเหรียญ" : "อันดับเข้าเส้นชัย"}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(modalRound === "r1"
+                      ? selectedRow.r1Lanes
+                      : modalRound === "r2"
+                        ? selectedRow.r2Lanes
+                        : selectedRow.r3Lanes
+                    ).map((lane, idx) => (
+                      <tr
+                        key={idx}
+                        style={{
+                          borderBottom: "1px solid #e2e8f0",
+                          background: lane.rank ? "#fefce8" : "#fff",
+                        }}
+                      >
+                        <td
+                          style={{
+                            padding: "8px",
+                            textAlign: "center",
+                            fontWeight: 700,
+                            color: "#0f766e",
+                          }}
+                        >
+                          ลู่ {lane.lane}
+                        </td>
+                        <td style={{ padding: "6px" }}>
+                          <input
+                            type="text"
+                            placeholder="เช่น 101"
+                            value={lane.bib}
+                            onChange={(e) =>
+                              updateModalLane(modalRound, idx, "bib", e.target.value)
+                            }
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              textAlign: "center",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "6px" }}>
+                          <input
+                            type="text"
+                            placeholder="ชื่อ-สกุล นักกีฬา"
+                            value={lane.athleteName}
+                            onChange={(e) =>
+                              updateModalLane(
+                                modalRound,
+                                idx,
+                                "athleteName",
+                                e.target.value,
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "6px" }}>
+                          <select
+                            value={lane.schoolName}
+                            onChange={(e) =>
+                              updateModalLane(
+                                modalRound,
+                                idx,
+                                "schoolName",
+                                e.target.value,
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                            }}
+                          >
+                            <option value="">-- เลือกโรงเรียน --</option>
+                            {schools.map((s) => (
+                              <option key={s.id} value={s.name}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: "6px", textAlign: "center" }}>
+                          <select
+                            value={lane.rank || ""}
+                            onChange={(e) =>
+                              updateModalLane(modalRound, idx, "rank", e.target.value)
+                            }
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                              fontWeight: lane.rank ? 600 : 400,
+                              color:
+                                lane.rank === "1"
+                                  ? "#ca8a04"
+                                  : lane.rank === "2"
+                                    ? "#64748b"
+                                    : lane.rank === "3"
+                                      ? "#b45309"
+                                      : "#334155",
+                            }}
+                          >
+                            <option value="">- เข้าเส้นชัย -</option>
+                            <option value="1">🥇 ที่ ๑ (ทอง)</option>
+                            <option value="2">🥈 ที่ ๒ (เงิน)</option>
+                            <option value="3">🥉 ที่ ๓ (ทองแดง)</option>
+                            <option value="4">ที่ ๔</option>
+                            <option value="5">ที่ ๕</option>
+                            {modalRound === "r3" && <option value="6">ที่ ๖</option>}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Action: Advance Qualifiers */}
+              {modalRound !== "r3" && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "#f8fafc",
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    marginBottom: "16px",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <span style={{ fontSize: "13px", color: "#64748b" }}>
+                    เลือกลำดับ 1, 2, 3 ในตารางลู่ แล้วกดปุ่มเพื่อคัดลอกรายชื่อไปรอบถัดไป
+                  </span>
+                  <button
+                    type="button"
+                    className="ui-button-outline ui-button-sm"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "#fff",
+                      borderColor: "#0f766e",
+                      color: "#0f766e",
+                      fontWeight: 600,
+                    }}
+                    onClick={() =>
+                      advanceQualifiers(
+                        modalRound,
+                        modalRound === "r1" ? "r2" : "r3",
+                      )
+                    }
+                  >
+                    ส่งอันดับ 1-3 เข้ารอบถัดไป <ArrowRight size={14} />
+                  </button>
+                </div>
+              )}
 
               {/* Modal Footer */}
               <div
@@ -897,7 +1215,7 @@ export function AthleticsScoresheet({
                     const next = rows.map((r) =>
                       r.id === selectedRow.id ? selectedRow : r,
                     );
-                    saveRows(next, "บันทึกผลการแข่งขันเรียบร้อย");
+                    saveRows(next, "บันทึกการจัดลู่และผลการแข่งขันเรียบร้อย");
                     setSelectedRow(null);
                   }}
                 >
