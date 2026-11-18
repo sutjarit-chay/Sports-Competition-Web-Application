@@ -14,7 +14,7 @@ import {
 
 export type LaneEntry = {
   lane: number;
-  bib: string;
+  schoolAbbr: string; // อักษรย่อ รร (เช่น นด., ทค., ดซ.)
   athleteName: string;
   schoolName: string;
   rank?: string; // "1", "2", "3", etc.
@@ -27,7 +27,7 @@ export type AthleticsRow = {
   name: string;
   grade: string;
   type: string;
-  r1: string[]; // 5 lanes (display text)
+  r1: string[]; // 5 lanes (อักษรย่อ รร)
   r2: string[]; // 5 lanes
   r3: string[]; // 6 lanes (finals)
   r1Lanes: LaneEntry[];
@@ -42,10 +42,39 @@ export type AthleticsRow = {
   }[];
 };
 
+const STANDARD_ABBR: Record<string, string> = {
+  "โรงเรียนบ้านหนองแดน": "นด.",
+  "โรงเรียนบ้านโนนสมบูรณ์": "นส.",
+  "โรงเรียนบ้านคลองเมือง": "คม.",
+  "โรงเรียนบ้านมะเดื่อชุมพร": "มด.",
+  "โรงเรียนอนุบาลโกสัมพีนคร (บ้านท่าคูณ)": "ทค.",
+  "โรงเรียนบ้านดงซ่อม": "ดซ.",
+  "โรงเรียนบ้านหนองวัวดำ": "นวด.",
+  "โรงเรียนบ้านไร่ลำปาง": "รล.",
+  "โรงเรียนบ้านโกสัมพี (วิเศษน้อมมิตรอนุกูล)": "กส.",
+  "โรงเรียนบ้านหนองแดน สาขาบ้านโละโคะ": "ลค.",
+  "โรงเรียนโกสัมพีวิทยา": "กว.",
+};
+
+export function getSchoolAbbreviation(fullName: string): string {
+  if (!fullName) return "";
+  if (STANDARD_ABBR[fullName]) return STANDARD_ABBR[fullName];
+  for (const [key, val] of Object.entries(STANDARD_ABBR)) {
+    if (fullName.includes(key) || key.includes(fullName)) return val;
+  }
+  return fullName
+    .replace(/^โรงเรียนบ้าน/, "")
+    .replace(/^โรงเรียนอนุบาล/, "")
+    .replace(/^โรงเรียน/, "")
+    .replace(/\(.*?\)/g, "")
+    .trim()
+    .slice(0, 5);
+}
+
 function defaultLanes(count: number): LaneEntry[] {
   return Array.from({ length: count }, (_, i) => ({
     lane: i + 1,
-    bib: "",
+    schoolAbbr: "",
     athleteName: "",
     schoolName: "",
     rank: "",
@@ -93,7 +122,6 @@ export function AthleticsScoresheet({
       const saved = localStorage.getItem("nkg2569_athletics_preview");
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Ensure lane structures exist
         const updated = parsed.map((item: AthleticsRow) => ({
           ...item,
           r1Lanes: item.r1Lanes || defaultLanes(5),
@@ -127,12 +155,12 @@ export function AthleticsScoresheet({
       if (r.id !== rowId) return r;
       const round = [...r[roundKey]];
       round[subIndex] = value;
-      // Also update the bib in the lane entry
+      // Also update schoolAbbr in the lane entry
       const lanesKey =
         roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
       const updatedLanes = [...r[lanesKey]];
       if (updatedLanes[subIndex]) {
-        updatedLanes[subIndex] = { ...updatedLanes[subIndex], bib: value };
+        updatedLanes[subIndex] = { ...updatedLanes[subIndex], schoolAbbr: value };
       }
       return { ...r, [roundKey]: round, [lanesKey]: updatedLanes };
     });
@@ -184,13 +212,21 @@ export function AthleticsScoresheet({
     const lanesKey =
       roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
     const lanes = [...selectedRow[lanesKey]];
-    lanes[index] = { ...lanes[index], [field]: val };
+    const updatedLane = { ...lanes[index], [field]: val };
 
-    // Sync BIB to main display cell
-    const roundCells = [...selectedRow[roundKey]];
-    if (field === "bib") {
-      roundCells[index] = val;
+    // If selecting a school, auto-fill abbreviation if empty
+    if (field === "schoolName" && val) {
+      const abbr = getSchoolAbbreviation(val);
+      if (abbr) {
+        updatedLane.schoolAbbr = abbr;
+      }
     }
+
+    lanes[index] = updatedLane;
+
+    // Sync school abbreviation to main display cell
+    const roundCells = [...selectedRow[roundKey]];
+    roundCells[index] = updatedLane.schoolAbbr;
 
     // If in finals (r3) and rank is assigned (1, 2, or 3), update winners automatically
     let winners = selectedRow.winners ? [...selectedRow.winners] : [];
@@ -204,7 +240,7 @@ export function AthleticsScoresheet({
           athleteName: matchingLane?.athleteName || "",
           schoolName: matchingLane?.schoolName || "",
           score: rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1,
-          note: matchingLane?.bib ? `BIB ${matchingLane.bib}` : "",
+          note: matchingLane?.schoolAbbr || "",
         };
       });
     }
@@ -240,12 +276,12 @@ export function AthleticsScoresheet({
       if (idx < nextTargetLanes.length) {
         nextTargetLanes[idx] = {
           ...nextTargetLanes[idx],
-          bib: q.bib,
+          schoolAbbr: q.schoolAbbr,
           athleteName: q.athleteName,
           schoolName: q.schoolName,
           rank: "",
         };
-        targetCells[idx] = q.bib || q.athleteName || q.schoolName;
+        targetCells[idx] = q.schoolAbbr;
       }
     });
 
@@ -354,8 +390,8 @@ export function AthleticsScoresheet({
                 ตารางบันทึกการแข่งขันกรีฑา (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
               </h2>
               <p className="muted" style={{ margin: "4px 0 0" }}>
-                คลิกปุ่ม <strong>"ลงทะเบียน/จัดลู่"</strong> เพื่อระบุรายชื่อนักกีฬา โรงเรียน และลู่วิ่ง
-                หรือพิมพ์หมายเลขประจำตัวนักกีฬา (BIB) ลงในช่องได้ทันที
+                คลิกปุ่ม <strong>"จัดลู่/นักกีฬา"</strong> เพื่อระบุโรงเรียน นักกีฬา และอักษรย่อ รร
+                หรือพิมพ์อักษรย่อ รร (เช่น นด., ทค., ดซ.) ลงในช่องตารางได้ทันที
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -495,24 +531,24 @@ export function AthleticsScoresheet({
                 </tr>
                 <tr style={{ background: "#475569", color: "#fff", fontSize: "12px" }}>
                   {/* รอบ 1 */}
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๑</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๒</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๓</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๔</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๕</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๑</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๒</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๓</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๔</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๕</th>
                   {/* รอบ 2 */}
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๑</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๒</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๓</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๔</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", width: "32px" }}>๕</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๑</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๒</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๓</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๔</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", width: "42px" }}>๕</th>
                   {/* รอบชิง */}
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "32px" }}>๑</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "32px" }}>๒</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "32px" }}>๓</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "32px" }}>๔</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "32px" }}>๕</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "32px" }}>๖</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "42px" }}>๑</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "42px" }}>๒</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "42px" }}>๓</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "42px" }}>๔</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "42px" }}>๕</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", width: "42px" }}>๖</th>
                 </tr>
               </thead>
               <tbody>
@@ -573,11 +609,12 @@ export function AthleticsScoresheet({
                         <input
                           type="text"
                           value={val}
+                          placeholder="อักษรย่อ"
                           onChange={(e) =>
                             handleCellChange(item.id, "r1", idx, e.target.value)
                           }
                           style={{
-                            width: "28px",
+                            width: "38px",
                             height: "28px",
                             textAlign: "center",
                             border: "none",
@@ -604,11 +641,12 @@ export function AthleticsScoresheet({
                         <input
                           type="text"
                           value={val}
+                          placeholder="อักษรย่อ"
                           onChange={(e) =>
                             handleCellChange(item.id, "r2", idx, e.target.value)
                           }
                           style={{
-                            width: "28px",
+                            width: "38px",
                             height: "28px",
                             textAlign: "center",
                             border: "none",
@@ -640,12 +678,12 @@ export function AthleticsScoresheet({
                         <input
                           type="text"
                           value={val}
+                          placeholder={idx < 3 ? `🥇🥈🥉`[idx * 2] : "อักษรย่อ"}
                           onChange={(e) =>
                             handleCellChange(item.id, "r3", idx, e.target.value)
                           }
-                          placeholder={idx < 3 ? `🥇🥈🥉`[idx * 2] : ""}
                           style={{
-                            width: "28px",
+                            width: "38px",
                             height: "28px",
                             textAlign: "center",
                             border: "none",
@@ -712,9 +750,9 @@ export function AthleticsScoresheet({
           >
             {rows.slice(0, 20).map((r) => {
               const winners = r.winners || [
-                { rank: 1, athleteName: r.r3Lanes?.[0]?.athleteName || "", schoolName: r.r3Lanes?.[0]?.schoolName || "", score: 3, note: "" },
-                { rank: 2, athleteName: r.r3Lanes?.[1]?.athleteName || "", schoolName: r.r3Lanes?.[1]?.schoolName || "", score: 2, note: "" },
-                { rank: 3, athleteName: r.r3Lanes?.[2]?.athleteName || "", schoolName: r.r3Lanes?.[2]?.schoolName || "", score: 1, note: "" },
+                { rank: 1, athleteName: r.r3Lanes?.[0]?.athleteName || "", schoolName: r.r3Lanes?.[0]?.schoolName || "", score: 3, note: r.r3Lanes?.[0]?.schoolAbbr || "" },
+                { rank: 2, athleteName: r.r3Lanes?.[1]?.athleteName || "", schoolName: r.r3Lanes?.[1]?.schoolName || "", score: 2, note: r.r3Lanes?.[1]?.schoolAbbr || "" },
+                { rank: 3, athleteName: r.r3Lanes?.[2]?.athleteName || "", schoolName: r.r3Lanes?.[2]?.schoolName || "", score: 1, note: r.r3Lanes?.[2]?.schoolAbbr || "" },
               ];
 
               return (
@@ -746,7 +784,7 @@ export function AthleticsScoresheet({
                         <th style={{ padding: "4px", textAlign: "left" }}>ชื่อ - นามสกุล</th>
                         <th style={{ padding: "4px", textAlign: "left" }}>โรงเรียน</th>
                         <th style={{ padding: "4px", width: "40px" }}>คะแนน</th>
-                        <th style={{ padding: "4px", width: "50px" }}>หมายเหตุ</th>
+                        <th style={{ padding: "4px", width: "50px" }}>อักษรย่อ</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -986,14 +1024,14 @@ export function AthleticsScoresheet({
               >
                 {modalRound === "r3" ? (
                   <>
-                    🏆 <strong>รอบชิงชนะเลิศ:</strong> กรอกข้อมูลนักกีฬาและระบุ{" "}
+                    🏆 <strong>รอบชิงชนะเลิศ:</strong> เลือกโรงเรียน (ระบบใส่อักษรย่อให้อัตโนมัติ) และระบุ{" "}
                     <strong>อันดับ 1, 2, 3</strong> ในช่องผลการแข่งขัน
                     เพื่อสรุปเหรียญทอง เงิน ทองแดง และคะแนน ๓, ๒, ๑ โดยอัตโนมัติ
                   </>
                 ) : (
                   <>
                     📋 <strong>{modalRound === "r1" ? "รอบ ๑" : "รอบ ๒"}:</strong>{" "}
-                    กรรมการลงทะเบียนนักกีฬา โรงเรียน และหมายเลข BIB ประจำแต่ละลู่
+                    กรรมการเลือกโรงเรียน (ระบบใส่อักษรย่อ รร ให้อัตโนมัติ หรือแก้ไขได้) และกรอกชื่อนักกีฬา
                     เมื่อวิ่งเสร็จ เลือกลำดับ 1, 2, 3 แล้วกดปุ่ม{" "}
                     <strong>"ส่งผู้เข้ารอบเข้าสู่รอบถัดไป"</strong>
                   </>
@@ -1012,10 +1050,10 @@ export function AthleticsScoresheet({
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #cbd5e1" }}>
-                      <th style={{ padding: "8px", width: "60px", textAlign: "center" }}>ลู่</th>
-                      <th style={{ padding: "8px", width: "100px", textAlign: "center" }}>หมายเลข BIB</th>
-                      <th style={{ padding: "8px", textAlign: "left" }}>ชื่อ - นามสกุล นักกีฬา</th>
+                      <th style={{ padding: "8px", width: "55px", textAlign: "center" }}>ลู่</th>
                       <th style={{ padding: "8px", textAlign: "left" }}>โรงเรียน</th>
+                      <th style={{ padding: "8px", width: "90px", textAlign: "center" }}>อักษรย่อ รร</th>
+                      <th style={{ padding: "8px", textAlign: "left" }}>ชื่อ - นามสกุล นักกีฬา</th>
                       <th style={{ padding: "8px", width: "130px", textAlign: "center" }}>
                         {modalRound === "r3" ? "อันดับเหรียญ" : "อันดับเข้าเส้นชัย"}
                       </th>
@@ -1046,46 +1084,6 @@ export function AthleticsScoresheet({
                           ลู่ {lane.lane}
                         </td>
                         <td style={{ padding: "6px" }}>
-                          <input
-                            type="text"
-                            placeholder="เช่น 101"
-                            value={lane.bib}
-                            onChange={(e) =>
-                              updateModalLane(modalRound, idx, "bib", e.target.value)
-                            }
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              textAlign: "center",
-                              borderRadius: "6px",
-                              border: "1px solid #cbd5e1",
-                              fontSize: "13px",
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: "6px" }}>
-                          <input
-                            type="text"
-                            placeholder="ชื่อ-สกุล นักกีฬา"
-                            value={lane.athleteName}
-                            onChange={(e) =>
-                              updateModalLane(
-                                modalRound,
-                                idx,
-                                "athleteName",
-                                e.target.value,
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              borderRadius: "6px",
-                              border: "1px solid #cbd5e1",
-                              fontSize: "13px",
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: "6px" }}>
                           <select
                             value={lane.schoolName}
                             onChange={(e) =>
@@ -1111,6 +1109,48 @@ export function AthleticsScoresheet({
                               </option>
                             ))}
                           </select>
+                        </td>
+                        <td style={{ padding: "6px" }}>
+                          <input
+                            type="text"
+                            placeholder="เช่น นด."
+                            value={lane.schoolAbbr}
+                            onChange={(e) =>
+                              updateModalLane(modalRound, idx, "schoolAbbr", e.target.value)
+                            }
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              textAlign: "center",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              color: "#1e3a8a",
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "6px" }}>
+                          <input
+                            type="text"
+                            placeholder="ชื่อ-สกุล นักกีฬา (ถ้ามี)"
+                            value={lane.athleteName}
+                            onChange={(e) =>
+                              updateModalLane(
+                                modalRound,
+                                idx,
+                                "athleteName",
+                                e.target.value,
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                            }}
+                          />
                         </td>
                         <td style={{ padding: "6px", textAlign: "center" }}>
                           <select
