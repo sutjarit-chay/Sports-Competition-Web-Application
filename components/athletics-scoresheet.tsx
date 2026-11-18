@@ -180,7 +180,7 @@ export function AthleticsScoresheet({
             onClick={() => setSubTab("sheet")}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            📋 ใบบันทึกผลการแข่งขันกรีฑา (หน้า ๒๙–๓๐)
+            📋 ใบบันทึกผลการแข่งขันกรีฑา
           </button>
           <button
             type="button"
@@ -188,7 +188,7 @@ export function AthleticsScoresheet({
             onClick={() => setSubTab("summary")}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <Trophy size={16} /> สรุปผลและคะแนนกรีฑา (หน้า ๓๑–๓๔)
+            <Trophy size={16} /> สรุปผลและคะแนนกรีฑา
           </button>
         </div>
 
@@ -214,7 +214,7 @@ export function AthleticsScoresheet({
         </div>
       </div>
 
-      {/* ======================= TAB 1: SCORESHEET (หน้า 29-30) ======================= */}
+      {/* ======================= TAB 1: SCORESHEET ======================= */}
       {subTab === "sheet" && (
         <section className="panel" aria-label="ตารางบันทึกการแข่งขันกรีฑา">
           <div
@@ -232,7 +232,6 @@ export function AthleticsScoresheet({
                 ตารางบันทึกการแข่งขันกรีฑา (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
               </h2>
               <p className="muted" style={{ margin: "4px 0 0" }}>
-                อ้างอิงสูจิบัตรหน้า ๒๙–๓๐ ·
                 พิมพ์หมายเลขลู่หรือหมายเลขประจำตัวนักกีฬา (BIB) ลงในแต่ละช่องได้ทันที
               </p>
             </div>
@@ -556,7 +555,7 @@ export function AthleticsScoresheet({
         </section>
       )}
 
-      {/* ======================= TAB 2: SUMMARY & REPORT (หน้า 31-34) ======================= */}
+      {/* ======================= TAB 2: SUMMARY & REPORT ======================= */}
       {subTab === "summary" && (
         <div className="printable-report" style={{ background: "#fff", padding: "16px" }}>
           {/* Header */}
@@ -570,7 +569,7 @@ export function AthleticsScoresheet({
             </p>
           </div>
 
-          {/* 20 Events Grid (หน้า 31-33) */}
+          {/* 20 Events Grid */}
           <div
             style={{
               display: "grid",
@@ -659,7 +658,7 @@ export function AthleticsScoresheet({
             }}
           >
             <h3 style={{ textAlign: "center", fontSize: "1.2rem", fontWeight: 700, margin: "0 0 16px" }}>
-              สรุปผลรวมการแข่งขันกรีฑานักเรียน (หน้า ๓๔)
+              สรุปผลรวมการแข่งขันกรีฑานักเรียน
             </h3>
 
             <div style={{ maxWidth: "680px", margin: "0 auto 30px" }}>
@@ -716,7 +715,7 @@ export function AthleticsScoresheet({
               </table>
             </div>
 
-            {/* Signature Area (หน้า 34) */}
+            {/* Signature Area */}
             <div
               style={{
                 display: "grid",
@@ -809,7 +808,7 @@ export function AthleticsScoresheet({
             {/* Modal Body */}
             <div style={{ padding: "18px" }}>
               <h4 style={{ margin: "0 0 10px", fontSize: "14px", color: "#0f766e" }}>
-                🏆 กำหนดผู้ชนะรอบชิงชนะเลิศ (ส่งไปหน้าสรุปคะแนน ๓, ๒, ๑)
+                🏆 กำหนดผู้ชนะรอบชิงชนะเลิศ (คะแนน ๓, ๒, ๑)
               </h4>
 
               <div style={{ display: "grid", gap: "10px", marginBottom: "20px" }}>
