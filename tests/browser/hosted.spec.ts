@@ -447,6 +447,25 @@ for (const grantedRole of ["referee", "recorder"]) {
       away_score: 1,
       referee_id: null,
     });
+    await form.getByRole("button", { name: "แก้ไขผล", exact: true }).click();
+    await form.getByLabel("เจ้าบ้าน").fill("0");
+    await form.getByLabel("ทีมเยือน").fill("2");
+    await form
+      .getByRole("button", { name: "ยกเลิกการแก้ไข", exact: true })
+      .click();
+    await expect(form.getByLabel("เจ้าบ้าน")).toHaveValue("3");
+    expect(db.matches[1].home_score).toBe(3);
+    await form.getByRole("button", { name: "แก้ไขผล", exact: true }).click();
+    await form.getByLabel("เจ้าบ้าน").fill("0");
+    await form.getByLabel("ทีมเยือน").fill("2");
+    await form
+      .getByRole("button", { name: "บันทึกการแก้ไข", exact: true })
+      .click();
+    await expect.poll(() => db.matches[1].home_score).toBe(0);
+    expect(db.matches[1].away_score).toBe(2);
+    await expect(
+      form.getByRole("button", { name: "แก้ไขผล", exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "นักกีฬา", exact: true }),
     ).toHaveCount(0);

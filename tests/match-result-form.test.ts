@@ -74,3 +74,18 @@ test("result form labels the original source match number", () => {
   assert.match(html, /คู่ที่ 12/);
   assert.match(html, /โรงเรียน ก — โรงเรียน ข/);
 });
+
+test("completed results offer an explicit edit button before fields can be changed", () => {
+  const html = render({
+    ...fixture,
+    status: "finished",
+    home_score: 2,
+    away_score: 1,
+  });
+  assert.match(html, /แก้ไขผล/);
+  assert.match(
+    html.match(/<input[^>]*name="home"[^>]*>/)?.[0] || "",
+    /disabled=""/,
+  );
+  assert.doesNotMatch(html, /type="submit"/);
+});

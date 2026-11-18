@@ -1778,9 +1778,10 @@ export default function Home() {
               <section className="panel">
                 <h2>บันทึกผลการแข่งขัน</h2>
                 <p className="muted">
-                  ผลคัดออกที่ยืนยันแล้วแก้คะแนนได้เฉพาะกรณีผู้ชนะเดิมไม่เปลี่ยน
-                  · คะแนนลีก: ชนะ {points.win} · เสมอ {points.draw} · แพ้{" "}
-                  {points.loss} | เหรียญคำนวณจากผลที่ยืนยันแล้ว
+                  กดแก้ไขผลเพื่อปรับคะแนน
+                  คู่ที่เชื่อมต่อรอบถัดไปยังต้องคงผู้ชนะเดิม · คะแนนลีก: ชนะ{" "}
+                  {points.win} · เสมอ {points.draw} · แพ้ {points.loss} |
+                  เหรียญคำนวณจากผลที่ยืนยันแล้ว
                 </p>
                 {refereeRole && (
                   <p className="muted">

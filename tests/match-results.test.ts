@@ -946,3 +946,34 @@ test("any referee may score a match with no assigned referee without claiming it
     assert.equal(response.status, 200);
     assert.equal(f.tables.matches[0].referee_id, null);
   }));
+
+test("referee can correct the winner of a completed final without changing unrelated results", async () =>
+  fixture(async (f) => {
+    knockout(f);
+    f.tables.competitions[0].registration_policy.management.fixtures = [
+      {
+        ...f.tables.competitions[0].registration_policy.management.fixtures[0],
+        round: "รอบชิงชนะเลิศ",
+        sourceNumber: 15,
+      },
+    ];
+    f.tables.matches[0].group_name = "รอบชิงชนะเลิศ";
+    f.match.pool = "รอบชิงชนะเลิศ";
+    Object.assign(f.tables.matches[0], {
+      status: "finished",
+      home_score: 2,
+      away_score: 1,
+    });
+    f.setRole("referee");
+    const other = JSON.stringify(f.tables.matches[1]);
+    const response = await post({
+      ...f.match,
+      status: "finished",
+      home_score: 0,
+      away_score: 3,
+    });
+    assert.equal(response.status, 200, JSON.stringify(await response.json()));
+    assert.equal(f.tables.matches[0].home_score, 0);
+    assert.equal(f.tables.matches[0].away_score, 3);
+    assert.equal(JSON.stringify(f.tables.matches[1]), other);
+  }));

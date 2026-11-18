@@ -1,3 +1,4 @@
+import { winnerCorrectionError } from "./result-correction";
 import {
   allocateMatchStamp,
   normalizedMatchStamp,
@@ -158,11 +159,10 @@ export async function saveMatchResult(
       ["finished", "confirmed"].includes(actual.status) &&
       actual.home_score! > actual.away_score! !==
         (homeScore as number) > (awayScore as number)
-    )
-      throw new AccountError(
-        "ไม่สามารถเปลี่ยนผู้ชนะของผลคัดออกที่ยืนยันแล้ว",
-        409,
-      );
+    ) {
+      const error = winnerCorrectionError(management, actual.id);
+      if (error) throw new AccountError(error, 409);
+    }
   }
   const match: Match = {
     ...original,

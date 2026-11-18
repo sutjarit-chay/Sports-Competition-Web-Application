@@ -1,3 +1,4 @@
+import { winnerCorrectionError } from "./result-correction";
 import { readSetReport } from "./set-scores";
 import {
   readManagement,
@@ -609,12 +610,15 @@ export async function writeHosted<K extends keyof State>(
           if (
             !["finished", "confirmed"].includes(payload.status) ||
             payload.home_school_id !== existing.home_school_id ||
-            payload.away_school_id !== existing.away_school_id ||
-            oldWinner !== newWinner
+            payload.away_school_id !== existing.away_school_id
           )
             throw Error(
               "ไม่สามารถเปลี่ยนผู้ชนะของผลคัดออกที่ยืนยันแล้ว กรุณาติดต่อผู้จัดการแข่งขันเพื่อตรวจสอบสาย",
             );
+          if (oldWinner !== newWinner) {
+            const error = winnerCorrectionError(management, existing.id);
+            if (error) throw Error(error);
+          }
         }
       }
       if (!Number.isInteger(m.revision))

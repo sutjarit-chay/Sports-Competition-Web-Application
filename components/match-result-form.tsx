@@ -49,6 +49,7 @@ function ResultEntry({
   const [home, setHome] = useState(String(match.home_score ?? ""));
   const [away, setAway] = useState(String(match.away_score ?? ""));
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(match.status !== "finished");
   const totals = rows.reduce(
     (score, row) => {
       if (row.home !== "" && row.away !== "") {
@@ -59,7 +60,24 @@ function ResultEntry({
     },
     { home: 0, away: 0 },
   );
-  const disabled = !canEdit || busy;
+  const disabled = !canEdit || busy || !editing;
+  const resetDraft = () => {
+    setHome(String(match.home_score ?? ""));
+    setAway(String(match.away_score ?? ""));
+    setRows(
+      match.setScores?.length
+        ? match.setScores.map((set) => ({
+            home: String(set.home),
+            away: String(set.away),
+          }))
+        : [emptySet(), emptySet()],
+    );
+    setRecordSets(
+      setSport &&
+        (Boolean(match.setScores?.length) || match.status !== "finished"),
+    );
+    setError("");
+  };
   const updateRow = (index: number, side: keyof DraftSet, value: string) => {
     setRows((current) =>
       current.map((row, i) => (i === index ? { ...row, [side]: value } : row)),
@@ -71,6 +89,7 @@ function ResultEntry({
       className="match-form result-entry"
       onSubmit={(event) => {
         event.preventDefault();
+        if (disabled) return;
         setError("");
         const homeScore = recordSets ? totals.home : Number(home);
         const awayScore = recordSets ? totals.away : Number(away);
@@ -111,7 +130,7 @@ function ResultEntry({
           .join("\n");
         if (
           !window.confirm(
-            `ตรวจสอบผลก่อนยืนยัน:\n${schoolName(match.home)} ${homeScore} – ${awayScore} ${schoolName(match.away)}${detail ? `\n${detail}` : ""}\n${formatScheduleDate(match)} · ${match.venue || "ไม่ระบุสนาม"}`,
+            `${match.status === "finished" ? "ยืนยันแก้ไขผลที่บันทึกแล้ว (อันดับและเหรียญจะคำนวณใหม่)" : "ตรวจสอบผลก่อนยืนยัน"}:\n${schoolName(match.home)} ${homeScore} – ${awayScore} ${schoolName(match.away)}${detail ? `\n${detail}` : ""}\n${formatScheduleDate(match)} · ${match.venue || "ไม่ระบุสนาม"}`,
           )
         )
           return;
@@ -242,10 +261,36 @@ function ResultEntry({
           ? `ยืนยันผลแล้ว · ${match.home_score} – ${match.away_score}`
           : "รอส่งผล"}
       </span>
-      {canEdit && (
-        <button type="submit" className="primary" disabled={busy}>
-          ยืนยันผล
+      {canEdit && !editing && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            resetDraft();
+            setEditing(true);
+          }}
+        >
+          แก้ไขผล
         </button>
+      )}
+      {canEdit && editing && (
+        <>
+          <button type="submit" className="primary" disabled={busy}>
+            {match.status === "finished" ? "บันทึกการแก้ไข" : "ยืนยันผล"}
+          </button>
+          {match.status === "finished" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                resetDraft();
+                setEditing(false);
+              }}
+            >
+              ยกเลิกการแก้ไข
+            </button>
+          )}
+        </>
       )}
       {match.status === "finished" && onViewResult && (
         <button type="button" onClick={() => onViewResult(match)}>
