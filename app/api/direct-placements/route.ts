@@ -80,26 +80,12 @@ export async function POST(request: Request) {
     } else {
       if (!base.enabled)
         throw new AccountError("ผู้ดูแลต้องเปิดโหมดผลอันดับโดยตรงก่อน", 409);
-      const [registrations, matches] = await Promise.all([
-        admin
-          .from("registrations")
-          .select("school_id")
-          .eq("competition_id", body.competitionId),
-        admin
-          .from("matches")
-          .select("home_school_id,away_school_id")
-          .eq("competition_id", body.competitionId),
-      ]);
-      if (registrations.error || matches.error)
-        throw new AccountError("โหลดโรงเรียนที่เข้าร่วมไม่สำเร็จ", 503);
-      const allowed = new Set<string>([
-        ...(readManagement(policy)?.teams || []),
-        ...(registrations.data || []).map((r) => r.school_id as string),
-        ...(matches.data || []).flatMap((m) => [
-          m.home_school_id as string,
-          m.away_school_id as string,
-        ]),
-      ]);
+      const schools = await admin.from("schools").select("id");
+      if (schools.error)
+        throw new AccountError("โหลดรายชื่อโรงเรียนไม่สำเร็จ", 503);
+      const allowed = new Set<string>(
+        (schools.data || []).map((s) => s.id as string),
+      );
       let placements;
       try {
         placements = normalizePlacements(body, allowed);

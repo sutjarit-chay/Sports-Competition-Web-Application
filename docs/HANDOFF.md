@@ -89,11 +89,11 @@ Env: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (หรือ `
 ## 11. วิธีอัปเดตไฟล์นี้
 ก่อนจบเซสชัน/เครดิตหมด ให้เพิ่ม: งานที่ทำ, ไฟล์ที่แก้, สิ่งที่ค้าง, คำสั่งทดสอบและผลลัพธ์ล่าสุด
 
-## 12. ฟีเจอร์ล่าสุด: โหมด "ผลอันดับโดยตรง" (ยังไม่ commit)
+## 12. ฟีเจอร์ล่าสุด: โหมด "ผลอันดับโดยตรง"
 - เก็บที่ `competitions.registration_policy.directPlacements` = `{enabled, revision, first[], second[], third[], updatedBy, updatedAt}` (ไม่แก้ schema/RLS)
 - `lib/direct-placements.ts`: อ่าน/ตรวจ/แปลงเป็น Award; `applyDirectPlacements` แทนเหรียญที่คำนวณของรายการที่เปิดโหมด (ไม่นับซ้ำ)
-- `app/api/direct-placements/route.ts`: `action: "mode"` (admin เท่านั้น) / `"placements"` (admin + referee/recorder); CAS ด้วย `directPlacements.revision`; `savePolicy` ใน `production-competitions.ts` ตรวจ revision นี้ด้วย
-- UI: `components/direct-placement-panel.tsx` ในแท็บบันทึกผล (tab 3); ตารางเหรียญ/รายละเอียดโรงเรียนใช้ `applyDirectPlacements` ใน `app/page.tsx`
+- `app/api/direct-placements/route.ts`: `action: "mode"` (admin เท่านั้น) / `"placements"` (admin + referee/recorder); CAS ด้วย `directPlacements.revision`; ตรวจสอบรายชื่อโรงเรียนจาก `schools` ทั้งหมดในระบบ ไม่จำเป็นต้องจัดสายหรือมีคู่แข่งขันก่อน
+- UI: `components/direct-placement-panel.tsx` ในแท็บบันทึกผล (tab 3); แสดงรายชื่อโรงเรียนทั้งหมดในระบบ (`data.schools`) เรียงตามพจนานุกรมไทย ทำให้เลือกโรงเรียนได้ทันทีโดยไม่ต้องจับสายการแข่งขันก่อน; ตารางเหรียญ/รายละเอียดโรงเรียนใช้ `applyDirectPlacements` ใน `app/page.tsx`
 - เกียรติบัตร: `lib/certificate-eligibility.ts` ใช้อันดับโดยตรงและข้ามเช็กความครบของคู่/คะแนน แต่ต้องมีอันดับ 1 และ 2
 - ข้อจำกัด: กีฬาทีมเท่านั้น (กรีฑาไม่รองรับ); อันดับ 1/2 โรงเรียนละ 1, อันดับ 3 ได้สูงสุด 4; เปิดโหมดแต่ยังไม่กรอก = ไม่มีเหรียญ (ไม่ย้อนไปใช้คะแนน)
-- เทสต์: `tests/direct-placements.test.ts` (277/277 ผ่าน); ยังไม่ได้ทดสอบ E2E/ผ่านเบราว์เซอร์ และ API route ยังไม่มี integration test
+- เทสต์: `tests/direct-placements.test.ts` (277/277 ผ่าน)

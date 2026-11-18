@@ -108,9 +108,9 @@
 3. **`directPlacements` (object) — โหมดผลอันดับโดยตรง:**
    - `enabled` (boolean): เปิด/ปิดโหมดผลอันดับโดยตรง
    - `revision` (number): เวอร์ชันป้องกัน concurrent updates
-   - `first` (string[]): school_id อันดับ 1 (ทอง) สูงสุด 1 โรงเรียน
-   - `second` (string[]): school_id อันดับ 2 (เงิน) สูงสุด 1 โรงเรียน
-   - `third` (string[]): school_id อันดับ 3 (ทองแดง) สูงสุด 4 โรงเรียน (รองรับอันดับร่วม)
+   - `first` (string[]): school_id อันดับ 1 (ทอง) สูงสุด 1 โรงเรียน (เลือกได้จาก `public.schools` ทั้งหมด โดยไม่ต้องรอจับสายการแข่งขัน)
+   - `second` (string[]): school_id อันดับ 2 (เงิน) สูงสุด 1 โรงเรียน (เลือกได้จาก `public.schools` ทั้งหมด โดยไม่ต้องรอจับสายการแข่งขัน)
+   - `third` (string[]): school_id อันดับ 3 (ทองแดง) สูงสุด 4 โรงเรียน (รองรับอันดับร่วม, เลือกได้จาก `public.schools` ทั้งหมด)
    - `updatedBy` (string, optional): user id ที่แก้ไขล่าสุด
    - `updatedAt` (string, optional): ISO timestamp
 

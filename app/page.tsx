@@ -694,22 +694,13 @@ export default function Home() {
   const directPlacements = readDirectPlacements(
     competition?.registration_policy,
   );
-  const directParticipants = [
-    ...new Set([
-      ...(readManagement(competition?.registration_policy)?.teams || []),
-      ...data.matches
-        .filter((m) => m.competition_id === competitionId)
-        .flatMap((m) => [m.home, m.away]),
-      ...data.athletes
-        .filter((a) => a.competition_id === competitionId)
-        .map((a) => a.school_id),
-    ]),
-  ]
-    .map((id) => ({
-      id,
-      name: data.schools.find((item) => item.id === id)?.name || id,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, "th"));
+  const allDirectSchools = useMemo(
+    () =>
+      data.schools
+        .map((item) => ({ id: item.id, name: item.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, "th")),
+    [data.schools],
+  );
   async function postDirectPlacements(payload: Record<string, unknown>) {
     const current = await supabase?.auth.getSession();
     const token = current?.data.session?.access_token;
@@ -1889,7 +1880,7 @@ export default function Home() {
                     key={`${competition.id}-${directPlacements?.revision ?? 0}`}
                     competitionName={competition.name}
                     placements={directPlacements}
-                    schools={directParticipants}
+                    schools={allDirectSchools}
                     canToggle={admin}
                     busy={busy}
                     onToggle={(enabled, revision) =>
