@@ -4313,3 +4313,26 @@ footer {
     font-size: 28px;
   }
 }
+
+/* Overview programme progress: keep wide content inside a keyboard-scrollable table. */
+.competition-progress { min-width: 0; }
+.competition-progress .panel-title { flex-wrap: wrap; }
+.progress-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid #e7e0d1; border-radius: 14px; }
+.progress-table-scroll:focus-visible { outline: 3px solid #8d681c; outline-offset: 3px; }
+.competition-progress table { width: 100%; min-width: 760px; table-layout: fixed; border-collapse: collapse; }
+.competition-progress caption { text-align: left; padding: 12px 16px; color: #655a49; }
+.competition-progress th, .competition-progress td { padding: 14px 16px; border-bottom: 1px solid #eee8dc; white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+.competition-progress thead th { background: #fbf7ec; color: #5c471c; font-size: 13px; }
+.competition-progress th:first-child { width: 28%; text-align: left; }
+.competition-progress thead th:nth-child(2), .competition-progress thead th:nth-child(3), .competition-progress thead th:nth-child(4) { width: 12%; text-align: center; }
+.competition-progress thead th:last-child { width: 36%; text-align: left; }
+.competition-progress tbody th { font-weight: 500; }
+.competition-progress small { display: block; margin-top: 6px; color: #655a49; font-size: 12px; line-height: 1.6; font-weight: 400; }
+.competition-progress .progress-number { text-align: center; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.progress-done, .progress-complete { color: #19603f; }
+.progress-remaining { color: #785414; }
+.progress-scroll-hint { display: none; }
+@media (max-width: 767px) {
+  .progress-scroll-hint { display: block; font-size: 12px; }
+  .competition-progress th, .competition-progress td { padding: 12px; }
+}

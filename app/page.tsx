@@ -91,6 +91,7 @@ import { MatchResultForm } from "@/components/match-result-form";
 import MatchResultsReport, {
   MatchResultDialog,
 } from "@/components/match-results-report";
+import CompetitionProgress from "@/components/competition-progress";
 import AthleticsProgram from "@/components/athletics-program";
 import CertificateCenter from "@/components/certificate-center";
 import SpiderSchedule from "@/components/spider-schedule";
@@ -1239,6 +1240,20 @@ export default function Home() {
                 }
                 onSchedule={() => selectTab(2)}
                 disabled={!ready || busy}
+              />
+              <CompetitionProgress
+                competitions={snapshot?.rows.competitions || []}
+                matches={buildScheduleMatches(
+                  managedCompetitions,
+                  data.matches,
+                )}
+                athleticsEvents={snapshot?.rows.athletics_events || []}
+                athleticsResults={snapshot?.rows.athletics_results || []}
+                schoolName={(id) =>
+                  data.schools.find((item) => item.id === id)?.name || id
+                }
+                loading={!ready}
+                error={loadFailed}
               />
               {refereeRole && (
                 <section className="panel referee-dashboard">
