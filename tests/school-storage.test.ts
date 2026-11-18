@@ -549,3 +549,118 @@ test("concurrent profile and coach writers from the same version have exactly on
     assert.deepEqual(coachWrites.map((r) => r.status).sort(), [200, 409]);
     assert.equal(f.files.size, 3);
   }));
+
+test("admin can update another school's private profile and coaches while school accounts remain scoped", async () =>
+  fixture(async (f) => {
+    f.setRole("admin");
+    const otherProfile = {
+      ...profile,
+      shortName: "อีกโรงเรียน",
+      schoolType: "ขยายโอกาส",
+    };
+    const saved = await profilePut(
+      request("school-profile", {
+        schoolId: other,
+        expectedVersion: null,
+        profile: otherProfile,
+      }),
+    );
+    assert.equal(saved.status, 200);
+    assert.deepEqual(
+      (
+        await (
+          await profileGet(request(`school-profile?schoolId=${other}`))
+        ).json()
+      ).profile,
+      otherProfile,
+    );
+    const coaches = [
+      {
+        id: "55555555-5555-4555-8555-555555555555",
+        school_id: other,
+        competition_id: competition,
+        name: "ผู้ฝึกสอนอีกโรงเรียน",
+        title: "ครูผู้ฝึกสอน",
+        phone: "0812345678",
+      },
+    ];
+    assert.equal(
+      (
+        await coachesPut(
+          request("coaches", {
+            schoolId: other,
+            competitionId: competition,
+            expectedVersion: null,
+            coaches,
+          }),
+        )
+      ).status,
+      200,
+    );
+    assert.deepEqual(
+      (
+        await (
+          await coachesGet(
+            request(`coaches?schoolId=${other}&competitionId=${competition}`),
+          )
+        ).json()
+      ).coaches,
+      coaches,
+    );
+    const writes = f.writes.length;
+    f.setRole("school_admin");
+    assert.equal(
+      (await profileGet(request(`school-profile?schoolId=${other}`))).status,
+      403,
+    );
+    assert.equal(
+      (
+        await coachesGet(
+          request(`coaches?schoolId=${other}&competitionId=${competition}`),
+        )
+      ).status,
+      403,
+    );
+    assert.equal(f.writes.length, writes);
+  }));
+test("public logo URLs change with profile versions without exposing contacts", async () =>
+  fixture(async (f) => {
+    const logo =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFwoAAAAASUVORK5CYII=";
+    const first = await profilePut(
+      request("school-profile", {
+        schoolId: school,
+        expectedVersion: null,
+        profile: { ...profile, logo },
+      }),
+    );
+    const version = (await first.json()).version;
+    const before = await (
+      await profileGet(request("school-profile?public=1", undefined, ""))
+    ).json();
+    assert.ok(
+      before.schools
+        .find((s: { id: string }) => s.id === school)
+        .logo.includes("&v="),
+    );
+    assert.equal(
+      (
+        await profilePut(
+          request("school-profile", {
+            schoolId: school,
+            expectedVersion: version,
+            profile: { ...profile, logo, shortName: "ใหม่" },
+          }),
+        )
+      ).status,
+      200,
+    );
+    const after = await (
+      await profileGet(request("school-profile?public=1", undefined, ""))
+    ).json();
+    assert.notEqual(
+      before.schools.find((s: { id: string }) => s.id === school).logo,
+      after.schools.find((s: { id: string }) => s.id === school).logo,
+    );
+    assert.ok(!JSON.stringify(after).includes(profile.contactPhone));
+  }));

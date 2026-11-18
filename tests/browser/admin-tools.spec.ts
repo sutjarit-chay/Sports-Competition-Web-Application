@@ -268,17 +268,20 @@ test("admin renames schools and reassigns accounts on mobile", async ({
   await page.getByRole("button", { name: "เมนูทั้งหมด", exact: true }).click();
   await login(page);
   await page
-    .getByRole("button", { name: "แก้ชื่อ โรงเรียนจริง ข", exact: true })
+    .getByRole("button", { name: "แก้ไขข้อมูล โรงเรียนจริง ข", exact: true })
     .click();
   await page
-    .getByLabel("ชื่อโรงเรียนที่แก้ไข", { exact: true })
+    .getByLabel("ชื่อโรงเรียน", { exact: true })
     .fill("โรงเรียนปรับชื่อแล้ว");
   await page
-    .getByRole("button", { name: "บันทึกชื่อโรงเรียน", exact: true })
+    .getByRole("button", { name: "บันทึกข้อมูลโรงเรียน", exact: true })
     .click();
   await expect
     .poll(() => f.db.schools.find((s) => s.id === sid2)?.name)
     .toBe("โรงเรียนปรับชื่อแล้ว");
+  await page
+    .getByRole("button", { name: "ปิดการจัดการโรงเรียน", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "จัดการบัญชี school.old", exact: true })
     .click();

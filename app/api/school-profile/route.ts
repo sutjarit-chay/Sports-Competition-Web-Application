@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       if (result.error) throw new AccountError("อ่านโรงเรียนไม่สำเร็จ", 503);
       const schools = await Promise.all(
         (result.data || []).map(async (school) => {
-          const { value } = await readDocument<PrivateSchoolProfile>(
+          const { value, version } = await readDocument<PrivateSchoolProfile>(
             admin,
             profilePrefix(school.id),
             emptySchoolProfile,
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
             short_name: value.shortName,
             school_type: value.schoolType,
             logo: value.logo
-              ? `/api/school-profile/logo?schoolId=${school.id}`
+              ? `/api/school-profile/logo?schoolId=${school.id}&v=${encodeURIComponent(version || "")}`
               : "",
           };
         }),

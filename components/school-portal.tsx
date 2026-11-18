@@ -1,7 +1,7 @@
 "use client";
 import { sortCompetitionsByName } from "@/lib/competition-order";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Papa from "papaparse";
 import { Download, School as SchoolIcon } from "lucide-react";
 import type { Athlete, State } from "@/lib/domain";
@@ -116,6 +116,7 @@ export default function SchoolPortal({
   busy,
   onSaveSchool,
   onSaved,
+  onBusyChange,
   onSaveAthletes,
   onImportAthletes,
   onDownloadAthleteTemplate,
@@ -128,8 +129,9 @@ export default function SchoolPortal({
   athletes: Athlete[];
   competitions: Competition[];
   busy: boolean;
-  onSaveSchool: (school: School) => Promise<void>;
+  onSaveSchool: (school: School, expectedName?: string) => Promise<void>;
   onSaved?: () => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
   onSaveAthletes: (rows: Athlete[]) => Promise<void>;
   onImportAthletes: (file: File, competitionId: string) => Promise<void>;
   onDownloadAthleteTemplate: (
@@ -146,6 +148,19 @@ export default function SchoolPortal({
   const [profileReady, setProfileReady] = useState(false);
   const [staffReady, setStaffReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const activeEditor = useRef(true);
+  function updateSaving(value: boolean) {
+    if (!activeEditor.current) return;
+    setSaving(value);
+    onBusyChange?.(value);
+  }
+  useEffect(() => {
+    activeEditor.current = true;
+    return () => {
+      activeEditor.current = false;
+      onBusyChange?.(false);
+    };
+  }, [onBusyChange]);
   const [storageError, setStorageError] = useState("");
   const [formError, setFormError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -237,6 +252,10 @@ export default function SchoolPortal({
   }, [competitions, selectedCompetitionId]);
 
   const selectedSchool = schools.find((item) => item.id === schoolId);
+  const savedName = useRef(selectedSchool?.name || "");
+  useEffect(() => {
+    savedName.current = selectedSchool?.name || "";
+  }, [selectedSchool?.id, selectedSchool?.name]);
   const selectedCompetition = competitions.find(
     (item) => item.id === selectedCompetitionId,
   );
@@ -249,7 +268,8 @@ export default function SchoolPortal({
       logo: extraProfile.logo,
     });
   }, [
-    selectedSchool,
+    selectedSchool?.id,
+    selectedSchool?.name,
     extraProfile.contactName,
     extraProfile.contactPhone,
     extraProfile.address,
@@ -300,13 +320,15 @@ export default function SchoolPortal({
       const name = profileDraft.name.trim();
       if (!name) throw Error("กรอกชื่อโรงเรียน");
       if (!profileReady) throw Error("กรุณารอโหลดข้อมูลโรงเรียนก่อนบันทึก");
-      setSaving(true);
+      updateSaving(true);
       let nameSaved = false;
       try {
-        if (name !== selectedSchool.name) {
-          await onSaveSchool({ ...selectedSchool, name });
+        if (name !== savedName.current) {
+          await onSaveSchool({ ...selectedSchool, name }, savedName.current);
+          savedName.current = name;
           nameSaved = true;
         }
+        if (!activeEditor.current) return;
         const data = await api("/api/school-profile", {
           schoolId,
           expectedVersion: profileVersion,
@@ -319,6 +341,7 @@ export default function SchoolPortal({
             address: profileDraft.address.trim(),
           },
         });
+        if (!activeEditor.current) return;
         setExtraProfile(data.profile);
         setProfileVersion(data.version);
       } catch (error) {
@@ -327,8 +350,6 @@ export default function SchoolPortal({
             `บันทึกชื่อโรงเรียนแล้ว แต่ข้อมูลเพิ่มเติมไม่สำเร็จ: ${error instanceof Error ? error.message : "กรุณาลองใหม่"}`,
           );
         throw error;
-      } finally {
-        setSaving(false);
       }
       if (onSaved) {
         try {
@@ -346,6 +367,8 @@ export default function SchoolPortal({
           ? error.message
           : "บันทึกข้อมูลโรงเรียนไม่สำเร็จ",
       );
+    } finally {
+      updateSaving(false);
     }
   }
 
@@ -372,6 +395,7 @@ export default function SchoolPortal({
           competition_id: selectedCompetitionId,
         },
       ]);
+      if (!activeEditor.current) return;
       setEditingAthleteId("");
       setStatusMessage("แก้ไขข้อมูลนักกีฬาแล้ว");
     } catch (error) {
@@ -383,7 +407,7 @@ export default function SchoolPortal({
 
   async function submitRegistration(rows: Athlete[]) {
     if (rows.length) await onSaveAthletes(rows);
-    setStatusMessage("ลงทะเบียนนักกีฬาแล้ว");
+    if (activeEditor.current) setStatusMessage("ลงทะเบียนนักกีฬาแล้ว");
   }
   async function saveCoach() {
     setFormError("");
@@ -396,7 +420,7 @@ export default function SchoolPortal({
         phone = staffDraft.phone.trim();
       if (!name || !title)
         throw Error("กรอกชื่อและหน้าที่ของครู/ผู้ฝึกสอนให้ครบ");
-      setSaving(true);
+      updateSaving(true);
       const next = editingStaffId
         ? staff.map((item) =>
             item.id === editingStaffId ? { ...item, name, title, phone } : item,
@@ -418,6 +442,7 @@ export default function SchoolPortal({
         expectedVersion: staffVersion,
         coaches: next,
       });
+      if (!activeEditor.current) return;
       setStaff(data.coaches);
       setStaffVersion(data.version);
       setEditingStaffId("");
@@ -428,7 +453,7 @@ export default function SchoolPortal({
         error instanceof Error ? error.message : "บันทึกผู้ฝึกสอนไม่สำเร็จ",
       );
     } finally {
-      setSaving(false);
+      updateSaving(false);
     }
   }
 

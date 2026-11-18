@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { adminRequest } from "@/lib/admin-api";
-type School = { id: string; name: string };
+type School = { id: string; name: string; logo?: string; school_type?: string };
 type Preview = {
   schoolId: string;
   name: string;
@@ -25,13 +25,13 @@ const labels: Record<string, string> = {
 export default function AdminSchoolManager({
   schools,
   onChanged,
+  onManage,
 }: {
   schools: School[];
   onChanged: () => Promise<void>;
+  onManage: (id: string) => void;
 }) {
-  const [editing, setEditing] = useState<School | null>(null),
-    [name, setName] = useState(""),
-    [preview, setPreview] = useState<Preview | null>(null),
+  const [preview, setPreview] = useState<Preview | null>(null),
     [confirmation, setConfirmation] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -53,7 +53,8 @@ export default function AdminSchoolManager({
     <section className="panel admin-maintenance">
       <h2>จัดการโรงเรียน</h2>
       <p className="muted">
-        แก้ชื่อโรงเรียนได้โดยรักษาทะเบียนเดิม
+        เปิดหน้าต่างแก้ไขชื่อ โลโก้ ประเภทโรงเรียน ข้อมูลติดต่อ
+        นักกีฬาและผู้ฝึกสอน โดยรักษาทะเบียนเดิม
         การลบต้องไม่มีบัญชีหรือข้อมูลการแข่งขันเชื่อมอยู่ หากมีบัญชี
         ให้ย้ายไปโรงเรียนอื่นในส่วนจัดการบัญชีก่อน
       </p>
@@ -72,91 +73,57 @@ export default function AdminSchoolManager({
         <table>
           <thead>
             <tr>
-              <th>โรงเรียน</th>
-              <th>จัดการ</th>
+              <th scope="col">โรงเรียน</th>
+              <th scope="col">ประเภทโรงเรียน</th>
+              <th scope="col">จัดการ</th>
             </tr>
           </thead>
           <tbody>
-            {schools.map((s) => (
-              <tr key={s.id}>
-                <td>{s.name}</td>
-                <td>
-                  <div className="admin-actions">
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        setEditing(s);
-                        setName(s.name);
-                        setError("");
-                      }}
-                    >
-                      แก้ชื่อ {s.name}
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        act(async () => {
-                          const r = await adminRequest<{ preview: Preview }>(
-                            `/api/admin-schools?schoolId=${s.id}`,
-                          );
-                          setPreview(r.preview);
-                          setConfirmation("");
-                        })
-                      }
-                    >
-                      ตรวจสอบการลบ {s.name}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {[...schools]
+              .sort((a, b) => a.name.localeCompare(b.name, "th"))
+              .map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <div className="admin-school-identity">
+                      {s.logo && (
+                        <img src={s.logo} alt="" width={40} height={40} />
+                      )}
+                      <span>{s.name}</span>
+                    </div>
+                  </td>
+                  <td>{s.school_type || "ยังไม่ระบุ"}</td>
+                  <td>
+                    <div className="admin-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-haspopup="dialog"
+                        onClick={() => onManage(s.id)}
+                      >
+                        แก้ไขข้อมูล {s.name}
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          act(async () => {
+                            const r = await adminRequest<{ preview: Preview }>(
+                              `/api/admin-schools?schoolId=${s.id}`,
+                            );
+                            setPreview(r.preview);
+                            setConfirmation("");
+                          })
+                        }
+                      >
+                        ตรวจสอบการลบ {s.name}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
       {!schools.length && <p className="muted">ยังไม่มีโรงเรียน</p>}
-      {editing && (
-        <form
-          className="admin-editor"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void act(async () => {
-              await adminRequest("/api/schools", "PATCH", {
-                schoolId: editing.id,
-                name,
-                expectedName: editing.name,
-              });
-              await onChanged();
-              setEditing(null);
-              setMessage("บันทึกชื่อโรงเรียนแล้ว");
-            });
-          }}
-        >
-          <label>
-            ชื่อโรงเรียนที่แก้ไข
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              maxLength={200}
-            />
-          </label>
-          <div className="admin-actions">
-            <button
-              className="primary"
-              disabled={busy || name.trim() === editing.name}
-            >
-              บันทึกชื่อโรงเรียน
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setEditing(null)}
-            >
-              ยกเลิกแก้ชื่อ
-            </button>
-          </div>
-        </form>
-      )}
       {preview && (
         <div className="admin-editor danger-zone">
           <h3>ตรวจสอบก่อนลบโรงเรียน</h3>

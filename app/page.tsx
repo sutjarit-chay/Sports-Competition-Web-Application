@@ -75,6 +75,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import AdminCompetitionManager from "@/components/admin-competition-manager";
+import AdminSchoolDialog, {
+  type SchoolEditorPage,
+} from "@/components/admin-school-dialog";
 import SchoolPortal from "@/components/school-portal";
 import {
   managedFromHosted,
@@ -250,6 +253,10 @@ export default function Home() {
   }, [menuOpen]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [profileId, setProfileId] = useState("");
+  const [adminSchoolId, setAdminSchoolId] = useState<string | null>(null);
+  const [adminSchoolPage, setAdminSchoolPage] =
+    useState<SchoolEditorPage>("profile");
+  const [adminSchoolBusy, setAdminSchoolBusy] = useState(false);
   const [selectedMedalSchoolId, setSelectedMedalSchoolId] = useState<
     string | null
   >(null);
@@ -416,6 +423,8 @@ export default function Home() {
       if (event === "INITIAL_SESSION") return;
       // Clear privileged/private state before revalidating a changed session.
       ++refreshGeneration.current;
+      setAdminSchoolId(null);
+      setAdminSchoolBusy(false);
       setRole("viewer");
       setProfileId("");
       setSchool("");
@@ -924,6 +933,81 @@ export default function Home() {
       )}
     </div>
   );
+  function renderSchoolPortal(
+    selectedSchoolId: string,
+    page: SchoolEditorPage,
+    onBusyChange?: (busy: boolean) => void,
+  ) {
+    return (
+      <SchoolPortal
+        key={`${selectedSchoolId}-${page}`}
+        page={page}
+        schoolId={selectedSchoolId}
+        schools={data.schools}
+        athletes={data.athletes}
+        competitions={snapshot?.rows.competitions || []}
+        busy={busy}
+        onBusyChange={onBusyChange}
+        accessToken={accessToken}
+        onSaveSchool={async (schoolRecord, expectedName) => {
+          const response = await fetch("/api/schools", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              schoolId: schoolRecord.id,
+              name: schoolRecord.name,
+              expectedName:
+                expectedName ??
+                data.schools.find((s) => s.id === schoolRecord.id)?.name,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok)
+            throw Error(result.error || "บันทึกชื่อโรงเรียนไม่สำเร็จ");
+        }}
+        onSaved={refresh}
+        onSaveAthletes={async (rows) => run(() => save("athletes", rows), true)}
+        onImportAthletes={(file, selectedCompetitionId) =>
+          run(async () => {
+            if (file.size > 2000000) throw Error("ไฟล์ใหญ่เกิน 2 MB");
+            const rows = parseAthletes(await file.text(), data.schools);
+            if (rows.some((row) => row.school_id !== selectedSchoolId))
+              throw Error("นำเข้าได้เฉพาะรายชื่อนักกีฬาของโรงเรียนที่เลือก");
+            await save(
+              "athletes",
+              rows.map((row) => ({
+                ...row,
+                competition_id: selectedCompetitionId,
+              })),
+            );
+          }, true)
+        }
+        onDownloadAthleteTemplate={(schoolId, selectedCompetition) => {
+          const rule = compatibleRules(
+            selectedCompetition.sport,
+            selectedCompetition.gender,
+            selectedCompetition.age_group,
+          )[0];
+          downloadCsv("athletes-template.csv", [
+            {
+              name: "นักกีฬาตัวอย่าง",
+              school_id: schoolId,
+              sport: selectedCompetition.sport,
+              gender: selectedCompetition.gender,
+              division: selectedCompetition.age_group,
+              competition_id: selectedCompetition.id,
+              rule_id: rule?.id || "",
+              position: "auto",
+            },
+          ]);
+        }}
+        onDownloadSchoolCodes={() => downloadCsv("schools.csv", data.schools)}
+      />
+    );
+  }
   function selectTab(index: number) {
     if (!availableTabIndices(role).includes(index)) return;
     setTab(index);
@@ -942,6 +1026,25 @@ export default function Home() {
   }
   return (
     <div className="shell">
+      <AdminSchoolDialog
+        school={
+          admin
+            ? data.schools.find((item) => item.id === adminSchoolId) || null
+            : null
+        }
+        page={adminSchoolPage}
+        busy={busy || adminSchoolBusy}
+        onPageChange={setAdminSchoolPage}
+        onClose={() => setAdminSchoolId(null)}
+      >
+        {admin &&
+          adminSchoolId &&
+          renderSchoolPortal(
+            adminSchoolId,
+            adminSchoolPage,
+            setAdminSchoolBusy,
+          )}
+      </AdminSchoolDialog>
       <SchoolMedalDialog
         school={selectedMedalSchool}
         awards={visibleAwards}
@@ -1172,74 +1275,9 @@ export default function Home() {
               }
             />
           )}
-          {(tab === 9 || tab === 10) && schoolRole && (
-            <SchoolPortal
-              key={tab}
-              page={tab === 9 ? "profile" : "roster"}
-              schoolId={school}
-              schools={data.schools}
-              athletes={data.athletes}
-              competitions={snapshot?.rows.competitions || []}
-              busy={busy}
-              accessToken={accessToken}
-              onSaveSchool={async (schoolRecord) => {
-                const response = await fetch("/api/schools", {
-                  method: "PATCH",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${accessToken}`,
-                  },
-                  body: JSON.stringify({
-                    schoolId: schoolRecord.id,
-                    name: schoolRecord.name,
-                    expectedName: data.schools.find(
-                      (s) => s.id === schoolRecord.id,
-                    )?.name,
-                  }),
-                });
-                const result = await response.json();
-                if (!response.ok)
-                  throw Error(result.error || "บันทึกชื่อโรงเรียนไม่สำเร็จ");
-              }}
-              onSaved={refresh}
-              onSaveAthletes={async (rows) => save("athletes", rows)}
-              onImportAthletes={async (file, selectedCompetitionId) => {
-                if (file.size > 2000000) throw Error("ไฟล์ใหญ่เกิน 2 MB");
-                const rows = parseAthletes(await file.text(), data.schools);
-                if (rows.some((row) => row.school_id !== school))
-                  throw Error("นำเข้าได้เฉพาะรายชื่อนักกีฬาในโรงเรียนตนเอง");
-                await save(
-                  "athletes",
-                  rows.map((row) => ({
-                    ...row,
-                    competition_id: selectedCompetitionId,
-                  })),
-                );
-              }}
-              onDownloadAthleteTemplate={(schoolId, selectedCompetition) => {
-                const rule = compatibleRules(
-                  selectedCompetition.sport,
-                  selectedCompetition.gender,
-                  selectedCompetition.age_group,
-                )[0];
-                downloadCsv("athletes-template.csv", [
-                  {
-                    name: "นักกีฬาตัวอย่าง",
-                    school_id: schoolId,
-                    sport: selectedCompetition.sport,
-                    gender: selectedCompetition.gender,
-                    division: selectedCompetition.age_group,
-                    competition_id: selectedCompetition.id,
-                    rule_id: rule?.id || "",
-                    position: "auto",
-                  },
-                ]);
-              }}
-              onDownloadSchoolCodes={() =>
-                downloadCsv("schools.csv", data.schools)
-              }
-            />
-          )}
+          {(tab === 9 || tab === 10) &&
+            schoolRole &&
+            renderSchoolPortal(school, tab === 9 ? "profile" : "roster")}
           {tab === 0 && (
             <>
               <PerspectiveTunnelHero
@@ -2503,6 +2541,10 @@ export default function Home() {
                   <AdminSchoolManager
                     schools={data.schools}
                     onChanged={refresh}
+                    onManage={(id) => {
+                      setAdminSchoolPage("profile");
+                      setAdminSchoolId(id);
+                    }}
                   />
                   <AdminMaintenance onChanged={refresh} />
                 </>
