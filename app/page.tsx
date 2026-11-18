@@ -91,6 +91,7 @@ import { sortCompetitionsByName } from "@/lib/competition-order";
 import { buildScheduleMatches } from "@/lib/schedule-view";
 import { MatchResultProgram } from "@/components/match-result-program";
 import { DirectPlacementPanel } from "@/components/direct-placement-panel";
+import { AthleticsScoresheet } from "@/components/athletics-scoresheet";
 import {
   applyDirectPlacements,
   directPlacementsEnabled,
@@ -1957,6 +1958,7 @@ export default function Home() {
           )}
           {tab === 4 && (
             <>
+              <AthleticsScoresheet schools={allDirectSchools} />
               {filter}
               <section className="panel">
                 <h2>กรีฑา · ฮีตและรอบชิง</h2>
