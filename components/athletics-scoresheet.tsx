@@ -109,7 +109,6 @@ export function AthleticsScoresheet({
   const [search, setSearch] = useState("");
   const [activeEventId, setActiveEventId] = useState<number>(1);
   const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r1");
-  const [selectedQualifiers, setSelectedQualifiers] = useState<number[]>([0, 1, 2]);
   const [toast, setToast] = useState<string | null>(null);
 
   // Available school list (database prop or fallback)
@@ -219,51 +218,6 @@ export function AthleticsScoresheet({
       return { ...r, [roundKey]: round, [lanesKey]: updatedLanes };
     });
     saveRows(next);
-  }
-
-  // Advance selected qualifiers from Round 1 or Round 2 to the next round
-  function advanceQualifiers(sourceRound: "r1" | "r2", targetRound: "r2" | "r3") {
-    const sourceLanes =
-      sourceRound === "r1" ? activeEvent.r1Lanes : activeEvent.r2Lanes;
-    const targetLanesKey = targetRound === "r2" ? "r2Lanes" : "r3Lanes";
-    const targetCells = [...activeEvent[targetRound]];
-    const nextTargetLanes = [...activeEvent[targetLanesKey]];
-
-    // Get qualifiers from selectedQualifiers indices that have a school assigned
-    const selectedEntries = selectedQualifiers
-      .map((idx) => sourceLanes[idx])
-      .filter((l) => l && l.schoolName);
-
-    if (selectedEntries.length === 0) {
-      alert("กรุณาเลือกอย่างน้อย ๑ ลู่ที่มีโรงเรียนลงทะเบียนเพื่อส่งไปรอบถัดไป");
-      return;
-    }
-
-    selectedEntries.forEach((q, idx) => {
-      if (idx < nextTargetLanes.length) {
-        nextTargetLanes[idx] = {
-          ...nextTargetLanes[idx],
-          schoolName: q.schoolName,
-          athleteName: q.athleteName,
-          rank: "",
-          time: q.time || "",
-        };
-        targetCells[idx] = q.schoolName;
-      }
-    });
-
-    const updatedEvent: AthleticsRow = {
-      ...activeEvent,
-      [targetLanesKey]: nextTargetLanes,
-      [targetRound]: targetCells,
-    };
-
-    const nextRows = rows.map((r) => (r.id === activeEvent.id ? updatedEvent : r));
-    saveRows(
-      nextRows,
-      `ส่งผู้เข้ารอบเข้าสู่ ${targetRound === "r2" ? "รอบ ๒" : "รอบชิงชนะเลิศ"} เรียบร้อย`,
-    );
-    setActiveRound(targetRound);
   }
 
   // Update finals medal winner (1st = Gold, 2nd = Silver, 3rd = Bronze)
@@ -646,7 +600,7 @@ export function AthleticsScoresheet({
               ) : (
                 <>
                   📋 <strong>{activeRound === "r1" ? "รอบ ๑ (๕ ลู่)" : "รอบ ๒ (๕ ลู่)"}:</strong>{" "}
-                  ลงทะเบียนชื่อโรงเรียนและนักกีฬาประจำลู่ ๑–๕ เมื่อวิ่งเสร็จเลือกลู่ที่ผ่านเข้ารอบเพื่อส่งตัวไปรอบถัดไป
+                  ลงทะเบียนชื่อโรงเรียนและนักกีฬาประจำลู่ ๑–๕ ในรายการนี้
                 </>
               )}
             </div>
@@ -914,82 +868,9 @@ export function AthleticsScoresheet({
               marginBottom: "24px",
             }}
           >
-            {/* Advance Qualifiers Selectors & Button */}
-            {activeRound !== "r3" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>
-                  เลือกลู่ที่ผ่านเข้ารอบ:
-                </span>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {activeLanes.map((lane, idx) => {
-                    const isChecked = selectedQualifiers.includes(idx);
-                    return (
-                      <label
-                        key={idx}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          fontSize: "13px",
-                          padding: "3px 8px",
-                          borderRadius: "4px",
-                          border: isChecked ? "1px solid #0f766e" : "1px solid #cbd5e1",
-                          background: isChecked ? "#f0fdf4" : "#fff",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedQualifiers((prev) => [...prev, idx]);
-                            } else {
-                              setSelectedQualifiers((prev) => prev.filter((i) => i !== idx));
-                            }
-                          }}
-                        />
-                        ลู่ {lane.lane} {lane.schoolName ? `(${getDisplaySchoolName(lane.schoolName)})` : ""}
-                      </label>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  className="primary"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "#0f766e",
-                  }}
-                  onClick={() =>
-                    advanceQualifiers(
-                      activeRound,
-                      activeRound === "r1" ? "r2" : "r3",
-                    )
-                  }
-                >
-                  ส่งลู่ที่เลือกเข้าสู่ {activeRound === "r1" ? "รอบ ๒" : "รอบชิงชนะเลิศ"}{" "}
-                  <ArrowRight size={15} />
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    color: "#0f766e",
-                  }}
-                >
-                  <Medal size={16} /> บันทึกเหรียญและคะแนน ๓, ๒, ๑ เพื่อออกรายงานเรียบร้อยแล้ว
-                </span>
-              </div>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#0f766e", fontSize: "13px", fontWeight: 600 }}>
+              <Check size={16} /> บันทึกข้อมูลการจัดลู่วิ่งในรายการนี้เรียบร้อยแล้ว
+            </div>
 
             {/* Quick Switch to Scoresheet */}
             <div style={{ display: "flex", gap: "8px" }}>
