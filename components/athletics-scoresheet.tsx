@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Search,
   Check,
+  Save,
   ArrowRight,
   ArrowLeft,
   Medal,
@@ -143,6 +144,10 @@ export function AthleticsScoresheet({
       setToast(msg);
       setTimeout(() => setToast(null), 2500);
     }
+  }
+
+  function handleManualSave() {
+    saveRows(rows, "บันทึกข้อมูลการจัดลู่วิ่งเรียบร้อยแล้ว");
   }
 
   // Active event object
@@ -604,21 +609,39 @@ export function AthleticsScoresheet({
                 </>
               )}
             </div>
-            <button
-              type="button"
-              className="ui-button-outline ui-button-sm"
-              onClick={() => clearRoundLanes(activeRound)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                color: "#b91c1c",
-                borderColor: "#fca5a5",
-                fontSize: "12px",
-              }}
-            >
-              <Trash2 size={13} /> ล้างข้อมูลรอบนี้
-            </button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                type="button"
+                className="primary ui-button-sm"
+                onClick={handleManualSave}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: "#0f766e",
+                  fontSize: "13px",
+                  padding: "5px 14px",
+                  fontWeight: 600,
+                }}
+              >
+                <Save size={14} /> บันทึก
+              </button>
+              <button
+                type="button"
+                className="ui-button-outline ui-button-sm"
+                onClick={() => clearRoundLanes(activeRound)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  color: "#b91c1c",
+                  borderColor: "#fca5a5",
+                  fontSize: "12px",
+                }}
+              >
+                <Trash2 size={13} /> ล้างข้อมูลรอบนี้
+              </button>
+            </div>
           </div>
 
           {/* Lane Assignment Form Table */}
@@ -861,15 +884,34 @@ export function AthleticsScoresheet({
               alignItems: "center",
               flexWrap: "wrap",
               gap: "12px",
-              padding: "14px",
-              background: "#f1f5f9",
+              padding: "14px 18px",
+              background: "#f8fafc",
               borderRadius: "8px",
-              border: "1px solid #e2e8f0",
+              border: "1px solid #cbd5e1",
               marginBottom: "24px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#0f766e", fontSize: "13px", fontWeight: 600 }}>
-              <Check size={16} /> บันทึกข้อมูลการจัดลู่วิ่งในรายการนี้เรียบร้อยแล้ว
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleManualSave}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 20px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  background: "#0f766e",
+                  boxShadow: "0 2px 4px rgba(15, 118, 110, 0.2)",
+                }}
+              >
+                <Save size={16} /> บันทึก
+              </button>
+              <span style={{ fontSize: "13px", color: "#64748b" }}>
+                *คลิกเพื่อบันทึกข้อมูลการจัดลู่วิ่งในรายการนี้
+              </span>
             </div>
 
             {/* Quick Switch to Scoresheet */}
