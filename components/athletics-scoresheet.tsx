@@ -658,14 +658,11 @@ export function AthleticsScoresheet({
               <thead>
                 <tr style={{ background: "#1e293b", color: "#fff" }}>
                   <th style={{ padding: "10px", width: "90px", textAlign: "center" }}>ลู่วิ่ง</th>
-                  <th style={{ padding: "10px", minWidth: "260px", textAlign: "left" }}>
+                  <th style={{ padding: "10px", minWidth: "280px", textAlign: "left" }}>
                     ชื่อโรงเรียน (เลือกจากรายชื่อ)
                   </th>
-                  <th style={{ padding: "10px", minWidth: "220px", textAlign: "left" }}>
+                  <th style={{ padding: "10px", minWidth: "240px", textAlign: "left" }}>
                     ชื่อ - นามสกุล นักกีฬา
-                  </th>
-                  <th style={{ padding: "10px", width: "160px", textAlign: "center" }}>
-                    สถิติเวลา/ผล (ถ้ามี)
                   </th>
                 </tr>
               </thead>
@@ -735,26 +732,6 @@ export function AthleticsScoresheet({
                           borderRadius: "6px",
                           border: "1px solid #cbd5e1",
                           fontSize: "14px",
-                        }}
-                      />
-                    </td>
-
-                    {/* Time / Mark */}
-                    <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                      <input
-                        type="text"
-                        placeholder="เช่น 12.45 วิ"
-                        value={lane.time || ""}
-                        onChange={(e) =>
-                          updateLane(activeRound, idx, "time", e.target.value)
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "8px 10px",
-                          textAlign: "center",
-                          borderRadius: "6px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13px",
                         }}
                       />
                     </td>
