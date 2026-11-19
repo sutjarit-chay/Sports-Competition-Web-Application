@@ -43,7 +43,7 @@ export type AthleticsRow = {
   name: string;
   grade: string;
   type: string;
-  directFinal?: boolean; // แข่งรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก รอบ ๑ และ รอบ ๒)
+  directFinal?: boolean; // แข่งรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก รอบ 1 และ รอบ 2)
   r1: string[]; // 5 lanes (ชื่อโรงเรียน)
   r2: string[]; // 5 lanes (ชื่อโรงเรียน)
   r3: string[]; // 6 lanes (finals) (ชื่อโรงเรียน)
@@ -101,28 +101,28 @@ export function defaultLanes(count: number): LaneEntry[] {
   }));
 }
 
-// ข้อมูล ๒๐ รายการกรีฑาตามสูจิบัตร นครโกสัมพีเกมส์ ๒๕๖๙
+// ข้อมูล 20 รายการกรีฑาตามสูจิบัตร นครโกสัมพีเกมส์ 2569 (ใช้เลขอารบิกทั้งหมด)
 export const INITIAL_ATHLETICS_DATA: AthleticsRow[] = [
-  { id: 1, no: "๑", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 2, no: "๒", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 3, no: "๓", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 4, no: "๔", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 5, no: "๕", sourceNumber: 106, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 6, no: "๖", sourceNumber: 107, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 7, no: "๗", sourceNumber: 112, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 8, no: "๘", sourceNumber: 113, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 9, no: "๙", sourceNumber: 118, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 10, no: "๑๐", sourceNumber: 119, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 11, no: "๑๑", sourceNumber: 124, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 12, no: "๑๒", sourceNumber: 125, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 13, no: "๑๓", sourceNumber: 130, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 14, no: "๑๔", sourceNumber: 131, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 15, no: "๑๕", sourceNumber: 132, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 16, no: "๑๖", sourceNumber: 133, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 17, no: "๑๗", sourceNumber: 138, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 18, no: "๑๘", sourceNumber: 139, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 19, no: "๑๙", sourceNumber: 140, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 20, no: "๒๐", sourceNumber: 141, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 1, no: "1", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 2, no: "2", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 3, no: "3", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 4, no: "4", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 5, no: "5", sourceNumber: 106, name: "วิ่ง 50 เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 6, no: "6", sourceNumber: 107, name: "วิ่ง 50 เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 7, no: "7", sourceNumber: 112, name: "วิ่ง 80 เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 8, no: "8", sourceNumber: 113, name: "วิ่ง 80 เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 9, no: "9", sourceNumber: 118, name: "วิ่ง 60 เมตร", grade: "ป.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 10, no: "10", sourceNumber: 119, name: "วิ่ง 60 เมตร", grade: "ป.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 11, no: "11", sourceNumber: 124, name: "วิ่ง 100 เมตร", grade: "ป.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 12, no: "12", sourceNumber: 125, name: "วิ่ง 100 เมตร", grade: "ป.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 13, no: "13", sourceNumber: 130, name: "วิ่ง 100 เมตร", grade: "ป.4-6", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 14, no: "14", sourceNumber: 131, name: "วิ่ง 100 เมตร", grade: "ป.4-6", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 15, no: "15", sourceNumber: 132, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 16, no: "16", sourceNumber: 133, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 17, no: "17", sourceNumber: 138, name: "วิ่ง 200 เมตร", grade: "ป.4-6", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 18, no: "18", sourceNumber: 139, name: "วิ่ง 200 เมตร", grade: "ป.4-6", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 19, no: "19", sourceNumber: 140, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 20, no: "20", sourceNumber: 141, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
 ];
 
 /**
@@ -157,9 +157,9 @@ export function assignUniqueRankInLanes(
 }
 
 /**
- * คำนวณผู้ชนะเหรียญรางวัล (อันดับ ๑, ๒, ๓) จากข้อมูลลู่วิ่งในรอบชิงชนะเลิศ (`r3Lanes`)
+ * คำนวณผู้ชนะเหรียญรางวัล (อันดับ 1, 2, 3) จากข้อมูลลู่วิ่งในรอบชิงชนะเลิศ (`r3Lanes`)
  * จะคืนค่าเฉพาะลู่ที่ไม่ฟาล์ว มีชื่อโรงเรียน และระบุ rank เป็น "1", "2", "3" เท่านั้น
- * ไม่ดึงลู่ ๑-๓ ที่ยังไม่ได้แข่งมาเป็นเหรียญรางวัลล่วงหน้า
+ * ไม่ดึงลู่ 1-3 ที่ยังไม่ได้แข่งมาเป็นเหรียญรางวัลล่วงหน้า
  */
 export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
   return [1, 2, 3].map((rankNum) => {
@@ -180,7 +180,7 @@ export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
 }
 
 /**
- * ส่งผู้เข้ารอบ ๑, ๒, ๓ จากรอบ ๑ และ รอบ ๒ ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ 3, 2, 1, 1, 2, 3)
+ * ส่งผู้เข้ารอบ 1, 2, 3 จากรอบ 1 และ รอบ 2 ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ 3, 2, 1, 1, 2, 3)
  * และหากอันดับใดถูกยกเลิกหรือปรับฟาล์ว จะล้างช่องลู่ในรอบชิงที่ผูกกับโควตานั้นให้ถูกต้องเสมอ
  */
 export function syncQualifiersToFinals(row: AthleticsRow): {
@@ -212,19 +212,19 @@ export function syncQualifiersToFinals(row: AthleticsRow): {
   const r2Third = findQualifier(row.r2Lanes, "3");
 
   // Seeding order across lanes 1-6: 3, 2, 1, 1, 2, 3
-  // ลู่ ๑ (idx 0) = R1 #3
-  // ลู่ ๒ (idx 1) = R1 #2
-  // ลู่ ๓ (idx 2) = R1 #1
-  // ลู่ ๔ (idx 3) = R2 #1
-  // ลู่ ๕ (idx 4) = R2 #2
-  // ลู่ ๖ (idx 5) = R2 #3
+  // ลู่ 1 (idx 0) = R1 #3
+  // ลู่ 2 (idx 1) = R1 #2
+  // ลู่ 3 (idx 2) = R1 #1
+  // ลู่ 4 (idx 3) = R2 #1
+  // ลู่ 5 (idx 4) = R2 #2
+  // ลู่ 6 (idx 5) = R2 #3
   const mapping: [number, LaneEntry | undefined][] = [
-    [0, r1Third],  // ลู่ ๑: อันดับ ๓ รอบ ๑
-    [1, r1Second], // ลู่ ๒: อันดับ ๒ รอบ ๑
-    [2, r1First],  // ลู่ ๓: อันดับ ๑ รอบ ๑
-    [3, r2First],  // ลู่ ๔: อันดับ ๑ รอบ ๒
-    [4, r2Second], // ลู่ ๕: อันดับ ๒ รอบ ๒
-    [5, r2Third],  // ลู่ ๖: อันดับ ๓ รอบ ๒
+    [0, r1Third],  // ลู่ 1: อันดับ 3 รอบ 1
+    [1, r1Second], // ลู่ 2: อันดับ 2 รอบ 1
+    [2, r1First],  // ลู่ 3: อันดับ 1 รอบ 1
+    [3, r2First],  // ลู่ 4: อันดับ 1 รอบ 2
+    [4, r2Second], // ลู่ 5: อันดับ 2 รอบ 2
+    [5, r2Third],  // ลู่ 6: อันดับ 3 รอบ 2
   ];
 
   let newlyAdvanced = false;
@@ -354,14 +354,6 @@ type RoundModalData = {
   lanes: LaneEntry[];
 };
 
-const THAI_DIGITS = ["๐", "๑", "๒", "๓", "๔", "๕", "๖", "๗", "๘", "๙"];
-function toThaiNumber(num: number): string {
-  return String(num)
-    .split("")
-    .map((ch) => THAI_DIGITS[Number(ch)] ?? ch)
-    .join("");
-}
-
 export function AthleticsScoresheet({
   schools = [],
 }: {
@@ -383,7 +375,7 @@ export function AthleticsScoresheet({
       ? schools.map((s) => s.name)
       : DEFAULT_SCHOOLS;
 
-  // Load from localStorage preview & normalize to 20 canonical events
+  // Load from localStorage preview & normalize to 20 canonical events with Arabic numerals
   useEffect(() => {
     try {
       const saved = localStorage.getItem("nkg2569_athletics_preview");
@@ -399,6 +391,11 @@ export function AthleticsScoresheet({
           return {
             ...canonical,
             ...found,
+            no: canonical.no,
+            name: canonical.name,
+            grade: canonical.grade,
+            type: canonical.type,
+            sourceNumber: canonical.sourceNumber,
             directFinal: canonical.directFinal,
             r1Lanes: found.r1Lanes || defaultLanes(5),
             r2Lanes: found.r2Lanes || defaultLanes(5),
@@ -572,7 +569,7 @@ export function AthleticsScoresheet({
       updatedRow = synced.row;
       if (synced.newlyAdvanced) {
         autoAdvancedMsg =
-          "บันทึกผลและส่งผู้เข้ารอบ ๑–๓ เข้าสู่รอบชิงชนะเลิศ (เรียงลู่ 3-2-1-1-2-3) เรียบร้อย";
+          "บันทึกผลและส่งผู้เข้ารอบ 1-3 เข้าสู่รอบชิงชนะเลิศ (เรียงลู่ 3-2-1-1-2-3) เรียบร้อย";
       }
     } else if (roundKey === "r3") {
       updatedRow = {
@@ -582,7 +579,7 @@ export function AthleticsScoresheet({
     }
 
     const roundLabel =
-      roundKey === "r1" ? "รอบ ๑" : roundKey === "r2" ? "รอบ ๒" : "รอบชิงชนะเลิศ";
+      roundKey === "r1" ? "รอบ 1" : roundKey === "r2" ? "รอบ 2" : "รอบชิงชนะเลิศ";
     const nextRows = rows.map((r) => (r.id === rowId ? updatedRow : r));
     saveRows(
       nextRows,
@@ -594,7 +591,7 @@ export function AthleticsScoresheet({
   // Clear lanes in active round
   function clearRoundLanes(roundKey: "r1" | "r2" | "r3") {
     const label =
-      roundKey === "r1" ? "รอบ ๑" : roundKey === "r2" ? "รอบ ๒" : "รอบชิงชนะเลิศ";
+      roundKey === "r1" ? "รอบ 1" : roundKey === "r2" ? "รอบ 2" : "รอบชิงชนะเลิศ";
     if (!confirm(`ต้องการล้างข้อมูลลู่วิ่งใน ${label} ของรายการนี้หรือไม่?`)) return;
 
     const lanesKey =
@@ -718,7 +715,7 @@ export function AthleticsScoresheet({
             onClick={() => setSubTab("register")}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <UserPlus size={16} /> ๑. ลงทะเบียนและจัดลู่วิ่ง
+            <UserPlus size={16} /> 1. ลงทะเบียนและจัดลู่วิ่ง
           </button>
           <button
             type="button"
@@ -726,7 +723,7 @@ export function AthleticsScoresheet({
             onClick={() => setSubTab("sheet")}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <ClipboardList size={16} /> ๒. ใบบันทึกผลการแข่งขัน (ตาราง ๒๐ รายการ)
+            <ClipboardList size={16} /> 2. ใบบันทึกผลการแข่งขัน (ตาราง 20 รายการ)
           </button>
           <button
             type="button"
@@ -734,7 +731,7 @@ export function AthleticsScoresheet({
             onClick={() => setSubTab("summary")}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <Trophy size={16} /> ๓. สรุปผลและคะแนนกรีฑา
+            <Trophy size={16} /> 3. สรุปผลและคะแนนกรีฑา
           </button>
         </div>
 
@@ -774,7 +771,7 @@ export function AthleticsScoresheet({
               ระบบลงทะเบียนนักกีฬาและจัดลู่วิ่ง (แยกจากใบบันทึกผล)
             </h2>
             <p className="muted" style={{ margin: 0, fontSize: "13px" }}>
-              เลือกลงทะเบียนนักกีฬาและจัดลู่วิ่งด้วย <strong>ชื่อโรงเรียน</strong> ในแต่ละรอบ (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
+              เลือกลงทะเบียนนักกีฬาและจัดลู่วิ่งด้วย <strong>ชื่อโรงเรียน</strong> ในแต่ละรอบ (รอบ 1, รอบ 2, รอบชิงชนะเลิศ)
             </p>
           </div>
 
@@ -930,7 +927,7 @@ export function AthleticsScoresheet({
                       onClick={() => setActiveRound("r1")}
                       style={{ fontSize: "13px" }}
                     >
-                      🏃 รอบ ๑ (๕ ลู่)
+                      🏃 รอบ 1 (5 ลู่)
                     </button>
                     <button
                       type="button"
@@ -938,7 +935,7 @@ export function AthleticsScoresheet({
                       onClick={() => setActiveRound("r2")}
                       style={{ fontSize: "13px" }}
                     >
-                      🏃 รอบ ๒ (๕ ลู่)
+                      🏃 รอบ 2 (5 ลู่)
                     </button>
                   </>
                 )}
@@ -952,7 +949,7 @@ export function AthleticsScoresheet({
                     borderColor: "#0f766e",
                   }}
                 >
-                  🏆 รอบชิงชนะเลิศ (๖ ลู่)
+                  🏆 รอบชิงชนะเลิศ (6 ลู่)
                 </button>
               </div>
             </div>
@@ -978,16 +975,16 @@ export function AthleticsScoresheet({
             <div>
               {activeEvent.directFinal ? (
                 <>
-                  🏆 <strong>รายการนี้แข่งขันรอบชิงชนะเลิศทันที:</strong> ลงทะเบียนชื่อโรงเรียนและนักกีฬาในรอบชิงชนะเลิศ (ลู่ ๑–๖) ได้โดยตรง
+                  🏆 <strong>รายการนี้แข่งขันรอบชิงชนะเลิศทันที:</strong> ลงทะเบียนชื่อโรงเรียนและนักกีฬาในรอบชิงชนะเลิศ (ลู่ 1-6) ได้โดยตรง
                 </>
               ) : activeRound === "r3" ? (
                 <>
-                  🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> ระบบจะดึงผู้ที่ได้อันดับ ๑–๓ จากรอบ ๑ และ รอบ ๒ มาจัดลู่ 3-2-1-1-2-3 ให้อัตโนมัติเมื่อบันทึกผลในใบบันทึกผล (หรือกำหนดเองได้ที่นี่)
+                  🏆 <strong>รอบชิงชนะเลิศ (6 ลู่):</strong> ระบบจะดึงผู้ที่ได้อันดับ 1-3 จากรอบ 1 และ รอบ 2 มาจัดลู่ 3-2-1-1-2-3 ให้อัตโนมัติเมื่อบันทึกผลในใบบันทึกผล (หรือกำหนดเองได้ที่นี่)
                 </>
               ) : (
                 <>
-                  📋 <strong>{activeRound === "r1" ? "รอบ ๑ (๕ ลู่)" : "รอบ ๒ (๕ ลู่)"}:</strong>{" "}
-                  ลงทะเบียนชื่อโรงเรียนและนักกีฬาประจำลู่ ๑–๕ ในรายการนี้
+                  📋 <strong>{activeRound === "r1" ? "รอบ 1 (5 ลู่)" : "รอบ 2 (5 ลู่)"}:</strong>{" "}
+                  ลงทะเบียนชื่อโรงเรียนและนักกีฬาประจำลู่ 1-5 ในรายการนี้
                 </>
               )}
             </div>
@@ -1193,7 +1190,7 @@ export function AthleticsScoresheet({
                 onClick={() => setSubTab("sheet")}
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
-                <ClipboardList size={15} /> ดูในใบบันทึกผล ๒๐ รายการ →
+                <ClipboardList size={15} /> ดูในใบบันทึกผล 20 รายการ →
               </button>
             </div>
           </div>
@@ -1201,7 +1198,7 @@ export function AthleticsScoresheet({
           {/* Quick Grid of all 20 Events */}
           <div>
             <h3 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: "#334155" }}>
-              ภาพรวมและเลือกรายการแข่งขัน (๒๐ รายการตามสูจิบัตร):
+              ภาพรวมและเลือกรายการแข่งขัน (20 รายการตามสูจิบัตร):
             </h3>
             <div
               style={{
@@ -1249,18 +1246,18 @@ export function AthleticsScoresheet({
                     <div style={{ display: "flex", gap: "6px", marginTop: "2px", fontSize: "10px" }}>
                       {r.directFinal ? (
                         <span style={{ color: "#b45309", fontWeight: 600 }}>
-                          ชิงทันที ({r3Count}/๖)
+                          ชิงทันที ({r3Count}/6)
                         </span>
                       ) : (
                         <>
                           <span style={{ color: r1Count > 0 ? "#0f766e" : "#94a3b8" }}>
-                            รอบ ๑ ({r1Count}/๕)
+                            รอบ 1 ({r1Count}/5)
                           </span>
                           <span style={{ color: r2Count > 0 ? "#0f766e" : "#94a3b8" }}>
-                            รอบ ๒ ({r2Count}/๕)
+                            รอบ 2 ({r2Count}/5)
                           </span>
                           <span style={{ color: r3Count > 0 ? "#b45309" : "#94a3b8" }}>
-                            ชิง ({r3Count}/๖)
+                            ชิง ({r3Count}/6)
                           </span>
                         </>
                       )}
@@ -1290,11 +1287,11 @@ export function AthleticsScoresheet({
           >
             <div>
               <h2 style={{ margin: 0, fontSize: "1.25rem" }}>
-                ใบบันทึกผลการแข่งขันกรีฑา (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
+                ใบบันทึกผลการแข่งขันกรีฑา (รอบ 1, รอบ 2, รอบชิงชนะเลิศ)
               </h2>
               <p className="muted no-print" style={{ margin: "4px 0 0", fontSize: "13px" }}>
                 💡 <strong>คำแนะนำ:</strong> คลิกที่ <strong>ช่องชื่อโรงเรียน</strong> ในรอบใดก็ได้ เพื่อเปิดหน้าต่างบันทึก{" "}
-                <strong>อันดับ และ สถานะฟาล์ว ของทั้งฮีตในครั้งเดียว</strong> เมื่อได้ผล ๑–๓ จากรอบ ๑ และ รอบ ๒ ระบบจะส่งไปรอบชิงชนะเลิศอัตโนมัติ (เรียงลู่ 3-2-1-1-2-3)
+                <strong>อันดับ และ สถานะฟาล์ว ของทั้งฮีตในครั้งเดียว</strong> เมื่อได้ผล 1-3 จากรอบ 1 และ รอบ 2 ระบบจะส่งไปรอบชิงชนะเลิศอัตโนมัติ (เรียงลู่ 3-2-1-1-2-3)
               </p>
             </div>
             <div className="no-print" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1398,7 +1395,7 @@ export function AthleticsScoresheet({
                       background: "#334155",
                     }}
                   >
-                    รอบ ๑ (๕ ลู่)
+                    รอบ 1 (5 ลู่)
                   </th>
                   <th
                     colSpan={5}
@@ -1408,7 +1405,7 @@ export function AthleticsScoresheet({
                       background: "#334155",
                     }}
                   >
-                    รอบ ๒ (๕ ลู่)
+                    รอบ 2 (5 ลู่)
                   </th>
                   <th
                     colSpan={6}
@@ -1419,7 +1416,7 @@ export function AthleticsScoresheet({
                       color: "#fef08a",
                     }}
                   >
-                    รอบชิงชนะเลิศ (๖ ลู่) · เรียง ๓-๒-๑-๑-๒-๓
+                    รอบชิงชนะเลิศ (6 ลู่) · เรียง 3-2-1-1-2-3
                   </th>
                   <th
                     rowSpan={2}
@@ -1435,24 +1432,24 @@ export function AthleticsScoresheet({
                 </tr>
                 <tr style={{ background: "#475569", color: "#fff", fontSize: "12px" }}>
                   {/* รอบ 1 */}
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๑</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๒</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๓</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๔</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๕</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 1</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 2</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 3</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 4</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 5</th>
                   {/* รอบ 2 */}
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๑</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๒</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๓</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๔</th>
-                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๕</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 1</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 2</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 3</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 4</th>
+                  <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ 5</th>
                   {/* รอบชิง: 3-2-1-1-2-3 */}
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ ๑ (ที่ ๓-๑)</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ ๒ (ที่ ๒-๑)</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ ๓ (ที่ ๑-๑)</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ ๔ (ที่ ๑-๒)</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ ๕ (ที่ ๒-๒)</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ ๖ (ที่ ๓-๒)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ 1 (ที่ 3-1)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ 2 (ที่ 2-1)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ 3 (ที่ 1-1)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ 4 (ที่ 1-2)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ 5 (ที่ 2-2)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ 6 (ที่ 3-2)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1500,7 +1497,7 @@ export function AthleticsScoresheet({
                       {item.type || "-"}
                     </td>
 
-                    {/* กรณีรายการที่แข่งรอบชิงทันที (ไม่มีรอบคัดเลือก รอบ ๑ และ รอบ ๒) */}
+                    {/* กรณีรายการที่แข่งรอบชิงทันที (ไม่มีรอบคัดเลือก รอบ 1 และ รอบ 2) */}
                     {item.directFinal ? (
                       <td
                         colSpan={10}
@@ -1513,7 +1510,7 @@ export function AthleticsScoresheet({
                           fontStyle: "italic",
                         }}
                       >
-                        — แข่งขันรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก ๑ และ ๒) —
+                        — แข่งขันรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก 1 และ 2) —
                       </td>
                     ) : (
                       <>
@@ -1578,7 +1575,7 @@ export function AthleticsScoresheet({
                                         fontWeight: 700,
                                       }}
                                     >
-                                      {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
+                                      {`ที่ ${rank}`}
                                     </span>
                                   ) : null}
                                 </div>
@@ -1650,7 +1647,7 @@ export function AthleticsScoresheet({
                                         fontWeight: 700,
                                       }}
                                     >
-                                      {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
+                                      {`ที่ ${rank}`}
                                     </span>
                                   ) : null}
                                 </div>
@@ -1784,7 +1781,7 @@ export function AthleticsScoresheet({
             </h2>
             <p className="muted" style={{ margin: 0 }}>
               การแข่งขันกีฬา - กรีฑานักเรียน กลุ่มโรงเรียนโกสัมพีนคร
-              "นครโกสัมพีเกมส์" ประจำปีการศึกษา ๒๕๖๙
+              "นครโกสัมพีเกมส์" ประจำปีการศึกษา 2569
             </p>
           </div>
 
@@ -1840,7 +1837,7 @@ export function AthleticsScoresheet({
                         return (
                           <tr key={rank} style={{ borderBottom: "1px solid #fdf2f8" }}>
                             <td style={{ padding: "5px 4px", fontWeight: 600 }}>
-                              {medalIcon} {rank === 1 ? "๑" : rank === 2 ? "๒" : "๓"}
+                              {medalIcon} {rank}
                             </td>
                             <td style={{ padding: "5px 4px", textAlign: "left" }}>
                               {w?.athleteName || "-"}
@@ -1849,7 +1846,7 @@ export function AthleticsScoresheet({
                               {w?.schoolName ? getDisplaySchoolName(w.schoolName) : "-"}
                             </td>
                             <td style={{ padding: "5px 4px", fontWeight: 700 }}>
-                              {w?.schoolName ? (rank === 1 ? "๓" : rank === 2 ? "๒" : "๑") : "-"}
+                              {w?.schoolName ? (rank === 1 ? "3" : rank === 2 ? "2" : "1") : "-"}
                             </td>
                             <td style={{ padding: "5px 4px", color: "#64748b" }}>
                               {w?.time || "-"}
@@ -1915,7 +1912,7 @@ export function AthleticsScoresheet({
                   {rankedSchools.length === 0 ? (
                     <tr>
                       <td colSpan={7} style={{ padding: "16px", color: "#94a3b8" }}>
-                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับ ๑=๓ แต้ม, ๒=๒ แต้ม, ๓=๑ แต้ม ในรอบชิงชนะเลิศ)
+                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับ 1=3 แต้ม, 2=2 แต้ม, 3=1 แต้ม ในรอบชิงชนะเลิศ)
                       </td>
                     </tr>
                   ) : (
@@ -1923,12 +1920,12 @@ export function AthleticsScoresheet({
                       <tr key={s.schoolName} style={{ borderBottom: "1px solid #fbcfe8" }}>
                         <td style={{ padding: "8px", fontWeight: 600 }}>
                           {s.place === 1
-                            ? "🥇 ๑"
+                            ? "🥇 1"
                             : s.place === 2
-                              ? "🥈 ๒"
+                              ? "🥈 2"
                               : s.place === 3
-                                ? "🥉 ๓"
-                                : toThaiNumber(s.place)}
+                                ? "🥉 3"
+                                : s.place}
                         </td>
                         <td style={{ padding: "8px", textAlign: "left", fontWeight: 600 }}>
                           {s.schoolName}
@@ -1991,10 +1988,10 @@ export function AthleticsScoresheet({
         if (!modalRow) return null;
         const roundTitle =
           roundModal.roundKey === "r1"
-            ? "รอบ ๑ (๕ ลู่)"
+            ? "รอบ 1 (5 ลู่)"
             : roundModal.roundKey === "r2"
-              ? "รอบ ๒ (๕ ลู่)"
-              : "รอบชิงชนะเลิศ (๖ ลู่)";
+              ? "รอบ 2 (5 ลู่)"
+              : "รอบชิงชนะเลิศ (6 ลู่)";
 
         return (
           <div
@@ -2073,11 +2070,11 @@ export function AthleticsScoresheet({
                 >
                   {roundModal.roundKey === "r3" ? (
                     <>
-                      🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> เลือกอันดับ <strong>ที่ ๑ (ทอง ๓ แต้ม), ที่ ๒ (เงิน ๒ แต้ม), ที่ ๓ (ทองแดง ๑ แต้ม)</strong> หรือระบุสถานะฟาล์วได้ครบทุกลู่ในหน้าต่างเดียว ระบบป้องกันอันดับซ้ำให้อัตโนมัติ
+                      🏆 <strong>รอบชิงชนะเลิศ (6 ลู่):</strong> เลือกอันดับ <strong>ที่ 1 (ทอง 3 แต้ม), ที่ 2 (เงิน 2 แต้ม), ที่ 3 (ทองแดง 1 แต้ม)</strong> หรือระบุสถานะฟาล์วได้ครบทุกลู่ในหน้าต่างเดียว ระบบป้องกันอันดับซ้ำให้อัตโนมัติ
                     </>
                   ) : (
                     <>
-                      🏃 <strong>{roundTitle}:</strong> บันทึกอันดับเข้าเส้นชัย <strong>ที่ ๑, ที่ ๒, ที่ ๓</strong> หรือติ๊ก <strong>ฟาล์ว (DQ)</strong> ของแต่ละลู่ได้พร้อมกัน เมื่อกดบันทึก ระบบจะส่งอันดับ ๑–๓ ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ <strong>3-2-1-1-2-3</strong>) ให้อัตโนมัติ
+                      🏃 <strong>{roundTitle}:</strong> บันทึกอันดับเข้าเส้นชัย <strong>ที่ 1, ที่ 2, ที่ 3</strong> หรือติ๊ก <strong>ฟาล์ว (DQ)</strong> ของแต่ละลู่ได้พร้อมกัน เมื่อกดบันทึก ระบบจะส่งอันดับ 1-3 ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ <strong>3-2-1-1-2-3</strong>) ให้อัตโนมัติ
                     </>
                   )}
                 </div>
@@ -2207,20 +2204,20 @@ export function AthleticsScoresheet({
                                 <option value="">- ไม่ระบุอันดับ -</option>
                                 {roundModal.roundKey === "r3" ? (
                                   <>
-                                    <option value="1">🥇 ที่ ๑ (ทอง · ๓ แต้ม)</option>
-                                    <option value="2">🥈 ที่ ๒ (เงิน · ๒ แต้ม)</option>
-                                    <option value="3">🥉 ที่ ๓ (ทองแดง · ๑ แต้ม)</option>
-                                    <option value="4">ที่ ๔</option>
-                                    <option value="5">ที่ ๕</option>
-                                    <option value="6">ที่ ๖</option>
+                                    <option value="1">🥇 ที่ 1 (ทอง · 3 แต้ม)</option>
+                                    <option value="2">🥈 ที่ 2 (เงิน · 2 แต้ม)</option>
+                                    <option value="3">🥉 ที่ 3 (ทองแดง · 1 แต้ม)</option>
+                                    <option value="4">ที่ 4</option>
+                                    <option value="5">ที่ 5</option>
+                                    <option value="6">ที่ 6</option>
                                   </>
                                 ) : (
                                   <>
-                                    <option value="1">ที่ ๑ (เข้ารอบชิง)</option>
-                                    <option value="2">ที่ ๒ (เข้ารอบชิง)</option>
-                                    <option value="3">ที่ ๓ (เข้ารอบชิง)</option>
-                                    <option value="4">ที่ ๔</option>
-                                    <option value="5">ที่ ๕</option>
+                                    <option value="1">ที่ 1 (เข้ารอบชิง)</option>
+                                    <option value="2">ที่ 2 (เข้ารอบชิง)</option>
+                                    <option value="3">ที่ 3 (เข้ารอบชิง)</option>
+                                    <option value="4">ที่ 4</option>
+                                    <option value="5">ที่ 5</option>
                                   </>
                                 )}
                                 {lane.isFoul && <option value="DQ">ฟาล์ว (DQ)</option>}
