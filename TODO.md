@@ -8,8 +8,8 @@
 ## 📌 งานที่ต้องทำต่อ (Pending / Backlog)
 
 ### งานเร่งด่วน / เตรียมความพร้อม Production
-- [ ] **เชื่อมต่อระบบใบบันทึกผลกรีฑา (Athletics Scoresheet หน้า ๒๙–๓๔) กับฐานข้อมูลจริง:** นำต้นแบบที่ทดสอบบน port 3000 เชื่อมต่อเข้ากับระบบบันทึกผลและคำนวณเหรียญรางวัล/เกียรติบัตรจริง
-- [ ] **ตรวจสอบ Deployment บน Vercel:** ตรวจสอบว่าหลังจาก push commit `3ea9418` ขึ้น `main` แล้ว Vercel ทำการ build และ deploy สำเร็จ เปิดใช้งานหน้าเว็บได้ตามปกติ
+- [x] **เชื่อมต่อระบบใบบันทึกผลกรีฑา (Athletics Scoresheet หน้า 29–34) กับฐานข้อมูล Supabase จริง:** เพิ่ม `lib/athletics-scoresheet-store.ts` และ `app/api/athletics-scoresheet/route.ts` จัดเก็บลง Supabase Storage (`team-files/athletics-scoresheet`) แบบ Immutable CAS Versioning และเชื่อมผลเหรียญกรีฑาทั้ง 20 รายการเข้ากับตารางสรุปเหรียญรางวัลรวมของระบบ (`calculatedAwards` ใน `app/page.tsx`) พร้อมทดสอบกับ Hosted Supabase จริงและชุดทดสอบ 287 ข้อผ่านทั้งหมด
+- [ ] **ตรวจสอบ Deployment บน Vercel:** ตรวจสอบว่าหลังจาก push commit ล่าสุดขึ้น `main` แล้ว Vercel ทำการ build และ deploy สำเร็จ เปิดใช้งานหน้าเว็บได้ตามปกติ
 - [ ] **ทดสอบ E2E (Playwright) บนเครื่องทดสอบ:** รัน `npm run test:e2e` ให้ผ่านทั้งหมด (ก่อนหน้านี้ติดพอร์ต 3000 ที่ชนกับ dev server)
 - [ ] **ตรวจสอบ RLS และ Migration สำหรับ Referee Workflow:** ตรวจสอบความถูกต้องของ RLS policy บน Supabase hosted จริง ตามคำแนะนำใน `docs/PRODUCTION-READINESS.md`
 

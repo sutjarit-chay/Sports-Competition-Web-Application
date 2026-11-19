@@ -127,14 +127,22 @@
 - ขนาดไฟล์สูงสุด: 2 MB
 - รองรับ MIME Type: `application/json`, `text/csv`, Excel
 - ข้อมูลที่จัดเก็บ:
-  - ประวัติโรงเรียนและข้อมูลผู้ฝึกสอน (Coaches) ในรูปแบบ Immutable JSON มี Versioning
+  - ประวัติโรงเรียนและข้อมูลผู้ฝึกสอน (Coaches) ในรูปแบบ Immutable JSON มี Versioning (`school-profiles/<schoolId>/<version>.json`, `school-coaches/<schoolId>/<competitionId>/<version>.json`)
   - โลโก้โรงเรียน (PNG/JPG/WEBP ขนาด ≤ 1 MB) แยก endpoint สำหรับ public projection
+  - แม่แบบและข้อมูลการออกเกียรติบัตร (`certificate-settings/<version>.json`, `certificate-issues/<competitionId>/<version>.json`)
+  - ข้อมูลการจัดลู่วิ่งและใบบันทึกผลการแข่งขันกรีฑา 20 รายการ (`athletics-scoresheet/<version>.json`) บันทึกแบบ Immutable JSON พร้อมระบบ Optimistic Concurrency (CAS) ผ่าน API `/api/athletics-scoresheet`
 
 ---
 
 ## 4. โครงสร้างข้อมูลใบบันทึกผลกรีฑา (Athletics Scoresheet & Reports Data Model)
 
-โครงสร้าง JSON สำหรับจัดเก็บข้อมูลผลการแข่งขันกรีฑา ๒๐ รายการตามสูจิบัตร และการจัดลู่วิ่ง (ใช้ใน Interactive Prototype และรองรับการเชื่อมต่อกับ Supabase Storage / JSONB):
+โครงสร้าง JSON สำหรับจัดเก็บข้อมูลผลการแข่งขันกรีฑา 20 รายการตามสูจิบัตร และการจัดลู่วิ่ง (จัดเก็บใน Supabase Storage bucket `team-files` ที่ prefix `athletics-scoresheet/<version>.json` ผ่าน `/api/athletics-scoresheet` และเชื่อมโยงผลเหรียญรางวัลเข้ากับตารางสรุปเหรียญรวมผ่าน `athleticsScoresheetAwards`):
+
+### `AthleticsScoresheetDocument`
+เอกสารระดับบนสุดที่จัดเก็บใน Supabase Storage (`athletics-scoresheet/<version>.json`):
+- `rows` (`AthleticsRow[]`): ข้อมูลรายการกรีฑาทั้ง 20 รายการ
+- `updatedAt` (string | null): เวลาที่อัปเดตล่าสุด (ISO 8601)
+- `updatedBy` (string | null): รหัสผู้ใช้ (`profiles.id`) ของผู้ดูแลหรือกรรมการที่บันทึกล่าสุด
 
 ### `LaneEntry`
 ข้อมูลนักกีฬาและการจัดลู่วิ่งแต่ละลู่:

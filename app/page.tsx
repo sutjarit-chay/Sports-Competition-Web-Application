@@ -91,7 +91,15 @@ import { sortCompetitionsByName } from "@/lib/competition-order";
 import { buildScheduleMatches } from "@/lib/schedule-view";
 import { MatchResultProgram } from "@/components/match-result-program";
 import { DirectPlacementPanel } from "@/components/direct-placement-panel";
-import { AthleticsScoresheet } from "@/components/athletics-scoresheet";
+import {
+  AthleticsScoresheet,
+  INITIAL_ATHLETICS_DATA,
+  type AthleticsRow,
+} from "@/components/athletics-scoresheet";
+import {
+  athleticsScoresheetAwards,
+  mergeAthleticsScoresheetAwards,
+} from "@/lib/athletics-scoresheet-store";
 import {
   applyDirectPlacements,
   directPlacementsEnabled,
@@ -260,6 +268,10 @@ export default function Home() {
     };
   }, [menuOpen]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [athleticsRows, setAthleticsRows] = useState<AthleticsRow[]>(
+    INITIAL_ATHLETICS_DATA,
+  );
+  const [athleticsVersion, setAthleticsVersion] = useState<string | null>(null);
   const [profileId, setProfileId] = useState("");
   const [adminSchoolId, setAdminSchoolId] = useState<string | null>(null);
   const [adminSchoolPage, setAdminSchoolPage] =
@@ -355,10 +367,40 @@ export default function Home() {
       );
     }
     loaded.rows.competitions = sortCompetitionsByName(loaded.rows.competitions);
-    const publicResponse = await fetch("/api/school-profile?public=1");
+    const [publicResponse, athleticsResponse] = await Promise.all([
+      fetch("/api/school-profile?public=1"),
+      fetch("/api/athletics-scoresheet", { cache: "no-store" }).catch(
+        () => null,
+      ),
+    ]);
     const publicBody = await publicResponse.json();
     if (!publicResponse.ok)
       throw Error(publicBody.error || "โหลดข้อมูลโรงเรียนไม่สำเร็จ");
+    if (athleticsResponse && athleticsResponse.ok) {
+      const athleticsBody = await athleticsResponse.json().catch(() => null);
+      if (
+        athleticsBody &&
+        Array.isArray(athleticsBody.rows) &&
+        athleticsBody.rows.length > 0
+      ) {
+        if (athleticsBody.version) {
+          setAthleticsRows(athleticsBody.rows);
+          setAthleticsVersion(athleticsBody.version);
+        } else {
+          try {
+            const localSaved = localStorage.getItem(
+              "nkg2569_athletics_preview",
+            );
+            if (localSaved) {
+              const parsed = JSON.parse(localSaved);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setAthleticsRows(parsed);
+              }
+            }
+          } catch {}
+        }
+      }
+    }
     const extras = new Map<string, Record<string, unknown>>(
       (publicBody.schools || []).map((item: { id: string }) => [item.id, item]),
     );
@@ -918,14 +960,21 @@ export default function Home() {
       },
     ]),
   );
-  const calculatedAwards = applyDirectPlacements(
-    calculateMedalAwards({
-      matches: data.matches,
-      races: data.races,
-      athletes: data.athletes,
-      pointsByCompetition,
-    }),
-    snapshot?.rows.competitions || [],
+  const calculatedAwards = mergeAthleticsScoresheetAwards(
+    applyDirectPlacements(
+      calculateMedalAwards({
+        matches: data.matches,
+        races: data.races,
+        athletes: data.athletes,
+        pointsByCompetition,
+      }),
+      snapshot?.rows.competitions || [],
+    ),
+    athleticsScoresheetAwards(
+      athleticsRows,
+      data.schools,
+      snapshot?.rows.competitions || [],
+    ),
   );
   const visibleAwards = schoolRole
     ? calculatedAwards.filter((award) => award.school_id === school)
@@ -1958,7 +2007,17 @@ export default function Home() {
           )}
           {tab === 4 && (
             <>
-              <AthleticsScoresheet schools={allDirectSchools} />
+              <AthleticsScoresheet
+                schools={allDirectSchools}
+                accessToken={accessToken}
+                canEdit={edit}
+                initialRows={athleticsRows}
+                initialVersion={athleticsVersion}
+                onRowsChange={(nextRows, nextVersion) => {
+                  setAthleticsRows(nextRows);
+                  setAthleticsVersion(nextVersion);
+                }}
+              />
               {Boolean(0) && (
                 <>
                   {filter}

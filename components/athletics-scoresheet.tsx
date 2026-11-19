@@ -70,12 +70,12 @@ export const DEFAULT_SCHOOLS = [
   "โรงเรียนบ้านโนนสมบูรณ์",
   "โรงเรียนบ้านคลองเมือง",
   "โรงเรียนบ้านมะเดื่อชุมพร",
-  "โรงเรียนอนุบาลโกสัมพีนคร (บ้านท่าคูณ)",
+  "โรงเรียนอนุบาลโกสัมพีนคร(บ้านท่าคูณ)",
   "โรงเรียนบ้านดงซ่อม",
   "โรงเรียนบ้านหนองวัวดำ",
   "โรงเรียนบ้านไร่ลำปาง",
-  "โรงเรียนบ้านโกสัมพี (วิเศษน้อมมิตรอนุกูล)",
-  "โรงเรียนบ้านหนองแดน สาขาบ้านโละโคะ",
+  "โรงเรียนบ้านโกสัมพี(วิเศษน้อมมิตรอนุกูล)",
+  "โรงเรียนบ้านหนองแดน สาขาโละโคะ",
   "โรงเรียนโกสัมพีวิทยา",
 ];
 
@@ -410,15 +410,28 @@ type RoundModalData = {
 
 export function AthleticsScoresheet({
   schools = [],
+  accessToken = "",
+  canEdit = true,
+  initialRows,
+  initialVersion = null,
+  onRowsChange,
 }: {
   schools?: { id: string; name: string }[];
+  accessToken?: string;
+  canEdit?: boolean;
+  initialRows?: AthleticsRow[] | null;
+  initialVersion?: string | null;
+  onRowsChange?: (rows: AthleticsRow[], version: string | null) => void;
 }) {
   const [subTab, setSubTab] = useState<"register" | "sheet" | "summary">("register");
-  const [rows, setRows] = useState<AthleticsRow[]>(INITIAL_ATHLETICS_DATA);
+  const [rows, setRows] = useState<AthleticsRow[]>(
+    initialRows && initialRows.length > 0 ? initialRows : INITIAL_ATHLETICS_DATA,
+  );
   const [search, setSearch] = useState("");
   const [activeEventId, setActiveEventId] = useState<number>(1);
   const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r3");
   const [toast, setToast] = useState<string | null>(null);
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "local" | "error">("idle");
 
   // Modal สำหรับบันทึกผลทั้งฮีต/รอบ
   const [roundModal, setRoundModal] = useState<RoundModalData | null>(null);
@@ -426,6 +439,9 @@ export function AthleticsScoresheet({
   // Modal แสดงตัวอย่างก่อนพิมพ์ A4 แนวตั้ง (Print Preview)
   const [showPrintPreview, setShowPrintPreview] = useState<boolean>(false);
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const versionRef = useRef<string | null>(initialVersion);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRowsRef = useRef<AthleticsRow[]>(rows);
 
   // Available school list (database prop or fallback)
   const schoolOptions =
@@ -433,47 +449,164 @@ export function AthleticsScoresheet({
       ? schools.map((s) => s.name)
       : DEFAULT_SCHOOLS;
 
-  // Load from localStorage preview & preserve any extra added lanes in Mini Marathon
+  function normalizeLoadedRows(parsed: AthleticsRow[]): AthleticsRow[] {
+    const canonicalById = new Map(
+      INITIAL_ATHLETICS_DATA.map((item) => [item.id, item]),
+    );
+    return INITIAL_ATHLETICS_DATA.map((canonical) => {
+      const found = parsed.find((p) => p.id === canonical.id);
+      if (!found) return canonical;
+      const r3Lanes =
+        found.r3Lanes && found.r3Lanes.length > 0
+          ? found.r3Lanes.map((l, idx) => ({ ...l, lane: idx + 1 }))
+          : defaultLanes(6);
+      const r3 = r3Lanes.map((l, idx) => l.schoolName || found.r3?.[idx] || "");
+      return {
+        ...canonical,
+        ...found,
+        no: canonical.no,
+        name: canonical.name,
+        grade: canonical.grade,
+        type: canonical.type,
+        sourceNumber: canonical.sourceNumber,
+        directFinal: canonical.directFinal,
+        expandableLanes: canonical.expandableLanes,
+        r1Lanes: found.r1Lanes || defaultLanes(5),
+        r2Lanes: found.r2Lanes || defaultLanes(5),
+        r3Lanes,
+        r3,
+        winners: computeFinalsWinners(r3Lanes),
+      };
+    }).filter((item) => canonicalById.has(item.id));
+  }
+
+  // Sync from parent initialRows if refreshed
   useEffect(() => {
+    if (initialRows && initialRows.length > 0) {
+      const normalized = normalizeLoadedRows(initialRows);
+      setRows(normalized);
+      latestRowsRef.current = normalized;
+      if (initialVersion !== undefined) {
+        versionRef.current = initialVersion;
+      }
+      setSyncState("synced");
+    }
+  }, [initialRows, initialVersion]);
+
+  async function syncToSupabase(targetRows: AthleticsRow[], showToastMsg?: string) {
+    if (!accessToken || !canEdit) {
+      setSyncState("local");
+      return;
+    }
+    setSyncState("syncing");
+    try {
+      const res = await fetch("/api/athletics-scoresheet", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          rows: targetRows,
+          expectedVersion: versionRef.current ?? undefined,
+        }),
+      });
+      if (res.status === 409) {
+        // Retry once without strict expectedVersion lock so server merges with latest CAS version
+        const retryRes = await fetch("/api/athletics-scoresheet", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ rows: targetRows }),
+        });
+        const retryBody = await retryRes.json().catch(() => ({}));
+        if (retryRes.ok && Array.isArray(retryBody.rows)) {
+          versionRef.current = retryBody.version ?? null;
+          setSyncState("synced");
+          onRowsChange?.(retryBody.rows, versionRef.current);
+          return;
+        }
+      }
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(body.rows)) {
+        versionRef.current = body.version ?? null;
+        setSyncState("synced");
+        onRowsChange?.(body.rows, versionRef.current);
+        if (showToastMsg) {
+          setToast(showToastMsg);
+          setTimeout(() => setToast(null), 2500);
+        }
+      } else {
+        setSyncState("error");
+      }
+    } catch {
+      setSyncState("error");
+    }
+  }
+
+  // Load from Supabase (with localStorage fallback) on mount
+  useEffect(() => {
+    let cancelled = false;
+    let localRows: AthleticsRow[] | null = null;
     try {
       const saved = localStorage.getItem("nkg2569_athletics_preview");
       if (saved) {
-        const parsed: AthleticsRow[] = JSON.parse(saved);
-        const canonicalById = new Map(
-          INITIAL_ATHLETICS_DATA.map((item) => [item.id, item]),
-        );
-        const updated = INITIAL_ATHLETICS_DATA.map((canonical) => {
-          const found = parsed.find((p) => p.id === canonical.id);
-          if (!found) return canonical;
-          const r3Lanes =
-            found.r3Lanes && found.r3Lanes.length > 0
-              ? found.r3Lanes.map((l, idx) => ({ ...l, lane: idx + 1 }))
-              : defaultLanes(6);
-          const r3 = r3Lanes.map((l, idx) => l.schoolName || found.r3?.[idx] || "");
-          return {
-            ...canonical,
-            ...found,
-            no: canonical.no,
-            name: canonical.name,
-            grade: canonical.grade,
-            type: canonical.type,
-            sourceNumber: canonical.sourceNumber,
-            directFinal: canonical.directFinal,
-            expandableLanes: canonical.expandableLanes,
-            r1Lanes: found.r1Lanes || defaultLanes(5),
-            r2Lanes: found.r2Lanes || defaultLanes(5),
-            r3Lanes,
-            r3,
-            winners: computeFinalsWinners(r3Lanes),
-          };
-        }).filter((item) => canonicalById.has(item.id));
-        setRows(updated);
+        localRows = normalizeLoadedRows(JSON.parse(saved));
+        if (!initialRows || initialRows.length === 0) {
+          setRows(localRows);
+          latestRowsRef.current = localRows;
+        }
       }
     } catch {}
+
+    if (initialRows && initialRows.length > 0) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await fetch("/api/athletics-scoresheet", {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (cancelled) return;
+        if (body.version && Array.isArray(body.rows)) {
+          const normalized = normalizeLoadedRows(body.rows);
+          versionRef.current = body.version;
+          setRows(normalized);
+          latestRowsRef.current = normalized;
+          setSyncState("synced");
+          onRowsChange?.(normalized, body.version);
+          try {
+            localStorage.setItem(
+              "nkg2569_athletics_preview",
+              JSON.stringify(normalized),
+            );
+          } catch {}
+        } else if (localRows) {
+          setSyncState("local");
+          onRowsChange?.(localRows, null);
+        }
+      } catch {
+        if (!cancelled) setSyncState("local");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, []);
 
-  function saveRows(next: AthleticsRow[], msg?: string) {
+  function saveRows(next: AthleticsRow[], msg?: string, immediate = Boolean(msg)) {
     setRows(next);
+    latestRowsRef.current = next;
+    onRowsChange?.(next, versionRef.current);
     try {
       localStorage.setItem("nkg2569_athletics_preview", JSON.stringify(next));
     } catch {}
@@ -481,10 +614,27 @@ export function AthleticsScoresheet({
       setToast(msg);
       setTimeout(() => setToast(null), 2500);
     }
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (immediate) {
+      void syncToSupabase(next);
+    } else {
+      debounceTimerRef.current = setTimeout(() => {
+        void syncToSupabase(latestRowsRef.current);
+      }, 700);
+    }
   }
 
   function handleManualSave() {
-    saveRows(rows, "บันทึกข้อมูลการจัดลู่วิ่งเรียบร้อยแล้ว");
+    saveRows(
+      rows,
+      accessToken && canEdit
+        ? "บันทึกข้อมูลการจัดลู่วิ่งลงฐานข้อมูล Supabase เรียบร้อยแล้ว"
+        : "บันทึกข้อมูลการจัดลู่วิ่งเรียบร้อยแล้ว",
+      true,
+    );
   }
 
   // สั่งพิมพ์จากหน้าต่างตัวอย่าง A4 แนวตั้ง ด้วย iframe เฉพาะ ताकिได้กระดาษ A4 แนวตั้งที่สะอาด 100%
@@ -952,7 +1102,50 @@ export function AthleticsScoresheet({
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {syncState !== "idle" && (
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "4px 10px",
+                borderRadius: "999px",
+                background:
+                  syncState === "synced"
+                    ? "#dcfce7"
+                    : syncState === "syncing"
+                      ? "#dbeafe"
+                      : syncState === "error"
+                        ? "#fee2e2"
+                        : "#f1f5f9",
+                color:
+                  syncState === "synced"
+                    ? "#166534"
+                    : syncState === "syncing"
+                      ? "#1e40af"
+                      : syncState === "error"
+                        ? "#991b1b"
+                        : "#475569",
+                border: `1px solid ${
+                  syncState === "synced"
+                    ? "#86efac"
+                    : syncState === "syncing"
+                      ? "#93c5fd"
+                      : syncState === "error"
+                        ? "#fca5a5"
+                        : "#cbd5e1"
+                }`,
+              }}
+            >
+              {syncState === "synced"
+                ? "✓ ซิงค์ Supabase แล้ว"
+                : syncState === "syncing"
+                  ? "⟳ กำลังบันทึกลง Supabase..."
+                  : syncState === "error"
+                    ? "⚠ บันทึกในเครื่อง (รอซิงค์)"
+                    : "โหมดบันทึกในเครื่อง"}
+            </span>
+          )}
           {subTab === "sheet" && (
             <button
               type="button"
