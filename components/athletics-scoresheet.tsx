@@ -11,7 +11,6 @@ import {
   Save,
   ArrowRight,
   ArrowLeft,
-  Medal,
   ClipboardList,
   Edit3,
   Trash2,
@@ -24,9 +23,17 @@ export type LaneEntry = {
   schoolName: string; // ชื่อโรงเรียน เช่น โรงเรียนบ้านหนองแดน
   athleteName: string; // ชื่อ-สกุล นักกีฬา
   time?: string; // สถิติเวลา/ผล (ถ้ามี)
-  rank?: string; // "1", "2", "3", "4", "5", "6", "DQ", "DNF", "DNS"
+  rank?: string; // "1", "2", "3", "4", "5", "6", "DQ"
   isFoul?: boolean; // ฟาล์วหรือไม่
   foulReason?: string; // รายละเอียดฟาล์ว (ถ้ามี)
+};
+
+export type WinnerEntry = {
+  rank: number;
+  athleteName: string;
+  schoolName: string;
+  score: number;
+  time?: string;
 };
 
 export type AthleticsRow = {
@@ -36,19 +43,23 @@ export type AthleticsRow = {
   name: string;
   grade: string;
   type: string;
+  directFinal?: boolean; // แข่งรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก รอบ ๑ และ รอบ ๒)
   r1: string[]; // 5 lanes (ชื่อโรงเรียน)
   r2: string[]; // 5 lanes (ชื่อโรงเรียน)
   r3: string[]; // 6 lanes (finals) (ชื่อโรงเรียน)
   r1Lanes: LaneEntry[];
   r2Lanes: LaneEntry[];
   r3Lanes: LaneEntry[];
-  winners?: {
-    rank: number;
-    athleteName: string;
-    schoolName: string;
-    score: number;
-    time?: string;
-  }[];
+  winners?: WinnerEntry[];
+};
+
+export type SchoolAthleticsStanding = {
+  schoolName: string;
+  gold: number;
+  silver: number;
+  bronze: number;
+  totalScore: number;
+  place: number;
 };
 
 export const DEFAULT_SCHOOLS = [
@@ -65,12 +76,20 @@ export const DEFAULT_SCHOOLS = [
   "โรงเรียนโกสัมพีวิทยา",
 ];
 
+export const FOUL_REASONS = [
+  "เหยียบเส้น / ล้ำลู่",
+  "ออกตัวก่อนปล่อยสัญญาณ (False Start)",
+  "ทำไม้หล่น / ส่งไม้ผิดกติกา",
+  "วิ่งตัดหน้า / กีดขวางคู่แข่ง",
+  "ผิดกติกาการแข่งขันทั่วไป",
+];
+
 export function getDisplaySchoolName(fullName: string): string {
   if (!fullName) return "";
   return fullName.replace(/^โรงเรียน/, "").trim();
 }
 
-function defaultLanes(count: number): LaneEntry[] {
+export function defaultLanes(count: number): LaneEntry[] {
   return Array.from({ length: count }, (_, i) => ({
     lane: i + 1,
     schoolName: "",
@@ -82,38 +101,105 @@ function defaultLanes(count: number): LaneEntry[] {
   }));
 }
 
+// ข้อมูล ๒๐ รายการกรีฑาตามสูจิบัตร นครโกสัมพีเกมส์ ๒๕๖๙
 export const INITIAL_ATHLETICS_DATA: AthleticsRow[] = [
-  { id: 1, no: "๑", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 2, no: "๒", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 3, no: "๓", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 4, no: "๔", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 5, no: "๕", sourceNumber: 106, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 6, no: "๖", sourceNumber: 107, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 7, no: "๗", sourceNumber: 112, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 8, no: "๘", sourceNumber: 113, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 9, no: "๙", sourceNumber: 118, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 10, no: "๑๐", sourceNumber: 119, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 11, no: "๑๑", sourceNumber: 124, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 12, no: "๑๒", sourceNumber: 125, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 13, no: "๑๓", sourceNumber: 130, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 14, no: "๑๔", sourceNumber: 131, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 15, no: "๑๕", sourceNumber: 132, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 16, no: "๑๖", sourceNumber: 133, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 17, no: "๑๗", sourceNumber: 138, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 18, no: "๑๘", sourceNumber: 139, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 19, no: "๑๙", sourceNumber: 140, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 20, no: "๒๐", sourceNumber: 141, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 21, no: "๒๑", sourceNumber: 142, name: "วิ่งผลัด ๔x๑๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 1, no: "๑", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 2, no: "๒", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 3, no: "๓", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 4, no: "๔", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 5, no: "๕", sourceNumber: 106, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 6, no: "๖", sourceNumber: 107, name: "วิ่ง ๕๐ เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 7, no: "๗", sourceNumber: 112, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 8, no: "๘", sourceNumber: 113, name: "วิ่ง ๘๐ เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 9, no: "๙", sourceNumber: 118, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 10, no: "๑๐", sourceNumber: 119, name: "วิ่ง ๖๐ เมตร", grade: "ป.๑-๓", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 11, no: "๑๑", sourceNumber: 124, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 12, no: "๑๒", sourceNumber: 125, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๑-๓", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 13, no: "๑๓", sourceNumber: 130, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 14, no: "๑๔", sourceNumber: 131, name: "วิ่ง ๑๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 15, no: "๑๕", sourceNumber: 132, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 16, no: "๑๖", sourceNumber: 133, name: "วิ่ง ๑๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 17, no: "๑๗", sourceNumber: 138, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 18, no: "๑๘", sourceNumber: 139, name: "วิ่ง ๒๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 19, no: "๑๙", sourceNumber: 140, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 20, no: "๒๐", sourceNumber: 141, name: "วิ่ง ๒๐๐ เมตร", grade: "ม.๑-๓", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
 ];
 
-// Helper to seed qualifiers from Round 1 and Round 2 into Finals (3, 2, 1, 1, 2, 3)
-export function syncQualifiersToFinals(row: AthleticsRow): { row: AthleticsRow; newlyAdvanced: boolean } {
+/**
+ * ป้องกันอันดับซ้ำในรอบเดียวกัน:
+ * หากตั้งอันดับ (เช่น "1", "2", "3", "4", "5", "6") ให้กับ targetLaneIdx
+ * ลู่อื่นในรอบเดียวกันที่เคยถือครองอันดับนั้นจะถูกล้าง rank เป็น "" อัตโนมัติ
+ */
+export function assignUniqueRankInLanes(
+  lanes: LaneEntry[],
+  targetLaneIdx: number,
+  newRank: string,
+): LaneEntry[] {
+  const cleanRank = newRank.trim();
+  return lanes.map((lane, idx) => {
+    if (idx === targetLaneIdx) {
+      const isFoul = cleanRank === "DQ" ? true : lane.isFoul;
+      return {
+        ...lane,
+        rank: cleanRank,
+        isFoul,
+      };
+    }
+    // ล้างอันดับซ้ำจากลู่อื่น (ยกเว้น "" หรือ "DQ")
+    if (cleanRank && cleanRank !== "DQ" && lane.rank === cleanRank) {
+      return {
+        ...lane,
+        rank: "",
+      };
+    }
+    return lane;
+  });
+}
+
+/**
+ * คำนวณผู้ชนะเหรียญรางวัล (อันดับ ๑, ๒, ๓) จากข้อมูลลู่วิ่งในรอบชิงชนะเลิศ (`r3Lanes`)
+ * จะคืนค่าเฉพาะลู่ที่ไม่ฟาล์ว มีชื่อโรงเรียน และระบุ rank เป็น "1", "2", "3" เท่านั้น
+ * ไม่ดึงลู่ ๑-๓ ที่ยังไม่ได้แข่งมาเป็นเหรียญรางวัลล่วงหน้า
+ */
+export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
+  return [1, 2, 3].map((rankNum) => {
+    const matchingLane = r3Lanes.find(
+      (l) =>
+        !l.isFoul &&
+        Boolean(l.schoolName) &&
+        (l.rank === String(rankNum) || l.rank === `ที่ ${rankNum}`),
+    );
+    return {
+      rank: rankNum,
+      athleteName: matchingLane?.athleteName || "",
+      schoolName: matchingLane?.schoolName || "",
+      score: matchingLane?.schoolName ? (rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1) : 0,
+      time: matchingLane?.time || "",
+    };
+  });
+}
+
+/**
+ * ส่งผู้เข้ารอบ ๑, ๒, ๓ จากรอบ ๑ และ รอบ ๒ ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ 3, 2, 1, 1, 2, 3)
+ * และหากอันดับใดถูกยกเลิกหรือปรับฟาล์ว จะล้างช่องลู่ในรอบชิงที่ผูกกับโควตานั้นให้ถูกต้องเสมอ
+ */
+export function syncQualifiersToFinals(row: AthleticsRow): {
+  row: AthleticsRow;
+  newlyAdvanced: boolean;
+} {
+  if (row.directFinal) {
+    return { row, newlyAdvanced: false };
+  }
+
   const nextR3Lanes = [...row.r3Lanes];
   const nextR3Cells = [...row.r3];
 
   const findQualifier = (lanes: LaneEntry[], targetRank: string) => {
     return lanes.find(
-      (l) => !l.isFoul && (l.rank === targetRank || l.rank === `ที่ ${targetRank}`),
+      (l) =>
+        !l.isFoul &&
+        Boolean(l.schoolName) &&
+        (l.rank === targetRank || l.rank === `ที่ ${targetRank}`),
     );
   };
 
@@ -143,46 +229,138 @@ export function syncQualifiersToFinals(row: AthleticsRow): { row: AthleticsRow; 
 
   let newlyAdvanced = false;
   mapping.forEach(([targetLaneIdx, qualifier]) => {
+    const prevLane = nextR3Lanes[targetLaneIdx];
     if (qualifier && qualifier.schoolName) {
-      if (
-        nextR3Lanes[targetLaneIdx].schoolName !== qualifier.schoolName ||
-        nextR3Lanes[targetLaneIdx].athleteName !== qualifier.athleteName
-      ) {
+      const changed =
+        prevLane.schoolName !== qualifier.schoolName ||
+        prevLane.athleteName !== (qualifier.athleteName || "");
+      if (changed) {
         newlyAdvanced = true;
       }
       nextR3Lanes[targetLaneIdx] = {
-        ...nextR3Lanes[targetLaneIdx],
+        ...prevLane,
+        lane: targetLaneIdx + 1,
         schoolName: qualifier.schoolName,
         athleteName: qualifier.athleteName || "",
-        isFoul: false,
-        rank: nextR3Lanes[targetLaneIdx].rank || "",
-        time: "",
+        // ถ้านักกีฬาในลู่รอบชิงเปลี่ยนคน ให้รีเซ็ตผลรอบชิงของลู่นั้น
+        isFoul: changed ? false : prevLane.isFoul,
+        foulReason: changed ? "" : prevLane.foulReason,
+        rank: changed ? "" : prevLane.rank || "",
+        time: changed ? "" : prevLane.time || "",
       };
       nextR3Cells[targetLaneIdx] = qualifier.schoolName;
+    } else {
+      // หากโควตานี้ในรอบคัดเลือกถูกยกเลิกหรือฟาล์ว ให้ล้างชื่อออกจากลู่รอบชิง
+      nextR3Lanes[targetLaneIdx] = {
+        lane: targetLaneIdx + 1,
+        schoolName: "",
+        athleteName: "",
+        time: "",
+        rank: "",
+        isFoul: false,
+        foulReason: "",
+      };
+      nextR3Cells[targetLaneIdx] = "";
     }
   });
+
+  const winners = computeFinalsWinners(nextR3Lanes);
 
   return {
     row: {
       ...row,
       r3Lanes: nextR3Lanes,
       r3: nextR3Cells,
+      winners,
     },
     newlyAdvanced,
   };
 }
 
-type CellModalData = {
+/**
+ * คำนวณตารางคะแนนรวมกรีฑาของทุกโรงเรียน พร้อมจำนวนเหรียญ ทอง/เงิน/ทองแดง
+ * และจัดอันดับด้วยกฎ Tie-break: คะแนนรวม > เหรียญทอง > เหรียญเงิน > เหรียญทองแดง > ชื่อโรงเรียน
+ */
+export function calculateSchoolAthleticsStandings(
+  rows: AthleticsRow[],
+): SchoolAthleticsStanding[] {
+  const statsMap: Record<
+    string,
+    { gold: number; silver: number; bronze: number; totalScore: number }
+  > = {};
+
+  rows.forEach((r) => {
+    const winners = r.winners || computeFinalsWinners(r.r3Lanes || []);
+    winners.forEach((w) => {
+      if (!w.schoolName) return;
+      if (!statsMap[w.schoolName]) {
+        statsMap[w.schoolName] = { gold: 0, silver: 0, bronze: 0, totalScore: 0 };
+      }
+      const entry = statsMap[w.schoolName];
+      if (w.rank === 1) {
+        entry.gold += 1;
+        entry.totalScore += 3;
+      } else if (w.rank === 2) {
+        entry.silver += 1;
+        entry.totalScore += 2;
+      } else if (w.rank === 3) {
+        entry.bronze += 1;
+        entry.totalScore += 1;
+      }
+    });
+  });
+
+  const sorted = Object.entries(statsMap)
+    .map(([schoolName, s]) => ({
+      schoolName,
+      ...s,
+      place: 1,
+    }))
+    .sort((a, b) => {
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+      if (b.gold !== a.gold) return b.gold - a.gold;
+      if (b.silver !== a.silver) return b.silver - a.silver;
+      if (b.bronze !== a.bronze) return b.bronze - a.bronze;
+      return a.schoolName.localeCompare(b.schoolName, "th");
+    });
+
+  // กำหนดลำดับที่ (รองรับอันดับร่วมกรณีคะแนนและเหรียญทุกชนิดเท่ากันทั้งหมด)
+  for (let i = 0; i < sorted.length; i++) {
+    if (i === 0) {
+      sorted[i].place = 1;
+    } else {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      if (
+        curr.totalScore === prev.totalScore &&
+        curr.gold === prev.gold &&
+        curr.silver === prev.silver &&
+        curr.bronze === prev.bronze
+      ) {
+        curr.place = prev.place;
+      } else {
+        curr.place = i + 1;
+      }
+    }
+  }
+
+  return sorted;
+}
+
+type RoundModalData = {
   rowId: number;
   roundKey: "r1" | "r2" | "r3";
-  subIndex: number;
-  schoolName: string;
-  athleteName: string;
-  rank: string;
-  isFoul: boolean;
-  foulReason: string;
-  time: string;
+  focusedLaneIdx: number;
+  lanes: LaneEntry[];
 };
+
+const THAI_DIGITS = ["๐", "๑", "๒", "๓", "๔", "๕", "๖", "๗", "๘", "๙"];
+function toThaiNumber(num: number): string {
+  return String(num)
+    .split("")
+    .map((ch) => THAI_DIGITS[Number(ch)] ?? ch)
+    .join("");
+}
 
 export function AthleticsScoresheet({
   schools = [],
@@ -193,11 +371,11 @@ export function AthleticsScoresheet({
   const [rows, setRows] = useState<AthleticsRow[]>(INITIAL_ATHLETICS_DATA);
   const [search, setSearch] = useState("");
   const [activeEventId, setActiveEventId] = useState<number>(1);
-  const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r1");
+  const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r3");
   const [toast, setToast] = useState<string | null>(null);
 
-  // Cell modal for scoresheet inline click
-  const [cellModal, setCellModal] = useState<CellModalData | null>(null);
+  // Modal สำหรับบันทึกผลทั้งฮีต/รอบ (หรือเฉพาะลู่ที่คลิก)
+  const [roundModal, setRoundModal] = useState<RoundModalData | null>(null);
 
   // Available school list (database prop or fallback)
   const schoolOptions =
@@ -205,18 +383,29 @@ export function AthleticsScoresheet({
       ? schools.map((s) => s.name)
       : DEFAULT_SCHOOLS;
 
-  // Load from localStorage preview
+  // Load from localStorage preview & normalize to 20 canonical events
   useEffect(() => {
     try {
       const saved = localStorage.getItem("nkg2569_athletics_preview");
       if (saved) {
-        const parsed = JSON.parse(saved);
-        const updated = parsed.map((item: AthleticsRow) => ({
-          ...item,
-          r1Lanes: item.r1Lanes || defaultLanes(5),
-          r2Lanes: item.r2Lanes || defaultLanes(5),
-          r3Lanes: item.r3Lanes || defaultLanes(6),
-        }));
+        const parsed: AthleticsRow[] = JSON.parse(saved);
+        const canonicalById = new Map(
+          INITIAL_ATHLETICS_DATA.map((item) => [item.id, item]),
+        );
+        const updated = INITIAL_ATHLETICS_DATA.map((canonical) => {
+          const found = parsed.find((p) => p.id === canonical.id);
+          if (!found) return canonical;
+          const r3Lanes = found.r3Lanes || defaultLanes(6);
+          return {
+            ...canonical,
+            ...found,
+            directFinal: canonical.directFinal,
+            r1Lanes: found.r1Lanes || defaultLanes(5),
+            r2Lanes: found.r2Lanes || defaultLanes(5),
+            r3Lanes,
+            winners: computeFinalsWinners(r3Lanes),
+          };
+        }).filter((item) => canonicalById.has(item.id));
         setRows(updated);
       }
     } catch {}
@@ -240,7 +429,14 @@ export function AthleticsScoresheet({
   // Active event object
   const activeEvent = rows.find((r) => r.id === activeEventId) || rows[0];
 
-  // Update a single lane in the active event
+  // หากเลือกรายการที่เป็น directFinal ให้บังคับอยู่รอบชิงชนะเลิศ (r3) เสมอ
+  useEffect(() => {
+    if (activeEvent?.directFinal && activeRound !== "r3") {
+      setActiveRound("r3");
+    }
+  }, [activeEvent?.id, activeEvent?.directFinal, activeRound]);
+
+  // Update a single lane in the active event (Registration Tab)
   function updateLane(
     roundKey: "r1" | "r2" | "r3",
     index: number,
@@ -259,157 +455,140 @@ export function AthleticsScoresheet({
       roundCells[index] = val;
     }
 
-    const updatedEvent: AthleticsRow = {
+    let updatedEvent: AthleticsRow = {
       ...activeEvent,
       [lanesKey]: currentLanes,
       [roundKey]: roundCells,
     };
 
+    if (roundKey === "r3") {
+      updatedEvent.winners = computeFinalsWinners(currentLanes);
+    } else {
+      updatedEvent = syncQualifiersToFinals(updatedEvent).row;
+    }
+
     const nextRows = rows.map((r) => (r.id === activeEvent.id ? updatedEvent : r));
     saveRows(nextRows);
   }
 
-  // Open modal from cell click in the scoresheet
+  // Open Modal from cell click in the scoresheet (loads all lanes of that round with focus on clicked lane)
   function openCellModal(rowId: number, roundKey: "r1" | "r2" | "r3", subIndex: number) {
     const targetRow = rows.find((r) => r.id === rowId);
     if (!targetRow) return;
+    if (targetRow.directFinal && roundKey !== "r3") {
+      return;
+    }
     const lanesKey =
       roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
-    const lane = targetRow[lanesKey]?.[subIndex] || {
-      lane: subIndex + 1,
-      schoolName: targetRow[roundKey]?.[subIndex] || "",
-      athleteName: "",
-      rank: "",
-      isFoul: false,
-      foulReason: "",
-      time: "",
-    };
+    const count = roundKey === "r3" ? 6 : 5;
+    const sourceLanes = targetRow[lanesKey] || defaultLanes(count);
 
-    setCellModal({
+    const clonedLanes: LaneEntry[] = Array.from({ length: count }, (_, idx) => {
+      const existing = sourceLanes[idx];
+      return {
+        lane: idx + 1,
+        schoolName: existing?.schoolName || targetRow[roundKey]?.[idx] || "",
+        athleteName: existing?.athleteName || "",
+        rank: existing?.rank || "",
+        isFoul: !!existing?.isFoul,
+        foulReason: existing?.foulReason || FOUL_REASONS[0],
+        time: existing?.time || "",
+      };
+    });
+
+    setRoundModal({
       rowId,
       roundKey,
-      subIndex,
-      schoolName: lane.schoolName || targetRow[roundKey]?.[subIndex] || "",
-      athleteName: lane.athleteName || "",
-      rank: lane.rank || "",
-      isFoul: !!lane.isFoul,
-      foulReason: lane.foulReason || "",
-      time: lane.time || "",
+      focusedLaneIdx: subIndex,
+      lanes: clonedLanes,
     });
   }
 
-  // Save modal results and automatically seed to finals (3-2-1-1-2-3)
-  function handleSaveCellModal() {
-    if (!cellModal) return;
-    const { rowId, roundKey, subIndex, schoolName, athleteName, rank, isFoul, foulReason, time } = cellModal;
+  // Update a lane inside the modal (with automatic duplicate rank prevention)
+  function updateModalLane(
+    laneIdx: number,
+    patch: Partial<LaneEntry>,
+  ) {
+    if (!roundModal) return;
+    let nextLanes = roundModal.lanes.map((l, idx) =>
+      idx === laneIdx ? { ...l, ...patch } : l,
+    );
+
+    // If rank was updated, ensure uniqueness across the heat/final
+    if (patch.rank !== undefined) {
+      nextLanes = assignUniqueRankInLanes(nextLanes, laneIdx, patch.rank);
+    }
+
+    // If marked as foul, set rank to "DQ"
+    if (patch.isFoul === true) {
+      nextLanes[laneIdx] = {
+        ...nextLanes[laneIdx],
+        isFoul: true,
+        rank: "DQ",
+        foulReason: nextLanes[laneIdx].foulReason || FOUL_REASONS[0],
+      };
+    } else if (patch.isFoul === false) {
+      nextLanes[laneIdx] = {
+        ...nextLanes[laneIdx],
+        isFoul: false,
+        rank: nextLanes[laneIdx].rank === "DQ" ? "" : nextLanes[laneIdx].rank,
+      };
+    }
+
+    setRoundModal({
+      ...roundModal,
+      focusedLaneIdx: laneIdx,
+      lanes: nextLanes,
+    });
+  }
+
+  // Save all lanes in the modal and auto-seed qualifiers to finals (3-2-1-1-2-3)
+  function handleSaveRoundModal() {
+    if (!roundModal) return;
+    const { rowId, roundKey, lanes } = roundModal;
 
     const targetRow = rows.find((r) => r.id === rowId);
     if (!targetRow) return;
 
     const lanesKey =
       roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
-    const updatedLanes = [...targetRow[lanesKey]];
-    const updatedRoundCells = [...targetRow[roundKey]];
-
-    const finalRank = isFoul ? "DQ" : rank;
-
-    updatedLanes[subIndex] = {
-      ...updatedLanes[subIndex],
-      schoolName,
-      athleteName,
-      rank: finalRank,
-      isFoul,
-      foulReason: isFoul ? foulReason || "ฟาล์ว/ผิดกติกา" : "",
-      time,
-    };
-    updatedRoundCells[subIndex] = schoolName;
+    const normalizedLanes = lanes.map((l, idx) => ({
+      ...l,
+      lane: idx + 1,
+      rank: l.isFoul ? "DQ" : l.rank || "",
+      foulReason: l.isFoul ? l.foulReason || FOUL_REASONS[0] : "",
+    }));
+    const updatedRoundCells = normalizedLanes.map((l) => l.schoolName || "");
 
     let updatedRow: AthleticsRow = {
       ...targetRow,
-      [lanesKey]: updatedLanes,
+      [lanesKey]: normalizedLanes,
       [roundKey]: updatedRoundCells,
     };
 
-    // Auto-advance qualifiers (1, 2, 3) from Round 1 and Round 2 into Finals using 3-2-1-1-2-3
     let autoAdvancedMsg: string | undefined = undefined;
     if (roundKey === "r1" || roundKey === "r2") {
       const synced = syncQualifiersToFinals(updatedRow);
       updatedRow = synced.row;
       if (synced.newlyAdvanced) {
-        autoAdvancedMsg = "ส่งผู้เข้ารอบเข้าสู่รอบชิงชนะเลิศ (ลำดับลู่ 3-2-1-1-2-3) เรียบร้อย";
+        autoAdvancedMsg =
+          "บันทึกผลและส่งผู้เข้ารอบ ๑–๓ เข้าสู่รอบชิงชนะเลิศ (เรียงลู่ 3-2-1-1-2-3) เรียบร้อย";
       }
-    }
-
-    // If this edit was in Round 3 (Finals), calculate medal winners automatically
-    if (roundKey === "r3") {
-      const winners = [1, 2, 3].map((rankNum) => {
-        const matchingLane = updatedLanes.find(
-          (l) => !l.isFoul && (l.rank === String(rankNum) || l.rank === `ที่ ${rankNum}`),
-        );
-        return {
-          rank: rankNum,
-          athleteName: matchingLane?.athleteName || "",
-          schoolName: matchingLane?.schoolName || "",
-          score: rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1,
-          time: matchingLane?.time || "",
-        };
-      });
+    } else if (roundKey === "r3") {
       updatedRow = {
         ...updatedRow,
-        winners,
+        winners: computeFinalsWinners(normalizedLanes),
       };
     }
 
+    const roundLabel =
+      roundKey === "r1" ? "รอบ ๑" : roundKey === "r2" ? "รอบ ๒" : "รอบชิงชนะเลิศ";
     const nextRows = rows.map((r) => (r.id === rowId ? updatedRow : r));
     saveRows(
       nextRows,
-      autoAdvancedMsg || (isFoul ? `บันทึกสถานะฟาล์ว: ลู่ ${subIndex + 1}` : `บันทึกอันดับ: ลู่ ${subIndex + 1}`),
+      autoAdvancedMsg || `บันทึกผลการแข่งขัน ${roundLabel} (รายการที่ ${targetRow.no}) เรียบร้อย`,
     );
-    setCellModal(null);
-  }
-
-  // Update finals medal winner (1st = Gold, 2nd = Silver, 3rd = Bronze)
-  function updateWinner(rankNum: 1 | 2 | 3, laneIndex: number | "none") {
-    const currentWinners = activeEvent.winners ? [...activeEvent.winners] : [];
-    const lane = typeof laneIndex === "number" ? activeEvent.r3Lanes[laneIndex] : null;
-
-    // Filter out existing holder of this rank
-    const nextWinners = currentWinners.filter((w) => w.rank !== rankNum);
-
-    if (lane && lane.schoolName) {
-      nextWinners.push({
-        rank: rankNum,
-        athleteName: lane.athleteName || "",
-        schoolName: lane.schoolName,
-        score: rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1,
-        time: lane.time || "",
-      });
-    }
-
-    // Also update rank tag on r3Lanes for medal highlights
-    const updatedR3Lanes = activeEvent.r3Lanes.map((l, idx) => {
-      if (laneIndex === idx) {
-        return { ...l, rank: String(rankNum), isFoul: false };
-      }
-      if (l.rank === String(rankNum)) {
-        return { ...l, rank: "" };
-      }
-      return l;
-    });
-
-    const updatedEvent: AthleticsRow = {
-      ...activeEvent,
-      r3Lanes: updatedR3Lanes,
-      winners: nextWinners.sort((a, b) => a.rank - b.rank),
-    };
-
-    const nextRows = rows.map((r) => (r.id === activeEvent.id ? updatedEvent : r));
-    saveRows(
-      nextRows,
-      lane
-        ? `บันทึก${rankNum === 1 ? "เหรียญทอง" : rankNum === 2 ? "เหรียญเงิน" : "เหรียญทองแดง"}: ${lane.schoolName}`
-        : undefined,
-    );
+    setRoundModal(null);
   }
 
   // Clear lanes in active round
@@ -424,12 +603,16 @@ export function AthleticsScoresheet({
     const clearedLanes = defaultLanes(count);
     const clearedCells = Array(count).fill("");
 
-    const updatedEvent: AthleticsRow = {
+    let updatedEvent: AthleticsRow = {
       ...activeEvent,
       [lanesKey]: clearedLanes,
       [roundKey]: clearedCells,
-      winners: roundKey === "r3" ? [] : activeEvent.winners,
+      winners: roundKey === "r3" ? computeFinalsWinners(clearedLanes) : activeEvent.winners,
     };
+
+    if (roundKey === "r1" || roundKey === "r2") {
+      updatedEvent = syncQualifiersToFinals(updatedEvent).row;
+    }
 
     const nextRows = rows.map((r) => (r.id === activeEvent.id ? updatedEvent : r));
     saveRows(nextRows, `ล้างข้อมูล ${label} เรียบร้อย`);
@@ -451,23 +634,8 @@ export function AthleticsScoresheet({
       (r.sourceNumber && String(r.sourceNumber).includes(search)),
   );
 
-  // Aggregate school scores for summary report
-  const schoolScoreMap: Record<string, number> = {};
-  rows.forEach((r) => {
-    (r.winners || []).forEach((w) => {
-      if (w.schoolName) {
-        schoolScoreMap[w.schoolName] =
-          (schoolScoreMap[w.schoolName] || 0) + (w.score || 0);
-      }
-    });
-  });
-
-  const rankedSchools = Object.entries(schoolScoreMap)
-    .map(([schoolName, totalScore]) => ({
-      schoolName,
-      totalScore,
-    }))
-    .sort((a, b) => b.totalScore - a.totalScore);
+  // Calculate school standings with medal breakdown and tie-breaker rules
+  const rankedSchools = calculateSchoolAthleticsStandings(rows);
 
   const activeLanes =
     activeRound === "r1"
@@ -476,11 +644,39 @@ export function AthleticsScoresheet({
         ? activeEvent.r2Lanes
         : activeEvent.r3Lanes;
 
+  // Duplicate school warning in current registration round
+  const assignedSchoolsInActiveRound = activeLanes
+    .map((l) => l.schoolName)
+    .filter(Boolean);
+  const duplicateSchoolsInActiveRound = Array.from(
+    new Set(
+      assignedSchoolsInActiveRound.filter(
+        (name, idx) => assignedSchoolsInActiveRound.indexOf(name) !== idx,
+      ),
+    ),
+  );
+
   return (
     <div className="athletics-container" style={{ marginTop: "1rem" }}>
+      {/* Print Stylesheet for both Scoresheet (Landscape) and Summary Report (Portrait) */}
+      <style>{`
+        @media print {
+          .no-print, .athletics-subtabs {
+            display: none !important;
+          }
+          .printable-area {
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+        }
+      `}</style>
+
       {/* Toast Notification */}
       {toast && (
         <div
+          className="no-print"
           style={{
             position: "fixed",
             bottom: "24px",
@@ -503,7 +699,7 @@ export function AthleticsScoresheet({
 
       {/* Main Sub Tabs Navigation */}
       <div
-        className="athletics-subtabs"
+        className="athletics-subtabs no-print"
         style={{
           display: "flex",
           gap: "10px",
@@ -530,7 +726,7 @@ export function AthleticsScoresheet({
             onClick={() => setSubTab("sheet")}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <ClipboardList size={16} /> ๒. ใบบันทึกผลการแข่งขัน (ตาราง ๒๑ รายการ)
+            <ClipboardList size={16} /> ๒. ใบบันทึกผลการแข่งขัน (ตาราง ๒๐ รายการ)
           </button>
           <button
             type="button"
@@ -543,14 +739,17 @@ export function AthleticsScoresheet({
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>
-          {subTab === "summary" && (
+          {(subTab === "sheet" || subTab === "summary") && (
             <button
               type="button"
               className="ui-button-outline ui-button-sm"
               onClick={() => window.print()}
               style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
-              <Printer size={15} /> พิมพ์รายงาน (A4 / PDF)
+              <Printer size={15} />{" "}
+              {subTab === "sheet"
+                ? "พิมพ์ตารางใบบันทึกผล (A4)"
+                : "พิมพ์รายงานสรุปผล (A4 / PDF)"}
             </button>
           )}
           <button
@@ -608,7 +807,16 @@ export function AthleticsScoresheet({
                 </span>
                 <select
                   value={activeEventId}
-                  onChange={(e) => setActiveEventId(Number(e.target.value))}
+                  onChange={(e) => {
+                    const nextId = Number(e.target.value);
+                    const nextEv = rows.find((r) => r.id === nextId);
+                    setActiveEventId(nextId);
+                    if (nextEv?.directFinal) {
+                      setActiveRound("r3");
+                    } else {
+                      setActiveRound("r1");
+                    }
+                  }}
                   style={{
                     padding: "8px 12px",
                     borderRadius: "8px",
@@ -623,6 +831,7 @@ export function AthleticsScoresheet({
                   {rows.map((r) => (
                     <option key={r.id} value={r.id}>
                       รายการที่ {r.no}: {r.name} · {r.grade} · {r.type}
+                      {r.directFinal ? " (ชิงชนะเลิศทันที)" : ""}
                     </option>
                   ))}
                 </select>
@@ -634,7 +843,12 @@ export function AthleticsScoresheet({
                   type="button"
                   className="ui-button-outline ui-button-sm"
                   disabled={activeEventId <= 1}
-                  onClick={() => setActiveEventId((prev) => Math.max(1, prev - 1))}
+                  onClick={() => {
+                    const nextId = Math.max(1, activeEventId - 1);
+                    const nextEv = rows.find((r) => r.id === nextId);
+                    setActiveEventId(nextId);
+                    setActiveRound(nextEv?.directFinal ? "r3" : "r1");
+                  }}
                   style={{ display: "flex", alignItems: "center", gap: "4px" }}
                 >
                   <ArrowLeft size={14} /> รายการก่อนหน้า
@@ -643,7 +857,12 @@ export function AthleticsScoresheet({
                   type="button"
                   className="ui-button-outline ui-button-sm"
                   disabled={activeEventId >= rows.length}
-                  onClick={() => setActiveEventId((prev) => Math.min(rows.length, prev + 1))}
+                  onClick={() => {
+                    const nextId = Math.min(rows.length, activeEventId + 1);
+                    const nextEv = rows.find((r) => r.id === nextId);
+                    setActiveEventId(nextId);
+                    setActiveRound(nextEv?.directFinal ? "r3" : "r1");
+                  }}
                   style={{ display: "flex", alignItems: "center", gap: "4px" }}
                 >
                   รายการถัดไป <ArrowRight size={14} />
@@ -665,7 +884,7 @@ export function AthleticsScoresheet({
                 gap: "10px",
               }}
             >
-              <div>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                 <span
                   style={{
                     background: "#0f766e",
@@ -674,7 +893,6 @@ export function AthleticsScoresheet({
                     borderRadius: "4px",
                     fontSize: "12px",
                     fontWeight: 700,
-                    marginRight: "8px",
                   }}
                 >
                   รายการที่ {activeEvent.no}
@@ -682,29 +900,48 @@ export function AthleticsScoresheet({
                 <strong style={{ fontSize: "15px", color: "#0f172a" }}>
                   {activeEvent.name}
                 </strong>
-                <span style={{ color: "#64748b", fontSize: "14px", marginLeft: "8px" }}>
+                <span style={{ color: "#64748b", fontSize: "14px" }}>
                   (ระดับ {activeEvent.grade} · เพศ{activeEvent.type})
                 </span>
+                {activeEvent.directFinal && (
+                  <span
+                    style={{
+                      background: "#fef9c3",
+                      color: "#854d0e",
+                      border: "1px solid #fde047",
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    🏆 แข่งขันรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก)
+                  </span>
+                )}
               </div>
 
               {/* Round Selector Pills */}
               <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  type="button"
-                  className={activeRound === "r1" ? "primary" : "ui-button-outline ui-button-sm"}
-                  onClick={() => setActiveRound("r1")}
-                  style={{ fontSize: "13px" }}
-                >
-                  🏃 รอบ ๑ (๕ ลู่)
-                </button>
-                <button
-                  type="button"
-                  className={activeRound === "r2" ? "primary" : "ui-button-outline ui-button-sm"}
-                  onClick={() => setActiveRound("r2")}
-                  style={{ fontSize: "13px" }}
-                >
-                  🏃 รอบ ๒ (๕ ลู่)
-                </button>
+                {!activeEvent.directFinal && (
+                  <>
+                    <button
+                      type="button"
+                      className={activeRound === "r1" ? "primary" : "ui-button-outline ui-button-sm"}
+                      onClick={() => setActiveRound("r1")}
+                      style={{ fontSize: "13px" }}
+                    >
+                      🏃 รอบ ๑ (๕ ลู่)
+                    </button>
+                    <button
+                      type="button"
+                      className={activeRound === "r2" ? "primary" : "ui-button-outline ui-button-sm"}
+                      onClick={() => setActiveRound("r2")}
+                      style={{ fontSize: "13px" }}
+                    >
+                      🏃 รอบ ๒ (๕ ลู่)
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   className={activeRound === "r3" ? "primary" : "ui-button-outline ui-button-sm"}
@@ -739,10 +976,13 @@ export function AthleticsScoresheet({
             }}
           >
             <div>
-              {activeRound === "r3" ? (
+              {activeEvent.directFinal ? (
                 <>
-                  🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> กำหนดชื่อโรงเรียนและนักกีฬาประจำลู่ ๑–๖
-                  (หรือระบบจะดึงผล ๑–๓ จากรอบ ๑ และ รอบ ๒ มาจัดลู่ 3-2-1-1-2-3 ให้อัตโนมัติเมื่อกรอกผลในใบบันทึก)
+                  🏆 <strong>รายการนี้แข่งขันรอบชิงชนะเลิศทันที:</strong> ลงทะเบียนชื่อโรงเรียนและนักกีฬาในรอบชิงชนะเลิศ (ลู่ ๑–๖) ได้โดยตรง
+                </>
+              ) : activeRound === "r3" ? (
+                <>
+                  🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> ระบบจะดึงผู้ที่ได้อันดับ ๑–๓ จากรอบ ๑ และ รอบ ๒ มาจัดลู่ 3-2-1-1-2-3 ให้อัตโนมัติเมื่อบันทึกผลในใบบันทึกผล (หรือกำหนดเองได้ที่นี่)
                 </>
               ) : (
                 <>
@@ -785,6 +1025,30 @@ export function AthleticsScoresheet({
               </button>
             </div>
           </div>
+
+          {/* Duplicate school notice */}
+          {duplicateSchoolsInActiveRound.length > 0 && (
+            <div
+              style={{
+                background: "#fff7ed",
+                border: "1px solid #fdba74",
+                color: "#9a3412",
+                padding: "8px 14px",
+                borderRadius: "8px",
+                marginBottom: "14px",
+                fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <AlertTriangle size={16} color="#ea580c" />
+              <span>
+                <strong>ข้อสังเกต:</strong> มีการเลือกโรงเรียนซ้ำในรอบเดียวกัน ได้แก่{" "}
+                <strong>{duplicateSchoolsInActiveRound.join(", ")}</strong>
+              </span>
+            </div>
+          )}
 
           {/* Lane Assignment Form Table (3 Columns: ลู่, ชื่อโรงเรียน, ชื่อนักกีฬา) */}
           <div
@@ -929,15 +1193,15 @@ export function AthleticsScoresheet({
                 onClick={() => setSubTab("sheet")}
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
-                <ClipboardList size={15} /> ดูในใบบันทึกผล ๒๑ รายการ →
+                <ClipboardList size={15} /> ดูในใบบันทึกผล ๒๐ รายการ →
               </button>
             </div>
           </div>
 
-          {/* Quick Grid of all 21 Events */}
+          {/* Quick Grid of all 20 Events */}
           <div>
             <h3 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: "#334155" }}>
-              ภาพรวมและเลือกรายการแข่งขัน (๒๑ รายการ):
+              ภาพรวมและเลือกรายการแข่งขัน (๒๐ รายการตามสูจิบัตร):
             </h3>
             <div
               style={{
@@ -957,7 +1221,10 @@ export function AthleticsScoresheet({
                   <button
                     key={r.id}
                     type="button"
-                    onClick={() => setActiveEventId(r.id)}
+                    onClick={() => {
+                      setActiveEventId(r.id);
+                      setActiveRound(r.directFinal ? "r3" : "r1");
+                    }}
                     style={{
                       textAlign: "left",
                       padding: "8px 10px",
@@ -980,15 +1247,23 @@ export function AthleticsScoresheet({
                       {r.grade} · {r.type}
                     </div>
                     <div style={{ display: "flex", gap: "6px", marginTop: "2px", fontSize: "10px" }}>
-                      <span style={{ color: r1Count > 0 ? "#0f766e" : "#94a3b8" }}>
-                        รอบ ๑ ({r1Count}/๕)
-                      </span>
-                      <span style={{ color: r2Count > 0 ? "#0f766e" : "#94a3b8" }}>
-                        รอบ ๒ ({r2Count}/๕)
-                      </span>
-                      <span style={{ color: r3Count > 0 ? "#b45309" : "#94a3b8" }}>
-                        ชิง ({r3Count}/๖)
-                      </span>
+                      {r.directFinal ? (
+                        <span style={{ color: "#b45309", fontWeight: 600 }}>
+                          ชิงทันที ({r3Count}/๖)
+                        </span>
+                      ) : (
+                        <>
+                          <span style={{ color: r1Count > 0 ? "#0f766e" : "#94a3b8" }}>
+                            รอบ ๑ ({r1Count}/๕)
+                          </span>
+                          <span style={{ color: r2Count > 0 ? "#0f766e" : "#94a3b8" }}>
+                            รอบ ๒ ({r2Count}/๕)
+                          </span>
+                          <span style={{ color: r3Count > 0 ? "#b45309" : "#94a3b8" }}>
+                            ชิง ({r3Count}/๖)
+                          </span>
+                        </>
+                      )}
                     </div>
                   </button>
                 );
@@ -999,10 +1274,10 @@ export function AthleticsScoresheet({
       )}
 
       {/* ========================================================================= */}
-      {/* ==================== TAB 2: SCORESHEET (21 ROWS) ======================= */}
+      {/* ==================== TAB 2: SCORESHEET (20 ROWS) ======================= */}
       {/* ========================================================================= */}
       {subTab === "sheet" && (
-        <section className="panel" aria-label="ตารางบันทึกการแข่งขันกรีฑา">
+        <section className="panel printable-area" aria-label="ตารางบันทึกการแข่งขันกรีฑา">
           <div
             style={{
               display: "flex",
@@ -1017,12 +1292,12 @@ export function AthleticsScoresheet({
               <h2 style={{ margin: 0, fontSize: "1.25rem" }}>
                 ใบบันทึกผลการแข่งขันกรีฑา (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
               </h2>
-              <p className="muted" style={{ margin: "4px 0 0", fontSize: "13px" }}>
-                💡 <strong>คำแนะนำ:</strong> คลิกที่ <strong>ช่องชื่อโรงเรียน</strong> ในแต่ละลู่ เพื่อเปิดหน้าต่างบันทึก{" "}
-                <strong>อันดับ และ สถานะฟาล์ว</strong> เมื่อได้ผล ๑–๓ จากรอบ ๑ และ รอบ ๒ ระบบจะส่งไปรอบชิงชนะเลิศอัตโนมัติ (เรียงลู่ 3-2-1-1-2-3)
+              <p className="muted no-print" style={{ margin: "4px 0 0", fontSize: "13px" }}>
+                💡 <strong>คำแนะนำ:</strong> คลิกที่ <strong>ช่องชื่อโรงเรียน</strong> ในรอบใดก็ได้ เพื่อเปิดหน้าต่างบันทึก{" "}
+                <strong>อันดับ และ สถานะฟาล์ว ของทั้งฮีตในครั้งเดียว</strong> เมื่อได้ผล ๑–๓ จากรอบ ๑ และ รอบ ๒ ระบบจะส่งไปรอบชิงชนะเลิศอัตโนมัติ (เรียงลู่ 3-2-1-1-2-3)
               </p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className="no-print" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <div
                 style={{
                   position: "relative",
@@ -1148,6 +1423,7 @@ export function AthleticsScoresheet({
                   </th>
                   <th
                     rowSpan={2}
+                    className="no-print"
                     style={{
                       padding: "8px",
                       border: "1px solid #334155",
@@ -1224,158 +1500,177 @@ export function AthleticsScoresheet({
                       {item.type || "-"}
                     </td>
 
-                    {/* รอบ 1: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
-                    {item.r1.map((schoolName, idx) => {
-                      const lane = item.r1Lanes?.[idx];
-                      const isFoul = lane?.isFoul;
-                      const rank = lane?.rank;
-                      return (
-                        <td
-                          key={`r1-${idx}`}
-                          onClick={() => openCellModal(item.id, "r1", idx)}
-                          title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
-                          style={{
-                            padding: "4px",
-                            borderRight: "1px solid #e2e8f0",
-                            background: isFoul
-                              ? "#fee2e2"
-                              : rank === "1"
-                                ? "#fef08a"
-                                : rank === "2"
-                                  ? "#e2e8f0"
-                                  : rank === "3"
-                                    ? "#ffedd5"
-                                    : schoolName
-                                      ? "#eff6ff"
-                                      : "transparent",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                            transition: "background 0.15s",
-                          }}
-                        >
-                          {schoolName ? (
-                            <div
+                    {/* กรณีรายการที่แข่งรอบชิงทันที (ไม่มีรอบคัดเลือก รอบ ๑ และ รอบ ๒) */}
+                    {item.directFinal ? (
+                      <td
+                        colSpan={10}
+                        style={{
+                          padding: "6px",
+                          borderRight: "1px solid #e2e8f0",
+                          background: "#f1f5f9",
+                          color: "#64748b",
+                          fontSize: "12px",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        — แข่งขันรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก ๑ และ ๒) —
+                      </td>
+                    ) : (
+                      <>
+                        {/* รอบ 1: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
+                        {item.r1.map((schoolName, idx) => {
+                          const lane = item.r1Lanes?.[idx];
+                          const isFoul = lane?.isFoul;
+                          const rank = lane?.rank;
+                          return (
+                            <td
+                              key={`r1-${idx}`}
+                              onClick={() => openCellModal(item.id, "r1", idx)}
+                              title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
                               style={{
-                                fontWeight: 600,
-                                color: isFoul ? "#b91c1c" : "#1e3a8a",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                maxWidth: "115px",
-                                margin: "0 auto",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: "3px",
+                                padding: "4px",
+                                borderRight: "1px solid #e2e8f0",
+                                background: isFoul
+                                  ? "#fee2e2"
+                                  : rank === "1"
+                                    ? "#fef08a"
+                                    : rank === "2"
+                                      ? "#e2e8f0"
+                                      : rank === "3"
+                                        ? "#ffedd5"
+                                        : schoolName
+                                          ? "#eff6ff"
+                                          : "transparent",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                transition: "background 0.15s",
                               }}
                             >
-                              <span>{getDisplaySchoolName(schoolName)}</span>
-                              {isFoul ? (
-                                <span style={{ background: "#dc2626", color: "#fff", padding: "1px 4px", borderRadius: "3px", fontSize: "10px", fontWeight: 700 }}>
-                                  ฟาล์ว
-                                </span>
-                              ) : rank ? (
-                                <span
+                              {schoolName ? (
+                                <div
                                   style={{
-                                    background: rank === "1" ? "#ca8a04" : rank === "2" ? "#475569" : "#c2410c",
-                                    color: "#fff",
-                                    padding: "1px 4px",
-                                    borderRadius: "3px",
-                                    fontSize: "10px",
-                                    fontWeight: 700,
+                                    fontWeight: 600,
+                                    color: isFoul ? "#b91c1c" : "#1e3a8a",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    maxWidth: "115px",
+                                    margin: "0 auto",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "3px",
                                   }}
                                 >
-                                  {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <span style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
-                          )}
-                        </td>
-                      );
-                    })}
+                                  <span>{getDisplaySchoolName(schoolName)}</span>
+                                  {isFoul ? (
+                                    <span style={{ background: "#dc2626", color: "#fff", padding: "1px 4px", borderRadius: "3px", fontSize: "10px", fontWeight: 700 }}>
+                                      ฟาล์ว
+                                    </span>
+                                  ) : rank ? (
+                                    <span
+                                      style={{
+                                        background: rank === "1" ? "#ca8a04" : rank === "2" ? "#475569" : "#c2410c",
+                                        color: "#fff",
+                                        padding: "1px 4px",
+                                        borderRadius: "3px",
+                                        fontSize: "10px",
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
+                              )}
+                            </td>
+                          );
+                        })}
 
-                    {/* รอบ 2: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
-                    {item.r2.map((schoolName, idx) => {
-                      const lane = item.r2Lanes?.[idx];
-                      const isFoul = lane?.isFoul;
-                      const rank = lane?.rank;
-                      return (
-                        <td
-                          key={`r2-${idx}`}
-                          onClick={() => openCellModal(item.id, "r2", idx)}
-                          title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
-                          style={{
-                            padding: "4px",
-                            borderRight: "1px solid #e2e8f0",
-                            background: isFoul
-                              ? "#fee2e2"
-                              : rank === "1"
-                                ? "#fef08a"
-                                : rank === "2"
-                                  ? "#e2e8f0"
-                                  : rank === "3"
-                                    ? "#ffedd5"
-                                    : schoolName
-                                      ? "#eff6ff"
-                                      : "transparent",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                            transition: "background 0.15s",
-                          }}
-                        >
-                          {schoolName ? (
-                            <div
+                        {/* รอบ 2: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
+                        {item.r2.map((schoolName, idx) => {
+                          const lane = item.r2Lanes?.[idx];
+                          const isFoul = lane?.isFoul;
+                          const rank = lane?.rank;
+                          return (
+                            <td
+                              key={`r2-${idx}`}
+                              onClick={() => openCellModal(item.id, "r2", idx)}
+                              title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
                               style={{
-                                fontWeight: 600,
-                                color: isFoul ? "#b91c1c" : "#1e3a8a",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                maxWidth: "115px",
-                                margin: "0 auto",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: "3px",
+                                padding: "4px",
+                                borderRight: "1px solid #e2e8f0",
+                                background: isFoul
+                                  ? "#fee2e2"
+                                  : rank === "1"
+                                    ? "#fef08a"
+                                    : rank === "2"
+                                      ? "#e2e8f0"
+                                      : rank === "3"
+                                        ? "#ffedd5"
+                                        : schoolName
+                                          ? "#eff6ff"
+                                          : "transparent",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                transition: "background 0.15s",
                               }}
                             >
-                              <span>{getDisplaySchoolName(schoolName)}</span>
-                              {isFoul ? (
-                                <span style={{ background: "#dc2626", color: "#fff", padding: "1px 4px", borderRadius: "3px", fontSize: "10px", fontWeight: 700 }}>
-                                  ฟาล์ว
-                                </span>
-                              ) : rank ? (
-                                <span
+                              {schoolName ? (
+                                <div
                                   style={{
-                                    background: rank === "1" ? "#ca8a04" : rank === "2" ? "#475569" : "#c2410c",
-                                    color: "#fff",
-                                    padding: "1px 4px",
-                                    borderRadius: "3px",
-                                    fontSize: "10px",
-                                    fontWeight: 700,
+                                    fontWeight: 600,
+                                    color: isFoul ? "#b91c1c" : "#1e3a8a",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    maxWidth: "115px",
+                                    margin: "0 auto",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "3px",
                                   }}
                                 >
-                                  {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <span style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
-                          )}
-                        </td>
-                      );
-                    })}
+                                  <span>{getDisplaySchoolName(schoolName)}</span>
+                                  {isFoul ? (
+                                    <span style={{ background: "#dc2626", color: "#fff", padding: "1px 4px", borderRadius: "3px", fontSize: "10px", fontWeight: 700 }}>
+                                      ฟาล์ว
+                                    </span>
+                                  ) : rank ? (
+                                    <span
+                                      style={{
+                                        background: rank === "1" ? "#ca8a04" : rank === "2" ? "#475569" : "#c2410c",
+                                        color: "#fff",
+                                        padding: "1px 4px",
+                                        borderRadius: "3px",
+                                        fontSize: "10px",
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </>
+                    )}
 
                     {/* รอบชิงชนะเลิศ: ลู่ 1-6 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว/เหรียญ) */}
                     {item.r3.map((schoolName, idx) => {
                       const lane = item.r3Lanes?.[idx];
                       const isFoul = lane?.isFoul;
                       const rank = lane?.rank;
-                      const isGold = rank === "1";
-                      const isSilver = rank === "2";
-                      const isBronze = rank === "3";
+                      const isGold = !isFoul && rank === "1";
+                      const isSilver = !isFoul && rank === "2";
+                      const isBronze = !isFoul && rank === "3";
                       return (
                         <td
                           key={`r3-${idx}`}
@@ -1440,14 +1735,14 @@ export function AthleticsScoresheet({
                               ) : null}
                             </div>
                           ) : (
-                            <span style={{ color: "#94a3b8", fontSize: "11px" }}>-</span>
+                            <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
                           )}
                         </td>
                       );
                     })}
 
                     {/* Actions: Switch to Registration Tab */}
-                    <td style={{ padding: "6px" }}>
+                    <td className="no-print" style={{ padding: "6px" }}>
                       <button
                         type="button"
                         className="ui-button-outline ui-button-sm"
@@ -1462,6 +1757,7 @@ export function AthleticsScoresheet({
                         }}
                         onClick={() => {
                           setActiveEventId(item.id);
+                          setActiveRound(item.directFinal ? "r3" : "r1");
                           setSubTab("register");
                         }}
                       >
@@ -1480,7 +1776,7 @@ export function AthleticsScoresheet({
       {/* ==================== TAB 3: SUMMARY & SCORE REPORT ===================== */}
       {/* ========================================================================= */}
       {subTab === "summary" && (
-        <div className="printable-report" style={{ background: "#fff", padding: "16px" }}>
+        <div className="printable-report printable-area" style={{ background: "#fff", padding: "16px" }}>
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: "20px" }}>
             <h2 style={{ fontSize: "1.3rem", fontWeight: 700, margin: "0 0 6px" }}>
@@ -1501,12 +1797,9 @@ export function AthleticsScoresheet({
               marginBottom: "30px",
             }}
           >
-            {rows.slice(0, 20).map((r) => {
-              const winners = r.winners || [
-                { rank: 1, athleteName: r.r3Lanes?.[0]?.athleteName || "", schoolName: r.r3Lanes?.[0]?.schoolName || "", score: 3, time: r.r3Lanes?.[0]?.time || "" },
-                { rank: 2, athleteName: r.r3Lanes?.[1]?.athleteName || "", schoolName: r.r3Lanes?.[1]?.schoolName || "", score: 2, time: r.r3Lanes?.[1]?.time || "" },
-                { rank: 3, athleteName: r.r3Lanes?.[2]?.athleteName || "", schoolName: r.r3Lanes?.[2]?.schoolName || "", score: 1, time: r.r3Lanes?.[2]?.time || "" },
-              ];
+            {rows.map((r) => {
+              // แสดงเฉพาะผู้ที่ได้อันดับ 1, 2, 3 ในรอบชิงชนะเลิศจริงๆ เท่านั้น
+              const winners = computeFinalsWinners(r.r3Lanes || []);
 
               return (
                 <div
@@ -1556,7 +1849,7 @@ export function AthleticsScoresheet({
                               {w?.schoolName ? getDisplaySchoolName(w.schoolName) : "-"}
                             </td>
                             <td style={{ padding: "5px 4px", fontWeight: 700 }}>
-                              {rank === 1 ? "๓" : rank === 2 ? "๒" : "๑"}
+                              {w?.schoolName ? (rank === 1 ? "๓" : rank === 2 ? "๒" : "๑") : "-"}
                             </td>
                             <td style={{ padding: "5px 4px", color: "#64748b" }}>
                               {w?.time || "-"}
@@ -1584,7 +1877,7 @@ export function AthleticsScoresheet({
               สรุปผลรวมการแข่งขันกรีฑานักเรียน
             </h3>
 
-            <div style={{ maxWidth: "680px", margin: "0 auto 30px" }}>
+            <div style={{ maxWidth: "760px", margin: "0 auto 30px" }}>
               <table
                 style={{
                   width: "100%",
@@ -1595,11 +1888,20 @@ export function AthleticsScoresheet({
               >
                 <thead>
                   <tr style={{ background: "#f472b6", color: "#fff", fontWeight: 700 }}>
-                    <th style={{ padding: "8px", border: "1px solid #fbcfe8", width: "60px" }}>
+                    <th style={{ padding: "8px", border: "1px solid #fbcfe8", width: "65px" }}>
                       ลำดับที่
                     </th>
                     <th style={{ padding: "8px", border: "1px solid #fbcfe8", textAlign: "left" }}>
                       โรงเรียน
+                    </th>
+                    <th style={{ padding: "8px", border: "1px solid #fbcfe8", width: "65px" }}>
+                      🥇 ทอง
+                    </th>
+                    <th style={{ padding: "8px", border: "1px solid #fbcfe8", width: "65px" }}>
+                      🥈 เงิน
+                    </th>
+                    <th style={{ padding: "8px", border: "1px solid #fbcfe8", width: "75px" }}>
+                      🥉 ทองแดง
                     </th>
                     <th style={{ padding: "8px", border: "1px solid #fbcfe8", width: "90px" }}>
                       คะแนนรวม
@@ -1612,24 +1914,39 @@ export function AthleticsScoresheet({
                 <tbody>
                   {rankedSchools.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: "16px", color: "#94a3b8" }}>
-                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับ ๑=๓ แต้ม, ๒=๒ แต้ม, ๓=๑ แต้ม ในรอบชิง)
+                      <td colSpan={7} style={{ padding: "16px", color: "#94a3b8" }}>
+                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับ ๑=๓ แต้ม, ๒=๒ แต้ม, ๓=๑ แต้ม ในรอบชิงชนะเลิศ)
                       </td>
                     </tr>
                   ) : (
-                    rankedSchools.map((s, idx) => (
+                    rankedSchools.map((s) => (
                       <tr key={s.schoolName} style={{ borderBottom: "1px solid #fbcfe8" }}>
                         <td style={{ padding: "8px", fontWeight: 600 }}>
-                          {idx === 0 ? "🥇 ๑" : idx === 1 ? "🥈 ๒" : idx === 2 ? "🥉 ๓" : idx + 1}
+                          {s.place === 1
+                            ? "🥇 ๑"
+                            : s.place === 2
+                              ? "🥈 ๒"
+                              : s.place === 3
+                                ? "🥉 ๓"
+                                : toThaiNumber(s.place)}
                         </td>
                         <td style={{ padding: "8px", textAlign: "left", fontWeight: 600 }}>
                           {s.schoolName}
+                        </td>
+                        <td style={{ padding: "8px", fontWeight: 600, color: "#854d0e" }}>
+                          {s.gold}
+                        </td>
+                        <td style={{ padding: "8px", fontWeight: 600, color: "#475569" }}>
+                          {s.silver}
+                        </td>
+                        <td style={{ padding: "8px", fontWeight: 600, color: "#9a3412" }}>
+                          {s.bronze}
                         </td>
                         <td style={{ padding: "8px", fontWeight: 700, color: "#be185d", fontSize: "15px" }}>
                           {s.totalScore}
                         </td>
                         <td style={{ padding: "8px", color: "#64748b" }}>
-                          {idx === 0 ? "ชนะเลิศคะแนนรวม" : "-"}
+                          {s.place === 1 ? "ชนะเลิศคะแนนรวม" : "-"}
                         </td>
                       </tr>
                     ))
@@ -1667,24 +1984,25 @@ export function AthleticsScoresheet({
       )}
 
       {/* ========================================================================= */}
-      {/* ==================== MODAL: บันทึกผล อันดับ และ ฟาล์ว ==================== */}
+      {/* ========= MODAL: บันทึกผล อันดับ และ ฟาล์ว (ครบทั้งฮีตในหน้าต่างเดียว) ========= */}
       {/* ========================================================================= */}
-      {cellModal && (() => {
-        const modalRow = rows.find((r) => r.id === cellModal.rowId);
+      {roundModal && (() => {
+        const modalRow = rows.find((r) => r.id === roundModal.rowId);
         if (!modalRow) return null;
         const roundTitle =
-          cellModal.roundKey === "r1"
+          roundModal.roundKey === "r1"
             ? "รอบ ๑ (๕ ลู่)"
-            : cellModal.roundKey === "r2"
+            : roundModal.roundKey === "r2"
               ? "รอบ ๒ (๕ ลู่)"
               : "รอบชิงชนะเลิศ (๖ ลู่)";
 
         return (
           <div
+            className="no-print"
             style={{
               position: "fixed",
               inset: 0,
-              background: "rgba(15, 23, 42, 0.6)",
+              background: "rgba(15, 23, 42, 0.65)",
               backdropFilter: "blur(4px)",
               zIndex: 10000,
               display: "flex",
@@ -1697,11 +2015,12 @@ export function AthleticsScoresheet({
               style={{
                 background: "#fff",
                 borderRadius: "12px",
-                maxWidth: "500px",
+                maxWidth: "880px",
                 width: "100%",
-                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
+                maxHeight: "92vh",
+                overflowY: "auto",
+                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.25)",
                 border: "1px solid #cbd5e1",
-                overflow: "hidden",
               }}
             >
               {/* Modal Header */}
@@ -1716,16 +2035,16 @@ export function AthleticsScoresheet({
                 }}
               >
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    บันทึกผลการแข่งขันและสถานะฟาล์ว
+                  <h3 style={{ margin: 0, fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>บันทึกผลการแข่งขัน อันดับ และสถานะฟาล์ว · {roundTitle}</span>
                   </h3>
-                  <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#94a3b8" }}>
-                    รายการที่ {modalRow.no}: {modalRow.name} ({modalRow.grade} {modalRow.type})
+                  <p style={{ margin: "3px 0 0", fontSize: "13px", color: "#cbd5e1" }}>
+                    รายการที่ {modalRow.no}: <strong>{modalRow.name}</strong> (ระดับ {modalRow.grade} · เพศ{modalRow.type})
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setCellModal(null)}
+                  onClick={() => setRoundModal(null)}
                   style={{
                     background: "transparent",
                     border: "none",
@@ -1739,202 +2058,246 @@ export function AthleticsScoresheet({
               </div>
 
               {/* Modal Body */}
-              <div style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "14px" }}>
-                {/* Round & Lane Banner */}
+              <div style={{ padding: "16px 18px" }}>
+                {/* Guide Banner */}
                 <div
                   style={{
-                    background: cellModal.roundKey === "r3" ? "#fefce8" : "#f0fdf4",
-                    border: `1px solid ${cellModal.roundKey === "r3" ? "#fef08a" : "#bbf7d0"}`,
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    color: cellModal.roundKey === "r3" ? "#854d0e" : "#166534",
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span>{roundTitle}</span>
-                  <span>ลู่ที่ {cellModal.subIndex + 1}</span>
-                </div>
-
-                {/* School Selection */}
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
-                    โรงเรียนประจำลู่:
-                  </label>
-                  <select
-                    value={cellModal.schoolName}
-                    onChange={(e) => setCellModal({ ...cellModal, schoolName: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "14px",
-                    }}
-                  >
-                    <option value="">-- เลือกโรงเรียน --</option>
-                    {schoolOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Athlete Name */}
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
-                    ชื่อ - นามสกุล นักกีฬา (ถ้ามี):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="เช่น ด.ช.สมชาย มุ่งมั่น"
-                    value={cellModal.athleteName}
-                    onChange={(e) => setCellModal({ ...cellModal, athleteName: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "14px",
-                    }}
-                  />
-                </div>
-
-                {/* Foul Status Box */}
-                <div
-                  style={{
-                    background: cellModal.isFoul ? "#fee2e2" : "#f8fafc",
-                    border: `1.5px solid ${cellModal.isFoul ? "#ef4444" : "#e2e8f0"}`,
-                    padding: "12px",
+                    background: roundModal.roundKey === "r3" ? "#fefce8" : "#f0fdf4",
+                    border: `1px solid ${roundModal.roundKey === "r3" ? "#fef08a" : "#bbf7d0"}`,
+                    padding: "10px 14px",
                     borderRadius: "8px",
+                    marginBottom: "14px",
+                    fontSize: "13px",
+                    color: roundModal.roundKey === "r3" ? "#854d0e" : "#166534",
                   }}
                 >
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      fontSize: "14px",
-                      fontWeight: 700,
-                      color: cellModal.isFoul ? "#b91c1c" : "#334155",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={cellModal.isFoul}
-                      onChange={(e) =>
-                        setCellModal({
-                          ...cellModal,
-                          isFoul: e.target.checked,
-                          rank: e.target.checked ? "DQ" : "",
-                        })
-                      }
-                      style={{ width: "16px", height: "16px", cursor: "pointer" }}
-                    />
-                    <AlertTriangle size={16} color={cellModal.isFoul ? "#dc2626" : "#64748b"} />
-                    ฟาล์ว (ผิดกติกา / ปรับแพ้ฟาล์ว DQ)
-                  </label>
-
-                  {cellModal.isFoul && (
-                    <div style={{ marginTop: "8px" }}>
-                      <select
-                        value={cellModal.foulReason}
-                        onChange={(e) => setCellModal({ ...cellModal, foulReason: e.target.value })}
-                        style={{
-                          width: "100%",
-                          padding: "6px 8px",
-                          borderRadius: "6px",
-                          border: "1px solid #fca5a5",
-                          fontSize: "13px",
-                          background: "#fff",
-                        }}
-                      >
-                        <option value="เหยียบเส้น/ล้ำลู่">เหยียบเส้น / ล้ำลู่</option>
-                        <option value="ออกตัวก่อนปล่อยสัญญาณ (False Start)">ออกตัวก่อนปล่อยสัญญาณ (False Start)</option>
-                        <option value="ทำไม้หล่น (วิ่งผลัด)">ทำไม้หล่น (วิ่งผลัด)</option>
-                        <option value="วิ่งตัดหน้า/กีดขวางคู่แข่ง">วิ่งตัดหน้า / กีดขวางคู่แข่ง</option>
-                        <option value="ผิดกติกาการแข่งขัน">ผิดกติกาการแข่งขันทั่วไป</option>
-                      </select>
-                    </div>
+                  {roundModal.roundKey === "r3" ? (
+                    <>
+                      🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> เลือกอันดับ <strong>ที่ ๑ (ทอง ๓ แต้ม), ที่ ๒ (เงิน ๒ แต้ม), ที่ ๓ (ทองแดง ๑ แต้ม)</strong> หรือระบุสถานะฟาล์วได้ครบทุกลู่ในหน้าต่างเดียว ระบบป้องกันอันดับซ้ำให้อัตโนมัติ
+                    </>
+                  ) : (
+                    <>
+                      🏃 <strong>{roundTitle}:</strong> บันทึกอันดับเข้าเส้นชัย <strong>ที่ ๑, ที่ ๒, ที่ ๓</strong> หรือติ๊ก <strong>ฟาล์ว (DQ)</strong> ของแต่ละลู่ได้พร้อมกัน เมื่อกดบันทึก ระบบจะส่งอันดับ ๑–๓ ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ <strong>3-2-1-1-2-3</strong>) ให้อัตโนมัติ
+                    </>
                   )}
                 </div>
 
-                {/* Finish Rank (Disabled if foul) */}
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
-                    อันดับเข้าเส้นชัย:
-                  </label>
-                  <select
-                    disabled={cellModal.isFoul}
-                    value={cellModal.isFoul ? "DQ" : cellModal.rank}
-                    onChange={(e) => setCellModal({ ...cellModal, rank: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "14px",
-                      fontWeight: cellModal.rank ? 700 : 400,
-                      background: cellModal.isFoul ? "#f1f5f9" : "#fff",
-                      color:
-                        cellModal.rank === "1"
-                          ? "#ca8a04"
-                          : cellModal.rank === "2"
-                            ? "#475569"
-                            : cellModal.rank === "3"
-                              ? "#c2410c"
-                              : "#1e293b",
-                    }}
-                  >
-                    <option value="">-- ยังไม่ระบุอันดับ --</option>
-                    {cellModal.roundKey === "r3" ? (
-                      <>
-                        <option value="1">🥇 ที่ ๑ (เหรียญทอง · ๓ แต้ม)</option>
-                        <option value="2">🥈 ที่ ๒ (เหรียญเงิน · ๒ แต้ม)</option>
-                        <option value="3">🥉 ที่ ๓ (เหรียญทองแดง · ๑ แต้ม)</option>
-                        <option value="4">ที่ ๔</option>
-                        <option value="5">ที่ ๕</option>
-                        <option value="6">ที่ ๖</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="1">ที่ ๑ (เข้ารอบชิง)</option>
-                        <option value="2">ที่ ๒ (เข้ารอบชิง)</option>
-                        <option value="3">ที่ ๓ (เข้ารอบชิง)</option>
-                        <option value="4">ที่ ๔</option>
-                        <option value="5">ที่ ๕</option>
-                      </>
-                    )}
-                  </select>
-                  {cellModal.roundKey !== "r3" && !cellModal.isFoul && (
-                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#0f766e" }}>
-                      *หากระบุอันดับ ๑, ๒, ๓ ระบบจะจัดลู่รอบชิงชนะเลิศ (3-2-1-1-2-3) ให้อัตโนมัติ
-                    </p>
-                  )}
-                </div>
+                {/* All Lanes Table in Modal */}
+                <div
+                  style={{
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    overflowX: "auto",
+                  }}
+                >
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #cbd5e1", color: "#1e293b" }}>
+                        <th style={{ padding: "8px", width: "65px", textAlign: "center" }}>ลู่</th>
+                        <th style={{ padding: "8px", minWidth: "210px", textAlign: "left" }}>โรงเรียน</th>
+                        <th style={{ padding: "8px", minWidth: "150px", textAlign: "left" }}>ชื่อ-สกุล นักกีฬา</th>
+                        <th style={{ padding: "8px", width: "165px", textAlign: "center" }}>อันดับเข้าเส้นชัย</th>
+                        <th style={{ padding: "8px", width: "175px", textAlign: "left" }}>สถานะฟาล์ว (DQ)</th>
+                        <th style={{ padding: "8px", width: "95px", textAlign: "center" }}>เวลา/สถิติ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roundModal.lanes.map((lane, idx) => {
+                        const isFocused = idx === roundModal.focusedLaneIdx;
+                        return (
+                          <tr
+                            key={idx}
+                            style={{
+                              borderBottom: "1px solid #e2e8f0",
+                              background: lane.isFoul
+                                ? "#fef2f2"
+                                : lane.rank === "1"
+                                  ? "#fef9c3"
+                                  : isFocused
+                                    ? "#f0fdf4"
+                                    : "#fff",
+                            }}
+                          >
+                            {/* Lane Number */}
+                            <td
+                              style={{
+                                padding: "8px",
+                                textAlign: "center",
+                                fontWeight: 700,
+                                color: isFocused ? "#0f766e" : "#334155",
+                              }}
+                            >
+                              ลู่ {lane.lane}
+                            </td>
 
-                {/* Time / Mark (Optional) */}
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
-                    สถิติเวลา/ผล (ถ้ามี):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="เช่น 12.45 วิ"
-                    value={cellModal.time}
-                    onChange={(e) => setCellModal({ ...cellModal, time: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "13px",
-                    }}
-                  />
+                            {/* School Select */}
+                            <td style={{ padding: "6px 8px" }}>
+                              <select
+                                value={lane.schoolName}
+                                onChange={(e) =>
+                                  updateModalLane(idx, { schoolName: e.target.value })
+                                }
+                                style={{
+                                  width: "100%",
+                                  padding: "6px 8px",
+                                  borderRadius: "6px",
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: "13px",
+                                  fontWeight: lane.schoolName ? 600 : 400,
+                                }}
+                              >
+                                <option value="">-- เลือกโรงเรียน --</option>
+                                {schoolOptions.map((name) => (
+                                  <option key={name} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+
+                            {/* Athlete Name */}
+                            <td style={{ padding: "6px 8px" }}>
+                              <input
+                                type="text"
+                                placeholder="ชื่อ-สกุล (ถ้ามี)"
+                                value={lane.athleteName}
+                                onChange={(e) =>
+                                  updateModalLane(idx, { athleteName: e.target.value })
+                                }
+                                style={{
+                                  width: "100%",
+                                  padding: "6px 8px",
+                                  borderRadius: "6px",
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: "13px",
+                                }}
+                              />
+                            </td>
+
+                            {/* Rank Select */}
+                            <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                              <select
+                                disabled={lane.isFoul}
+                                value={lane.isFoul ? "DQ" : lane.rank || ""}
+                                onChange={(e) =>
+                                  updateModalLane(idx, { rank: e.target.value })
+                                }
+                                style={{
+                                  width: "100%",
+                                  padding: "6px 8px",
+                                  borderRadius: "6px",
+                                  border:
+                                    lane.rank && !lane.isFoul
+                                      ? "1.5px solid #0f766e"
+                                      : "1px solid #cbd5e1",
+                                  fontSize: "13px",
+                                  fontWeight: lane.rank ? 700 : 400,
+                                  background: lane.isFoul ? "#fee2e2" : "#fff",
+                                  color: lane.isFoul
+                                    ? "#b91c1c"
+                                    : lane.rank === "1"
+                                      ? "#ca8a04"
+                                      : lane.rank === "2"
+                                        ? "#475569"
+                                        : lane.rank === "3"
+                                          ? "#c2410c"
+                                          : "#1e293b",
+                                }}
+                              >
+                                <option value="">- ไม่ระบุอันดับ -</option>
+                                {roundModal.roundKey === "r3" ? (
+                                  <>
+                                    <option value="1">🥇 ที่ ๑ (ทอง · ๓ แต้ม)</option>
+                                    <option value="2">🥈 ที่ ๒ (เงิน · ๒ แต้ม)</option>
+                                    <option value="3">🥉 ที่ ๓ (ทองแดง · ๑ แต้ม)</option>
+                                    <option value="4">ที่ ๔</option>
+                                    <option value="5">ที่ ๕</option>
+                                    <option value="6">ที่ ๖</option>
+                                  </>
+                                ) : (
+                                  <>
+                                    <option value="1">ที่ ๑ (เข้ารอบชิง)</option>
+                                    <option value="2">ที่ ๒ (เข้ารอบชิง)</option>
+                                    <option value="3">ที่ ๓ (เข้ารอบชิง)</option>
+                                    <option value="4">ที่ ๔</option>
+                                    <option value="5">ที่ ๕</option>
+                                  </>
+                                )}
+                                {lane.isFoul && <option value="DQ">ฟาล์ว (DQ)</option>}
+                              </select>
+                            </td>
+
+                            {/* Foul Checkbox & Reason */}
+                            <td style={{ padding: "6px 8px" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <label
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    cursor: "pointer",
+                                    fontWeight: lane.isFoul ? 700 : 500,
+                                    color: lane.isFoul ? "#b91c1c" : "#475569",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={!!lane.isFoul}
+                                    onChange={(e) =>
+                                      updateModalLane(idx, { isFoul: e.target.checked })
+                                    }
+                                  />
+                                  <span>ฟาล์ว (DQ)</span>
+                                </label>
+                                {lane.isFoul && (
+                                  <select
+                                    value={lane.foulReason || FOUL_REASONS[0]}
+                                    onChange={(e) =>
+                                      updateModalLane(idx, { foulReason: e.target.value })
+                                    }
+                                    style={{
+                                      width: "100%",
+                                      padding: "4px 6px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #fca5a5",
+                                      fontSize: "11px",
+                                      background: "#fff",
+                                    }}
+                                  >
+                                    {FOUL_REASONS.map((reason) => (
+                                      <option key={reason} value={reason}>
+                                        {reason}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Time / Stat */}
+                            <td style={{ padding: "6px 8px" }}>
+                              <input
+                                type="text"
+                                placeholder="เช่น 12.4 วิ"
+                                value={lane.time || ""}
+                                onChange={(e) =>
+                                  updateModalLane(idx, { time: e.target.value })
+                                }
+                                style={{
+                                  width: "100%",
+                                  padding: "6px 6px",
+                                  textAlign: "center",
+                                  borderRadius: "6px",
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: "12px",
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
@@ -1952,14 +2315,14 @@ export function AthleticsScoresheet({
                 <button
                   type="button"
                   className="ui-button-outline"
-                  onClick={() => setCellModal(null)}
+                  onClick={() => setRoundModal(null)}
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="button"
                   className="primary"
-                  onClick={handleSaveCellModal}
+                  onClick={handleSaveRoundModal}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -1967,7 +2330,7 @@ export function AthleticsScoresheet({
                     background: "#0f766e",
                   }}
                 >
-                  <Save size={15} /> บันทึกผล
+                  <Save size={15} /> บันทึกผลทั้งรอบ
                 </button>
               </div>
             </div>
