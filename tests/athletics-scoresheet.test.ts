@@ -3,19 +3,52 @@ import test from "node:test";
 
 import {
   INITIAL_ATHLETICS_DATA,
+  addLaneToEventRound,
   assignUniqueRankInLanes,
   calculateSchoolAthleticsStandings,
   computeFinalsWinners,
   defaultLanes,
+  removeLaneFromEventRound,
   syncQualifiersToFinals,
 } from "../components/athletics-scoresheet";
 
-test("athletics data contains 20 canonical events and marks direct-final events", () => {
+test("athletics data contains 20 canonical events and marks direct-final and expandable mini-marathon events", () => {
   assert.equal(INITIAL_ATHLETICS_DATA.length, 20);
   const directIds = INITIAL_ATHLETICS_DATA.filter((r) => r.directFinal).map(
     (r) => r.id,
   );
   assert.deepEqual(directIds, [1, 2, 3, 4, 15, 16, 19, 20]);
+  const expandableIds = INITIAL_ATHLETICS_DATA.filter(
+    (r) => r.expandableLanes,
+  ).map((r) => r.id);
+  assert.deepEqual(expandableIds, [1, 2, 3, 4]);
+});
+
+test("mini-marathon can continuously add lanes beyond 6 and remove lanes with renumbering", () => {
+  let mini = structuredClone(INITIAL_ATHLETICS_DATA[0]); // รายการที่ 1 วิ่ง มินิมาราธอน ประถม ชาย
+  assert.equal(mini.r3Lanes.length, 6);
+
+  // Add lanes 7, 8, 9 (multiple athletes from same school allowed)
+  mini = addLaneToEventRound(mini, "r3");
+  mini = addLaneToEventRound(mini, "r3");
+  mini = addLaneToEventRound(mini, "r3");
+  assert.equal(mini.r3Lanes.length, 9);
+  assert.equal(mini.r3Lanes[8].lane, 9);
+
+  mini.r3Lanes[6].schoolName = "โรงเรียนบ้านหนองแดน";
+  mini.r3Lanes[6].athleteName = "คนที่ 1";
+  mini.r3Lanes[7].schoolName = "โรงเรียนบ้านหนองแดน";
+  mini.r3Lanes[7].athleteName = "คนที่ 2";
+  mini.r3Lanes[8].schoolName = "โรงเรียนบ้านดงซ่อม";
+  mini.r3Lanes[8].athleteName = "คนที่ 3";
+  mini.r3Lanes[8].rank = "1";
+
+  // Remove lane 8 (index 7) -> lane 9 becomes lane 8 and keeps rank 1
+  mini = removeLaneFromEventRound(mini, "r3", 7);
+  assert.equal(mini.r3Lanes.length, 8);
+  assert.equal(mini.r3Lanes[7].lane, 8);
+  assert.equal(mini.r3Lanes[7].schoolName, "โรงเรียนบ้านดงซ่อม");
+  assert.equal(mini.winners?.[0].schoolName, "โรงเรียนบ้านดงซ่อม");
 });
 
 test("computeFinalsWinners does not award premature medals to unranked lanes", () => {
