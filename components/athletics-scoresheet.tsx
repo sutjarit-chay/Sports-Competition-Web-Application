@@ -15,6 +15,8 @@ import {
   ClipboardList,
   Edit3,
   Trash2,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 
 export type LaneEntry = {
@@ -22,7 +24,9 @@ export type LaneEntry = {
   schoolName: string; // ชื่อโรงเรียน เช่น โรงเรียนบ้านหนองแดน
   athleteName: string; // ชื่อ-สกุล นักกีฬา
   time?: string; // สถิติเวลา/ผล (ถ้ามี)
-  rank?: string; // "1", "2", "3", "4", "5", "6"
+  rank?: string; // "1", "2", "3", "4", "5", "6", "DQ", "DNF", "DNS"
+  isFoul?: boolean; // ฟาล์วหรือไม่
+  foulReason?: string; // รายละเอียดฟาล์ว (ถ้ามี)
 };
 
 export type AthleticsRow = {
@@ -73,6 +77,8 @@ function defaultLanes(count: number): LaneEntry[] {
     athleteName: "",
     time: "",
     rank: "",
+    isFoul: false,
+    foulReason: "",
   }));
 }
 
@@ -100,6 +106,84 @@ export const INITIAL_ATHLETICS_DATA: AthleticsRow[] = [
   { id: 21, no: "๒๑", sourceNumber: 142, name: "วิ่งผลัด ๔x๑๐๐ เมตร", grade: "ป.๔-๖", type: "ชาย", r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
 ];
 
+// Helper to seed qualifiers from Round 1 and Round 2 into Finals (3, 2, 1, 1, 2, 3)
+export function syncQualifiersToFinals(row: AthleticsRow): { row: AthleticsRow; newlyAdvanced: boolean } {
+  const nextR3Lanes = [...row.r3Lanes];
+  const nextR3Cells = [...row.r3];
+
+  const findQualifier = (lanes: LaneEntry[], targetRank: string) => {
+    return lanes.find(
+      (l) => !l.isFoul && (l.rank === targetRank || l.rank === `ที่ ${targetRank}`),
+    );
+  };
+
+  const r1First = findQualifier(row.r1Lanes, "1");
+  const r1Second = findQualifier(row.r1Lanes, "2");
+  const r1Third = findQualifier(row.r1Lanes, "3");
+
+  const r2First = findQualifier(row.r2Lanes, "1");
+  const r2Second = findQualifier(row.r2Lanes, "2");
+  const r2Third = findQualifier(row.r2Lanes, "3");
+
+  // Seeding order across lanes 1-6: 3, 2, 1, 1, 2, 3
+  // ลู่ ๑ (idx 0) = R1 #3
+  // ลู่ ๒ (idx 1) = R1 #2
+  // ลู่ ๓ (idx 2) = R1 #1
+  // ลู่ ๔ (idx 3) = R2 #1
+  // ลู่ ๕ (idx 4) = R2 #2
+  // ลู่ ๖ (idx 5) = R2 #3
+  const mapping: [number, LaneEntry | undefined][] = [
+    [0, r1Third],  // ลู่ ๑: อันดับ ๓ รอบ ๑
+    [1, r1Second], // ลู่ ๒: อันดับ ๒ รอบ ๑
+    [2, r1First],  // ลู่ ๓: อันดับ ๑ รอบ ๑
+    [3, r2First],  // ลู่ ๔: อันดับ ๑ รอบ ๒
+    [4, r2Second], // ลู่ ๕: อันดับ ๒ รอบ ๒
+    [5, r2Third],  // ลู่ ๖: อันดับ ๓ รอบ ๒
+  ];
+
+  let newlyAdvanced = false;
+  mapping.forEach(([targetLaneIdx, qualifier]) => {
+    if (qualifier && qualifier.schoolName) {
+      if (
+        nextR3Lanes[targetLaneIdx].schoolName !== qualifier.schoolName ||
+        nextR3Lanes[targetLaneIdx].athleteName !== qualifier.athleteName
+      ) {
+        newlyAdvanced = true;
+      }
+      nextR3Lanes[targetLaneIdx] = {
+        ...nextR3Lanes[targetLaneIdx],
+        schoolName: qualifier.schoolName,
+        athleteName: qualifier.athleteName || "",
+        isFoul: false,
+        rank: nextR3Lanes[targetLaneIdx].rank || "",
+        time: "",
+      };
+      nextR3Cells[targetLaneIdx] = qualifier.schoolName;
+    }
+  });
+
+  return {
+    row: {
+      ...row,
+      r3Lanes: nextR3Lanes,
+      r3: nextR3Cells,
+    },
+    newlyAdvanced,
+  };
+}
+
+type CellModalData = {
+  rowId: number;
+  roundKey: "r1" | "r2" | "r3";
+  subIndex: number;
+  schoolName: string;
+  athleteName: string;
+  rank: string;
+  isFoul: boolean;
+  foulReason: string;
+  time: string;
+};
+
 export function AthleticsScoresheet({
   schools = [],
 }: {
@@ -111,6 +195,9 @@ export function AthleticsScoresheet({
   const [activeEventId, setActiveEventId] = useState<number>(1);
   const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r1");
   const [toast, setToast] = useState<string | null>(null);
+
+  // Cell modal for scoresheet inline click
+  const [cellModal, setCellModal] = useState<CellModalData | null>(null);
 
   // Available school list (database prop or fallback)
   const schoolOptions =
@@ -172,12 +259,92 @@ export function AthleticsScoresheet({
       roundCells[index] = val;
     }
 
-    // If in finals (r3) and rank is assigned (1, 2, or 3), update winners automatically
-    let winners = activeEvent.winners ? [...activeEvent.winners] : [];
+    const updatedEvent: AthleticsRow = {
+      ...activeEvent,
+      [lanesKey]: currentLanes,
+      [roundKey]: roundCells,
+    };
+
+    const nextRows = rows.map((r) => (r.id === activeEvent.id ? updatedEvent : r));
+    saveRows(nextRows);
+  }
+
+  // Open modal from cell click in the scoresheet
+  function openCellModal(rowId: number, roundKey: "r1" | "r2" | "r3", subIndex: number) {
+    const targetRow = rows.find((r) => r.id === rowId);
+    if (!targetRow) return;
+    const lanesKey =
+      roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
+    const lane = targetRow[lanesKey]?.[subIndex] || {
+      lane: subIndex + 1,
+      schoolName: targetRow[roundKey]?.[subIndex] || "",
+      athleteName: "",
+      rank: "",
+      isFoul: false,
+      foulReason: "",
+      time: "",
+    };
+
+    setCellModal({
+      rowId,
+      roundKey,
+      subIndex,
+      schoolName: lane.schoolName || targetRow[roundKey]?.[subIndex] || "",
+      athleteName: lane.athleteName || "",
+      rank: lane.rank || "",
+      isFoul: !!lane.isFoul,
+      foulReason: lane.foulReason || "",
+      time: lane.time || "",
+    });
+  }
+
+  // Save modal results and automatically seed to finals (3-2-1-1-2-3)
+  function handleSaveCellModal() {
+    if (!cellModal) return;
+    const { rowId, roundKey, subIndex, schoolName, athleteName, rank, isFoul, foulReason, time } = cellModal;
+
+    const targetRow = rows.find((r) => r.id === rowId);
+    if (!targetRow) return;
+
+    const lanesKey =
+      roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
+    const updatedLanes = [...targetRow[lanesKey]];
+    const updatedRoundCells = [...targetRow[roundKey]];
+
+    const finalRank = isFoul ? "DQ" : rank;
+
+    updatedLanes[subIndex] = {
+      ...updatedLanes[subIndex],
+      schoolName,
+      athleteName,
+      rank: finalRank,
+      isFoul,
+      foulReason: isFoul ? foulReason || "ฟาล์ว/ผิดกติกา" : "",
+      time,
+    };
+    updatedRoundCells[subIndex] = schoolName;
+
+    let updatedRow: AthleticsRow = {
+      ...targetRow,
+      [lanesKey]: updatedLanes,
+      [roundKey]: updatedRoundCells,
+    };
+
+    // Auto-advance qualifiers (1, 2, 3) from Round 1 and Round 2 into Finals using 3-2-1-1-2-3
+    let autoAdvancedMsg: string | undefined = undefined;
+    if (roundKey === "r1" || roundKey === "r2") {
+      const synced = syncQualifiersToFinals(updatedRow);
+      updatedRow = synced.row;
+      if (synced.newlyAdvanced) {
+        autoAdvancedMsg = "ส่งผู้เข้ารอบเข้าสู่รอบชิงชนะเลิศ (ลำดับลู่ 3-2-1-1-2-3) เรียบร้อย";
+      }
+    }
+
+    // If this edit was in Round 3 (Finals), calculate medal winners automatically
     if (roundKey === "r3") {
-      winners = [1, 2, 3].map((rankNum) => {
-        const matchingLane = currentLanes.find(
-          (l) => l.rank === String(rankNum) || l.rank === `ที่ ${rankNum}`,
+      const winners = [1, 2, 3].map((rankNum) => {
+        const matchingLane = updatedLanes.find(
+          (l) => !l.isFoul && (l.rank === String(rankNum) || l.rank === `ที่ ${rankNum}`),
         );
         return {
           rank: rankNum,
@@ -187,42 +354,18 @@ export function AthleticsScoresheet({
           time: matchingLane?.time || "",
         };
       });
+      updatedRow = {
+        ...updatedRow,
+        winners,
+      };
     }
 
-    const updatedEvent: AthleticsRow = {
-      ...activeEvent,
-      [lanesKey]: currentLanes,
-      [roundKey]: roundCells,
-      winners: roundKey === "r3" ? winners : activeEvent.winners,
-    };
-
-    const nextRows = rows.map((r) => (r.id === activeEvent.id ? updatedEvent : r));
-    saveRows(nextRows);
-  }
-
-  // Handle direct inline cell edit on the main sheet
-  function handleCellChange(
-    rowId: number,
-    roundKey: "r1" | "r2" | "r3",
-    subIndex: number,
-    schoolName: string,
-  ) {
-    const next = rows.map((r) => {
-      if (r.id !== rowId) return r;
-      const round = [...r[roundKey]];
-      round[subIndex] = schoolName;
-      const lanesKey =
-        roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
-      const updatedLanes = [...r[lanesKey]];
-      if (updatedLanes[subIndex]) {
-        updatedLanes[subIndex] = {
-          ...updatedLanes[subIndex],
-          schoolName: schoolName,
-        };
-      }
-      return { ...r, [roundKey]: round, [lanesKey]: updatedLanes };
-    });
-    saveRows(next);
+    const nextRows = rows.map((r) => (r.id === rowId ? updatedRow : r));
+    saveRows(
+      nextRows,
+      autoAdvancedMsg || (isFoul ? `บันทึกสถานะฟาล์ว: ลู่ ${subIndex + 1}` : `บันทึกอันดับ: ลู่ ${subIndex + 1}`),
+    );
+    setCellModal(null);
   }
 
   // Update finals medal winner (1st = Gold, 2nd = Silver, 3rd = Bronze)
@@ -246,7 +389,7 @@ export function AthleticsScoresheet({
     // Also update rank tag on r3Lanes for medal highlights
     const updatedR3Lanes = activeEvent.r3Lanes.map((l, idx) => {
       if (laneIndex === idx) {
-        return { ...l, rank: String(rankNum) };
+        return { ...l, rank: String(rankNum), isFoul: false };
       }
       if (l.rank === String(rankNum)) {
         return { ...l, rank: "" };
@@ -433,7 +576,6 @@ export function AthleticsScoresheet({
             </h2>
             <p className="muted" style={{ margin: 0, fontSize: "13px" }}>
               เลือกลงทะเบียนนักกีฬาและจัดลู่วิ่งด้วย <strong>ชื่อโรงเรียน</strong> ในแต่ละรอบ (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
-              พร้อมระบุอันดับเข้าเส้นชัยเพื่อส่งตัวเข้ารอบถัดไป
             </p>
           </div>
 
@@ -600,7 +742,7 @@ export function AthleticsScoresheet({
               {activeRound === "r3" ? (
                 <>
                   🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> กำหนดชื่อโรงเรียนและนักกีฬาประจำลู่ ๑–๖
-                  และระบุผู้ได้รับเหรียญทอง เงิน ทองแดง ในส่วนบันทึกผลด้านล่างเพื่อสรุปคะแนนอัตโนมัติ
+                  (หรือระบบจะดึงผล ๑–๓ จากรอบ ๑ และ รอบ ๒ มาจัดลู่ 3-2-1-1-2-3 ให้อัตโนมัติเมื่อกรอกผลในใบบันทึก)
                 </>
               ) : (
                 <>
@@ -644,7 +786,7 @@ export function AthleticsScoresheet({
             </div>
           </div>
 
-          {/* Lane Assignment Form Table */}
+          {/* Lane Assignment Form Table (3 Columns: ลู่, ชื่อโรงเรียน, ชื่อนักกีฬา) */}
           <div
             style={{
               border: "1px solid #cbd5e1",
@@ -740,118 +882,6 @@ export function AthleticsScoresheet({
               </tbody>
             </table>
           </div>
-
-          {/* Finals Winners Recording Panel */}
-          {activeRound === "r3" && (
-            <div
-              style={{
-                background: "#fefce8",
-                border: "1.5px solid #fde047",
-                borderRadius: "10px",
-                padding: "16px",
-                marginBottom: "20px",
-              }}
-            >
-              <h4
-                style={{
-                  margin: "0 0 12px",
-                  color: "#854d0e",
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <Trophy size={18} color="#ca8a04" /> บันทึกผลผู้ได้รับเหรียญรางวัล (รอบชิงชนะเลิศ):
-              </h4>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                  gap: "14px",
-                }}
-              >
-                {/* Gold */}
-                <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #fde047" }}>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#854d0e", marginBottom: "6px" }}>
-                    🥇 เหรียญทอง (ชนะเลิศ · ๓ แต้ม)
-                  </label>
-                  <select
-                    value={
-                      activeEvent.r3Lanes.findIndex(
-                        (l) => l.schoolName && l.schoolName === activeEvent.winners?.find((w) => w.rank === 1)?.schoolName,
-                      )
-                    }
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      updateWinner(1, val === "-1" ? "none" : Number(val));
-                    }}
-                    style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                  >
-                    <option value="-1">-- เลือกลู่ที่ชนะเลิศ --</option>
-                    {activeEvent.r3Lanes.map((l, idx) => (
-                      <option key={idx} value={idx} disabled={!l.schoolName}>
-                        ลู่ {l.lane}: {l.schoolName ? `${getDisplaySchoolName(l.schoolName)} ${l.athleteName ? `(${l.athleteName})` : ""}` : "(ยังไม่มีผู้ลงแข่ง)"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Silver */}
-                <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
-                    🥈 เหรียญเงิน (รองชนะเลิศ อันดับ ๑ · ๒ แต้ม)
-                  </label>
-                  <select
-                    value={
-                      activeEvent.r3Lanes.findIndex(
-                        (l) => l.schoolName && l.schoolName === activeEvent.winners?.find((w) => w.rank === 2)?.schoolName,
-                      )
-                    }
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      updateWinner(2, val === "-1" ? "none" : Number(val));
-                    }}
-                    style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                  >
-                    <option value="-1">-- เลือกลู่รองชนะเลิศอันดับ ๑ --</option>
-                    {activeEvent.r3Lanes.map((l, idx) => (
-                      <option key={idx} value={idx} disabled={!l.schoolName}>
-                        ลู่ {l.lane}: {l.schoolName ? `${getDisplaySchoolName(l.schoolName)} ${l.athleteName ? `(${l.athleteName})` : ""}` : "(ยังไม่มีผู้ลงแข่ง)"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Bronze */}
-                <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #fed7aa" }}>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#9a3412", marginBottom: "6px" }}>
-                    🥉 เหรียญทองแดง (รองชนะเลิศ อันดับ ๒ · ๑ แต้ม)
-                  </label>
-                  <select
-                    value={
-                      activeEvent.r3Lanes.findIndex(
-                        (l) => l.schoolName && l.schoolName === activeEvent.winners?.find((w) => w.rank === 3)?.schoolName,
-                      )
-                    }
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      updateWinner(3, val === "-1" ? "none" : Number(val));
-                    }}
-                    style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                  >
-                    <option value="-1">-- เลือกลู่รองชนะเลิศอันดับ ๒ --</option>
-                    {activeEvent.r3Lanes.map((l, idx) => (
-                      <option key={idx} value={idx} disabled={!l.schoolName}>
-                        ลู่ {l.lane}: {l.schoolName ? `${getDisplaySchoolName(l.schoolName)} ${l.athleteName ? `(${l.athleteName})` : ""}` : "(ยังไม่มีผู้ลงแข่ง)"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Action Row */}
           <div
@@ -988,8 +1018,8 @@ export function AthleticsScoresheet({
                 ใบบันทึกผลการแข่งขันกรีฑา (รอบ ๑, รอบ ๒, รอบชิงชนะเลิศ)
               </h2>
               <p className="muted" style={{ margin: "4px 0 0", fontSize: "13px" }}>
-                ตารางแสดง <strong>ชื่อโรงเรียน</strong> ในแต่ละลู่วิ่ง หรือคลิกปุ่ม{" "}
-                <strong>"จัดลู่/ลงทะเบียน"</strong> เพื่อเปิดหน้าลงทะเบียนและจัดลู่วิ่ง
+                💡 <strong>คำแนะนำ:</strong> คลิกที่ <strong>ช่องชื่อโรงเรียน</strong> ในแต่ละลู่ เพื่อเปิดหน้าต่างบันทึก{" "}
+                <strong>อันดับ และ สถานะฟาล์ว</strong> เมื่อได้ผล ๑–๓ จากรอบ ๑ และ รอบ ๒ ระบบจะส่งไปรอบชิงชนะเลิศอัตโนมัติ (เรียงลู่ 3-2-1-1-2-3)
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1114,14 +1144,14 @@ export function AthleticsScoresheet({
                       color: "#fef08a",
                     }}
                   >
-                    รอบชิงชนะเลิศ (๖ ลู่)
+                    รอบชิงชนะเลิศ (๖ ลู่) · เรียง ๓-๒-๑-๑-๒-๓
                   </th>
                   <th
                     rowSpan={2}
                     style={{
                       padding: "8px",
                       border: "1px solid #334155",
-                      width: "130px",
+                      width: "110px",
                     }}
                   >
                     จัดการ
@@ -1140,13 +1170,13 @@ export function AthleticsScoresheet({
                   <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๓</th>
                   <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๔</th>
                   <th style={{ padding: "4px", border: "1px solid #334155", minWidth: "105px" }}>ลู่ ๕</th>
-                  {/* รอบชิง */}
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px" }}>ลู่ ๑</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px" }}>ลู่ ๒</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px" }}>ลู่ ๓</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px" }}>ลู่ ๔</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px" }}>ลู่ ๕</th>
-                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px" }}>ลู่ ๖</th>
+                  {/* รอบชิง: 3-2-1-1-2-3 */}
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ ๑ (ที่ ๓-๑)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ ๒ (ที่ ๒-๑)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#fef08a" }}>ลู่ ๓ (ที่ ๑-๑)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ ๔ (ที่ ๑-๒)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ ๕ (ที่ ๒-๒)</th>
+                  <th style={{ padding: "4px", border: "1px solid #0f766e", minWidth: "110px", color: "#a7f3d0" }}>ลู่ ๖ (ที่ ๓-๒)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1194,125 +1224,229 @@ export function AthleticsScoresheet({
                       {item.type || "-"}
                     </td>
 
-                    {/* รอบ 1: ลู่ 1-5 */}
-                    {item.r1.map((schoolName, idx) => (
-                      <td
-                        key={`r1-${idx}`}
-                        style={{
-                          padding: "4px",
-                          borderRight: "1px solid #e2e8f0",
-                          background: schoolName ? "#eff6ff" : "transparent",
-                          fontSize: "12px",
-                        }}
-                      >
-                        {schoolName ? (
-                          <div
-                            title={schoolName}
-                            style={{
-                              fontWeight: 600,
-                              color: "#1e3a8a",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              maxWidth: "110px",
-                              margin: "0 auto",
-                            }}
-                          >
-                            {getDisplaySchoolName(schoolName)}
-                          </div>
-                        ) : (
-                          <span style={{ color: "#cbd5e1" }}>-</span>
-                        )}
-                      </td>
-                    ))}
+                    {/* รอบ 1: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
+                    {item.r1.map((schoolName, idx) => {
+                      const lane = item.r1Lanes?.[idx];
+                      const isFoul = lane?.isFoul;
+                      const rank = lane?.rank;
+                      return (
+                        <td
+                          key={`r1-${idx}`}
+                          onClick={() => openCellModal(item.id, "r1", idx)}
+                          title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
+                          style={{
+                            padding: "4px",
+                            borderRight: "1px solid #e2e8f0",
+                            background: isFoul
+                              ? "#fee2e2"
+                              : rank === "1"
+                                ? "#fef08a"
+                                : rank === "2"
+                                  ? "#e2e8f0"
+                                  : rank === "3"
+                                    ? "#ffedd5"
+                                    : schoolName
+                                      ? "#eff6ff"
+                                      : "transparent",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            transition: "background 0.15s",
+                          }}
+                        >
+                          {schoolName ? (
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                color: isFoul ? "#b91c1c" : "#1e3a8a",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                maxWidth: "115px",
+                                margin: "0 auto",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "3px",
+                              }}
+                            >
+                              <span>{getDisplaySchoolName(schoolName)}</span>
+                              {isFoul ? (
+                                <span style={{ background: "#dc2626", color: "#fff", padding: "1px 4px", borderRadius: "3px", fontSize: "10px", fontWeight: 700 }}>
+                                  ฟาล์ว
+                                </span>
+                              ) : rank ? (
+                                <span
+                                  style={{
+                                    background: rank === "1" ? "#ca8a04" : rank === "2" ? "#475569" : "#c2410c",
+                                    color: "#fff",
+                                    padding: "1px 4px",
+                                    borderRadius: "3px",
+                                    fontSize: "10px",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
+                          )}
+                        </td>
+                      );
+                    })}
 
-                    {/* รอบ 2: ลู่ 1-5 */}
-                    {item.r2.map((schoolName, idx) => (
-                      <td
-                        key={`r2-${idx}`}
-                        style={{
-                          padding: "4px",
-                          borderRight: "1px solid #e2e8f0",
-                          background: schoolName ? "#eff6ff" : "transparent",
-                          fontSize: "12px",
-                        }}
-                      >
-                        {schoolName ? (
-                          <div
-                            title={schoolName}
-                            style={{
-                              fontWeight: 600,
-                              color: "#1e3a8a",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              maxWidth: "110px",
-                              margin: "0 auto",
-                            }}
-                          >
-                            {getDisplaySchoolName(schoolName)}
-                          </div>
-                        ) : (
-                          <span style={{ color: "#cbd5e1" }}>-</span>
-                        )}
-                      </td>
-                    ))}
+                    {/* รอบ 2: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
+                    {item.r2.map((schoolName, idx) => {
+                      const lane = item.r2Lanes?.[idx];
+                      const isFoul = lane?.isFoul;
+                      const rank = lane?.rank;
+                      return (
+                        <td
+                          key={`r2-${idx}`}
+                          onClick={() => openCellModal(item.id, "r2", idx)}
+                          title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
+                          style={{
+                            padding: "4px",
+                            borderRight: "1px solid #e2e8f0",
+                            background: isFoul
+                              ? "#fee2e2"
+                              : rank === "1"
+                                ? "#fef08a"
+                                : rank === "2"
+                                  ? "#e2e8f0"
+                                  : rank === "3"
+                                    ? "#ffedd5"
+                                    : schoolName
+                                      ? "#eff6ff"
+                                      : "transparent",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            transition: "background 0.15s",
+                          }}
+                        >
+                          {schoolName ? (
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                color: isFoul ? "#b91c1c" : "#1e3a8a",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                maxWidth: "115px",
+                                margin: "0 auto",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "3px",
+                              }}
+                            >
+                              <span>{getDisplaySchoolName(schoolName)}</span>
+                              {isFoul ? (
+                                <span style={{ background: "#dc2626", color: "#fff", padding: "1px 4px", borderRadius: "3px", fontSize: "10px", fontWeight: 700 }}>
+                                  ฟาล์ว
+                                </span>
+                              ) : rank ? (
+                                <span
+                                  style={{
+                                    background: rank === "1" ? "#ca8a04" : rank === "2" ? "#475569" : "#c2410c",
+                                    color: "#fff",
+                                    padding: "1px 4px",
+                                    borderRadius: "3px",
+                                    fontSize: "10px",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {rank === "1" ? "ที่ ๑" : rank === "2" ? "ที่ ๒" : rank === "3" ? "ที่ ๓" : `ที่ ${rank}`}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
+                          )}
+                        </td>
+                      );
+                    })}
 
-                    {/* รอบชิงชนะเลิศ: ลู่ 1-6 */}
+                    {/* รอบชิงชนะเลิศ: ลู่ 1-6 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว/เหรียญ) */}
                     {item.r3.map((schoolName, idx) => {
-                      const laneEntry = item.r3Lanes?.[idx];
-                      const rank = laneEntry?.rank;
+                      const lane = item.r3Lanes?.[idx];
+                      const isFoul = lane?.isFoul;
+                      const rank = lane?.rank;
                       const isGold = rank === "1";
                       const isSilver = rank === "2";
                       const isBronze = rank === "3";
                       return (
                         <td
                           key={`r3-${idx}`}
+                          onClick={() => openCellModal(item.id, "r3", idx)}
+                          title="คลิกเพื่อบันทึกอันดับเหรียญรางวัล หรือแจ้งฟาล์ว"
                           style={{
                             padding: "4px",
                             borderRight: "1px solid #e2e8f0",
-                            background: isGold
-                              ? "#fef9c3"
-                              : isSilver
-                                ? "#f1f5f9"
-                                : isBronze
-                                  ? "#fed7aa"
-                                  : schoolName
-                                    ? "#f0fdf4"
-                                    : "transparent",
+                            background: isFoul
+                              ? "#fee2e2"
+                              : isGold
+                                ? "#fef08a"
+                                : isSilver
+                                  ? "#e2e8f0"
+                                  : isBronze
+                                    ? "#fed7aa"
+                                    : schoolName
+                                      ? "#f0fdf4"
+                                      : "transparent",
                             fontSize: "12px",
+                            cursor: "pointer",
+                            transition: "background 0.15s",
                           }}
                         >
                           {schoolName ? (
                             <div
-                              title={`${schoolName} ${rank ? `(อันดับ ${rank})` : ""}`}
                               style={{
                                 fontWeight: 700,
-                                color: isGold
-                                  ? "#854d0e"
-                                  : isSilver
-                                    ? "#334155"
-                                    : isBronze
-                                      ? "#9a3412"
-                                      : "#14532d",
+                                color: isFoul
+                                  ? "#b91c1c"
+                                  : isGold
+                                    ? "#854d0e"
+                                    : isSilver
+                                      ? "#334155"
+                                      : isBronze
+                                        ? "#9a3412"
+                                        : "#14532d",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
-                                maxWidth: "110px",
+                                maxWidth: "115px",
                                 margin: "0 auto",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "3px",
                               }}
                             >
-                              {isGold ? "🥇 " : isSilver ? "🥈 " : isBronze ? "🥉 " : ""}
-                              {getDisplaySchoolName(schoolName)}
+                              <span>{getDisplaySchoolName(schoolName)}</span>
+                              {isFoul ? (
+                                <span style={{ background: "#dc2626", color: "#fff", padding: "1px 4px", borderRadius: "3px", fontSize: "10px", fontWeight: 700 }}>
+                                  ฟาล์ว
+                                </span>
+                              ) : isGold ? (
+                                <span>🥇</span>
+                              ) : isSilver ? (
+                                <span>🥈</span>
+                              ) : isBronze ? (
+                                <span>🥉</span>
+                              ) : rank ? (
+                                <span style={{ fontSize: "10px", color: "#64748b" }}>({rank})</span>
+                              ) : null}
                             </div>
                           ) : (
-                            <span style={{ color: "#cbd5e1" }}>-</span>
+                            <span style={{ color: "#94a3b8", fontSize: "11px" }}>-</span>
                           )}
                         </td>
                       );
                     })}
 
-                    {/* Actions: Direct Link to Registration */}
+                    {/* Actions: Switch to Registration Tab */}
                     <td style={{ padding: "6px" }}>
                       <button
                         type="button"
@@ -1331,7 +1465,7 @@ export function AthleticsScoresheet({
                           setSubTab("register");
                         }}
                       >
-                        <Edit3 size={13} /> จัดลู่/ลงทะเบียน
+                        <Edit3 size={13} /> จัดลู่
                       </button>
                     </td>
                   </tr>
@@ -1531,6 +1665,315 @@ export function AthleticsScoresheet({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* ==================== MODAL: บันทึกผล อันดับ และ ฟาล์ว ==================== */}
+      {/* ========================================================================= */}
+      {cellModal && (() => {
+        const modalRow = rows.find((r) => r.id === cellModal.rowId);
+        if (!modalRow) return null;
+        const roundTitle =
+          cellModal.roundKey === "r1"
+            ? "รอบ ๑ (๕ ลู่)"
+            : cellModal.roundKey === "r2"
+              ? "รอบ ๒ (๕ ลู่)"
+              : "รอบชิงชนะเลิศ (๖ ลู่)";
+
+        return (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.6)",
+              backdropFilter: "blur(4px)",
+              zIndex: 10000,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "16px",
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "12px",
+                maxWidth: "500px",
+                width: "100%",
+                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
+                border: "1px solid #cbd5e1",
+                overflow: "hidden",
+              }}
+            >
+              {/* Modal Header */}
+              <div
+                style={{
+                  padding: "14px 18px",
+                  background: "#1e293b",
+                  color: "#fff",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    บันทึกผลการแข่งขันและสถานะฟาล์ว
+                  </h3>
+                  <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#94a3b8" }}>
+                    รายการที่ {modalRow.no}: {modalRow.name} ({modalRow.grade} {modalRow.type})
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCellModal(null)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#94a3b8",
+                    cursor: "pointer",
+                    padding: "4px",
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "14px" }}>
+                {/* Round & Lane Banner */}
+                <div
+                  style={{
+                    background: cellModal.roundKey === "r3" ? "#fefce8" : "#f0fdf4",
+                    border: `1px solid ${cellModal.roundKey === "r3" ? "#fef08a" : "#bbf7d0"}`,
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: cellModal.roundKey === "r3" ? "#854d0e" : "#166534",
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>{roundTitle}</span>
+                  <span>ลู่ที่ {cellModal.subIndex + 1}</span>
+                </div>
+
+                {/* School Selection */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                    โรงเรียนประจำลู่:
+                  </label>
+                  <select
+                    value={cellModal.schoolName}
+                    onChange={(e) => setCellModal({ ...cellModal, schoolName: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <option value="">-- เลือกโรงเรียน --</option>
+                    {schoolOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Athlete Name */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                    ชื่อ - นามสกุล นักกีฬา (ถ้ามี):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="เช่น ด.ช.สมชาย มุ่งมั่น"
+                    value={cellModal.athleteName}
+                    onChange={(e) => setCellModal({ ...cellModal, athleteName: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                    }}
+                  />
+                </div>
+
+                {/* Foul Status Box */}
+                <div
+                  style={{
+                    background: cellModal.isFoul ? "#fee2e2" : "#f8fafc",
+                    border: `1.5px solid ${cellModal.isFoul ? "#ef4444" : "#e2e8f0"}`,
+                    padding: "12px",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      color: cellModal.isFoul ? "#b91c1c" : "#334155",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={cellModal.isFoul}
+                      onChange={(e) =>
+                        setCellModal({
+                          ...cellModal,
+                          isFoul: e.target.checked,
+                          rank: e.target.checked ? "DQ" : "",
+                        })
+                      }
+                      style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                    />
+                    <AlertTriangle size={16} color={cellModal.isFoul ? "#dc2626" : "#64748b"} />
+                    ฟาล์ว (ผิดกติกา / ปรับแพ้ฟาล์ว DQ)
+                  </label>
+
+                  {cellModal.isFoul && (
+                    <div style={{ marginTop: "8px" }}>
+                      <select
+                        value={cellModal.foulReason}
+                        onChange={(e) => setCellModal({ ...cellModal, foulReason: e.target.value })}
+                        style={{
+                          width: "100%",
+                          padding: "6px 8px",
+                          borderRadius: "6px",
+                          border: "1px solid #fca5a5",
+                          fontSize: "13px",
+                          background: "#fff",
+                        }}
+                      >
+                        <option value="เหยียบเส้น/ล้ำลู่">เหยียบเส้น / ล้ำลู่</option>
+                        <option value="ออกตัวก่อนปล่อยสัญญาณ (False Start)">ออกตัวก่อนปล่อยสัญญาณ (False Start)</option>
+                        <option value="ทำไม้หล่น (วิ่งผลัด)">ทำไม้หล่น (วิ่งผลัด)</option>
+                        <option value="วิ่งตัดหน้า/กีดขวางคู่แข่ง">วิ่งตัดหน้า / กีดขวางคู่แข่ง</option>
+                        <option value="ผิดกติกาการแข่งขัน">ผิดกติกาการแข่งขันทั่วไป</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Finish Rank (Disabled if foul) */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                    อันดับเข้าเส้นชัย:
+                  </label>
+                  <select
+                    disabled={cellModal.isFoul}
+                    value={cellModal.isFoul ? "DQ" : cellModal.rank}
+                    onChange={(e) => setCellModal({ ...cellModal, rank: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                      fontWeight: cellModal.rank ? 700 : 400,
+                      background: cellModal.isFoul ? "#f1f5f9" : "#fff",
+                      color:
+                        cellModal.rank === "1"
+                          ? "#ca8a04"
+                          : cellModal.rank === "2"
+                            ? "#475569"
+                            : cellModal.rank === "3"
+                              ? "#c2410c"
+                              : "#1e293b",
+                    }}
+                  >
+                    <option value="">-- ยังไม่ระบุอันดับ --</option>
+                    {cellModal.roundKey === "r3" ? (
+                      <>
+                        <option value="1">🥇 ที่ ๑ (เหรียญทอง · ๓ แต้ม)</option>
+                        <option value="2">🥈 ที่ ๒ (เหรียญเงิน · ๒ แต้ม)</option>
+                        <option value="3">🥉 ที่ ๓ (เหรียญทองแดง · ๑ แต้ม)</option>
+                        <option value="4">ที่ ๔</option>
+                        <option value="5">ที่ ๕</option>
+                        <option value="6">ที่ ๖</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="1">ที่ ๑ (เข้ารอบชิง)</option>
+                        <option value="2">ที่ ๒ (เข้ารอบชิง)</option>
+                        <option value="3">ที่ ๓ (เข้ารอบชิง)</option>
+                        <option value="4">ที่ ๔</option>
+                        <option value="5">ที่ ๕</option>
+                      </>
+                    )}
+                  </select>
+                  {cellModal.roundKey !== "r3" && !cellModal.isFoul && (
+                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#0f766e" }}>
+                      *หากระบุอันดับ ๑, ๒, ๓ ระบบจะจัดลู่รอบชิงชนะเลิศ (3-2-1-1-2-3) ให้อัตโนมัติ
+                    </p>
+                  )}
+                </div>
+
+                {/* Time / Mark (Optional) */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                    สถิติเวลา/ผล (ถ้ามี):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="เช่น 12.45 วิ"
+                    value={cellModal.time}
+                    onChange={(e) => setCellModal({ ...cellModal, time: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "13px",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "10px",
+                  padding: "12px 18px",
+                  background: "#f8fafc",
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
+                <button
+                  type="button"
+                  className="ui-button-outline"
+                  onClick={() => setCellModal(null)}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={handleSaveCellModal}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "#0f766e",
+                  }}
+                >
+                  <Save size={15} /> บันทึกผล
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
