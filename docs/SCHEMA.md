@@ -143,6 +143,7 @@
 - `rows` (`AthleticsRow[]`): ข้อมูลรายการกรีฑาทั้ง 20 รายการ
 - `updatedAt` (string | null): เวลาที่อัปเดตล่าสุด (ISO 8601)
 - `updatedBy` (string | null): รหัสผู้ใช้ (`profiles.id`) ของผู้ดูแลหรือกรรมการที่บันทึกล่าสุด
+- *(สิทธิ์การเข้าถึง: `GET /api/athletics-scoresheet` เปิดให้อ่านได้ทุกบทบาท รวมถึงบทบาท `viewer` ในโหมดอ่านอย่างเดียว ส่วน `PUT /api/athletics-scoresheet` จำกัดสิทธิ์เฉพาะ `admin`, `referee`, `recorder` เท่านั้น)*
 
 ### `LaneEntry`
 ข้อมูลนักกีฬาและการจัดลู่วิ่งแต่ละลู่:

@@ -417,6 +417,17 @@ test("/api/athletics-scoresheet route enforces role permissions and persists via
     );
     assert.equal(forbiddenRes.status, 403);
 
+    // 2.5 viewer PUT -> 403 (read-only)
+    currentRole = "viewer";
+    const viewerForbiddenRes = await scoresheetPut(
+      new Request("https://app.invalid/api/athletics-scoresheet", {
+        method: "PUT",
+        headers: { Authorization: "Bearer valid" },
+        body: JSON.stringify({ rows: INITIAL_ATHLETICS_DATA }),
+      }),
+    );
+    assert.equal(viewerForbiddenRes.status, 403);
+
     // 3. referee PUT -> 200
     currentRole = "referee";
     const rows = structuredClone(INITIAL_ATHLETICS_DATA);

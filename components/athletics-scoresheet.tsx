@@ -604,6 +604,7 @@ export function AthleticsScoresheet({
   }, []);
 
   function saveRows(next: AthleticsRow[], msg?: string, immediate = Boolean(msg)) {
+    if (!canEdit) return;
     setRows(next);
     latestRowsRef.current = next;
     onRowsChange?.(next, versionRef.current);
@@ -628,6 +629,7 @@ export function AthleticsScoresheet({
   }
 
   function handleManualSave() {
+    if (!canEdit) return;
     saveRows(
       rows,
       accessToken && canEdit
@@ -732,6 +734,7 @@ export function AthleticsScoresheet({
 
   // กดเพิ่มลู่ในหน้าลงทะเบียน (สำหรับมินิมาราธอน)
   function handleAddLane(targetRowId: number, roundKey: "r1" | "r2" | "r3" = "r3") {
+    if (!canEdit) return;
     const nextRows = rows.map((r) => {
       if (r.id !== targetRowId) return r;
       return addLaneToEventRound(r, roundKey);
@@ -747,6 +750,7 @@ export function AthleticsScoresheet({
     roundKey: "r1" | "r2" | "r3",
     laneIndex: number,
   ) {
+    if (!canEdit) return;
     const nextRows = rows.map((r) => {
       if (r.id !== targetRowId) return r;
       return removeLaneFromEventRound(r, roundKey, laneIndex);
@@ -761,6 +765,7 @@ export function AthleticsScoresheet({
     field: keyof LaneEntry,
     val: string,
   ) {
+    if (!canEdit) return;
     const lanesKey =
       roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
     const currentLanes = [...activeEvent[lanesKey]];
@@ -790,6 +795,7 @@ export function AthleticsScoresheet({
 
   // Open Modal from cell click in the scoresheet
   function openCellModal(rowId: number, roundKey: "r1" | "r2" | "r3", subIndex: number) {
+    if (!canEdit) return;
     const targetRow = rows.find((r) => r.id === rowId);
     if (!targetRow) return;
     if (targetRow.directFinal && roundKey !== "r3") {
@@ -948,6 +954,7 @@ export function AthleticsScoresheet({
 
   // Clear lanes in active round
   function clearRoundLanes(roundKey: "r1" | "r2" | "r3") {
+    if (!canEdit) return;
     const label =
       roundKey === "r1" ? "รอบ 1" : roundKey === "r2" ? "รอบ 2" : "รอบชิงชนะเลิศ";
     if (!confirm(`ต้องการล้างข้อมูลลู่วิ่งใน ${label} ของรายการนี้หรือไม่?`)) return;
@@ -974,6 +981,7 @@ export function AthleticsScoresheet({
   }
 
   function handleReset() {
+    if (!canEdit) return;
     if (confirm("ต้องการคืนค่าเริ่มต้นของตารางกรีฑาทั้งหมดใช่หรือไม่?")) {
       saveRows(INITIAL_ATHLETICS_DATA, "คืนค่าข้อมูลเริ่มต้นเรียบร้อย");
     }
@@ -1103,7 +1111,21 @@ export function AthleticsScoresheet({
         </div>
 
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-          {syncState !== "idle" && (
+          {!canEdit ? (
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "4px 10px",
+                borderRadius: "999px",
+                background: "#f1f5f9",
+                color: "#334155",
+                border: "1px solid #cbd5e1",
+              }}
+            >
+              👁️ โหมดผู้ชม (อ่านอย่างเดียว)
+            </span>
+          ) : syncState !== "idle" ? (
             <span
               style={{
                 fontSize: "12px",
@@ -1145,7 +1167,7 @@ export function AthleticsScoresheet({
                     ? "⚠ บันทึกในเครื่อง (รอซิงค์)"
                     : "โหมดบันทึกในเครื่อง"}
             </span>
-          )}
+          ) : null}
           {subTab === "sheet" && (
             <button
               type="button"
@@ -1171,14 +1193,16 @@ export function AthleticsScoresheet({
               <Eye size={15} /> พิมพ์รายงานสรุปผล (ตัวอย่าง A4 แนวตั้ง)
             </button>
           )}
-          <button
-            type="button"
-            className="ui-button-outline ui-button-sm"
-            onClick={handleReset}
-            title="คืนค่าข้อมูลเริ่มต้น"
-          >
-            <RotateCcw size={14} /> คืนค่าเริ่มต้น
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              className="ui-button-outline ui-button-sm"
+              onClick={handleReset}
+              title="คืนค่าข้อมูลเริ่มต้น"
+            >
+              <RotateCcw size={14} /> คืนค่าเริ่มต้น
+            </button>
+          )}
         </div>
       </div>
 
@@ -1433,59 +1457,61 @@ export function AthleticsScoresheet({
                 </>
               )}
             </div>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-              {activeEvent.expandableLanes && (
+            {canEdit && (
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                {activeEvent.expandableLanes && (
+                  <button
+                    type="button"
+                    className="ui-button-outline ui-button-sm"
+                    onClick={() => handleAddLane(activeEvent.id, activeRound)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      background: "#eff6ff",
+                      color: "#1d4ed8",
+                      borderColor: "#3b82f6",
+                      fontSize: "13px",
+                      padding: "5px 12px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <Plus size={14} /> เพิ่มลู่ / นักกีฬา
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="ui-button-outline ui-button-sm"
-                  onClick={() => handleAddLane(activeEvent.id, activeRound)}
+                  className="primary ui-button-sm"
+                  onClick={handleManualSave}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "4px",
-                    background: "#eff6ff",
-                    color: "#1d4ed8",
-                    borderColor: "#3b82f6",
+                    background: "#0f766e",
                     fontSize: "13px",
-                    padding: "5px 12px",
-                    fontWeight: 700,
+                    padding: "5px 14px",
+                    fontWeight: 600,
                   }}
                 >
-                  <Plus size={14} /> เพิ่มลู่ / นักกีฬา
+                  <Save size={14} /> บันทึก
                 </button>
-              )}
-              <button
-                type="button"
-                className="primary ui-button-sm"
-                onClick={handleManualSave}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  background: "#0f766e",
-                  fontSize: "13px",
-                  padding: "5px 14px",
-                  fontWeight: 600,
-                }}
-              >
-                <Save size={14} /> บันทึก
-              </button>
-              <button
-                type="button"
-                className="ui-button-outline ui-button-sm"
-                onClick={() => clearRoundLanes(activeRound)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  color: "#b91c1c",
-                  borderColor: "#fca5a5",
-                  fontSize: "12px",
-                }}
-              >
-                <Trash2 size={13} /> ล้างข้อมูลรอบนี้
-              </button>
-            </div>
+                <button
+                  type="button"
+                  className="ui-button-outline ui-button-sm"
+                  onClick={() => clearRoundLanes(activeRound)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    color: "#b91c1c",
+                    borderColor: "#fca5a5",
+                    fontSize: "12px",
+                  }}
+                >
+                  <Trash2 size={13} /> ล้างข้อมูลรอบนี้
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Duplicate school notice */}
@@ -1532,7 +1558,7 @@ export function AthleticsScoresheet({
                   <th style={{ padding: "10px", minWidth: "240px", textAlign: "left" }}>
                     ชื่อ - นามสกุล นักกีฬา
                   </th>
-                  {activeEvent.expandableLanes && (
+                  {canEdit && activeEvent.expandableLanes && (
                     <th style={{ padding: "10px", width: "75px", textAlign: "center" }}>
                       ลบลู่
                     </th>
@@ -1563,6 +1589,7 @@ export function AthleticsScoresheet({
                     <td style={{ padding: "8px 10px" }}>
                       <select
                         value={lane.schoolName}
+                        disabled={!canEdit}
                         onChange={(e) =>
                           updateLane(activeRound, idx, "schoolName", e.target.value)
                         }
@@ -1576,7 +1603,7 @@ export function AthleticsScoresheet({
                           fontSize: "14px",
                           fontWeight: lane.schoolName ? 600 : 400,
                           color: lane.schoolName ? "#0f172a" : "#64748b",
-                          background: "#fff",
+                          background: canEdit ? "#fff" : "#f8fafc",
                         }}
                       >
                         <option value="">-- เลือกโรงเรียนประจำลู่ --</option>
@@ -1591,8 +1618,10 @@ export function AthleticsScoresheet({
                     <td style={{ padding: "8px 10px" }}>
                       <input
                         type="text"
-                        placeholder="ชื่อ-สกุล นักกีฬา (ถ้ามี)"
+                        placeholder={canEdit ? "ชื่อ-สกุล นักกีฬา (ถ้ามี)" : "-"}
                         value={lane.athleteName}
+                        disabled={!canEdit}
+                        readOnly={!canEdit}
                         onChange={(e) =>
                           updateLane(activeRound, idx, "athleteName", e.target.value)
                         }
@@ -1602,11 +1631,12 @@ export function AthleticsScoresheet({
                           borderRadius: "6px",
                           border: "1px solid #cbd5e1",
                           fontSize: "14px",
+                          background: canEdit ? "#fff" : "#f8fafc",
                         }}
                       />
                     </td>
 
-                    {activeEvent.expandableLanes && (
+                    {canEdit && activeEvent.expandableLanes && (
                       <td style={{ padding: "8px", textAlign: "center" }}>
                         <button
                           type="button"
@@ -1634,7 +1664,7 @@ export function AthleticsScoresheet({
           </div>
 
           {/* Add Lane Full-Width Button for Mini Marathon */}
-          {activeEvent.expandableLanes && (
+          {canEdit && activeEvent.expandableLanes && (
             <div style={{ marginBottom: "18px" }}>
               <button
                 type="button"
@@ -1676,43 +1706,51 @@ export function AthleticsScoresheet({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="primary"
-                onClick={handleManualSave}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "8px 20px",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  background: "#0f766e",
-                  boxShadow: "0 2px 4px rgba(15, 118, 110, 0.2)",
-                }}
-              >
-                <Save size={16} /> บันทึก
-              </button>
-              {activeEvent.expandableLanes && (
-                <button
-                  type="button"
-                  className="ui-button-outline"
-                  onClick={() => handleAddLane(activeEvent.id, activeRound)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    borderColor: "#3b82f6",
-                    color: "#1d4ed8",
-                    fontWeight: 600,
-                  }}
-                >
-                  <Plus size={16} /> เพิ่มลู่ (ลู่ที่ {activeLanes.length + 1})
-                </button>
+              {canEdit ? (
+                <>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={handleManualSave}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "8px 20px",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      background: "#0f766e",
+                      boxShadow: "0 2px 4px rgba(15, 118, 110, 0.2)",
+                    }}
+                  >
+                    <Save size={16} /> บันทึก
+                  </button>
+                  {activeEvent.expandableLanes && (
+                    <button
+                      type="button"
+                      className="ui-button-outline"
+                      onClick={() => handleAddLane(activeEvent.id, activeRound)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        borderColor: "#3b82f6",
+                        color: "#1d4ed8",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Plus size={16} /> เพิ่มลู่ (ลู่ที่ {activeLanes.length + 1})
+                    </button>
+                  )}
+                  <span style={{ fontSize: "13px", color: "#64748b" }}>
+                    *คลิกเพื่อบันทึกข้อมูลการจัดลู่วิ่งในรายการนี้
+                  </span>
+                </>
+              ) : (
+                <span style={{ fontSize: "13px", color: "#475569", fontWeight: 500 }}>
+                  👁️ โหมดผู้ชม (อ่านอย่างเดียว): ดูรายชื่อนักกีฬาและการจัดลู่วิ่งในแต่ละรอบ (ไม่สามารถแก้ไขข้อมูลได้)
+                </span>
               )}
-              <span style={{ fontSize: "13px", color: "#64748b" }}>
-                *คลิกเพื่อบันทึกข้อมูลการจัดลู่วิ่งในรายการนี้
-              </span>
             </div>
 
             <div style={{ display: "flex", gap: "8px" }}>
@@ -1826,8 +1864,16 @@ export function AthleticsScoresheet({
                 ใบบันทึกผลการแข่งขันกรีฑา (รอบ 1, รอบ 2, รอบชิงชนะเลิศ)
               </h2>
               <p className="muted no-print" style={{ margin: "4px 0 0", fontSize: "13px" }}>
-                💡 <strong>คำแนะนำ:</strong> คลิกที่ <strong>ช่องชื่อโรงเรียน</strong> ในรอบใดก็ได้ เพื่อเปิดหน้าต่างบันทึก{" "}
-                <strong>อันดับ และ สถานะฟาล์ว ของทั้งฮีตในครั้งเดียว</strong> (รายการมินิมาราธอนสามารถกด <strong>+ เพิ่มลู่</strong> ได้เรื่อยๆ)
+                {canEdit ? (
+                  <>
+                    💡 <strong>คำแนะนำ:</strong> คลิกที่ <strong>ช่องชื่อโรงเรียน</strong> ในรอบใดก็ได้ เพื่อเปิดหน้าต่างบันทึก{" "}
+                    <strong>อันดับ และ สถานะฟาล์ว ของทั้งฮีตในครั้งเดียว</strong> (รายการมินิมาราธอนสามารถกด <strong>+ เพิ่มลู่</strong> ได้เรื่อยๆ)
+                  </>
+                ) : (
+                  <>
+                    👁️ <strong>โหมดผู้ชม (อ่านอย่างเดียว):</strong> แสดงการจัดลู่วิ่งและผลการแข่งขันกรีฑาทั้ง {rows.length} รายการ (ไม่สามารถแก้ไขข้อมูลได้)
+                  </>
+                )}
               </p>
             </div>
             <div className="no-print" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1954,17 +2000,19 @@ export function AthleticsScoresheet({
                   >
                     รอบชิงชนะเลิศ (6 ลู่ · มินิมาราธอนเพิ่มลู่ได้ไม่จำกัด) · เรียง 3-2-1-1-2-3
                   </th>
-                  <th
-                    rowSpan={2}
-                    className="no-print"
-                    style={{
-                      padding: "8px",
-                      border: "1px solid #334155",
-                      width: "120px",
-                    }}
-                  >
-                    จัดการ
-                  </th>
+                  {canEdit && (
+                    <th
+                      rowSpan={2}
+                      className="no-print"
+                      style={{
+                        padding: "8px",
+                        border: "1px solid #334155",
+                        width: "120px",
+                      }}
+                    >
+                      จัดการ
+                    </th>
+                  )}
                 </tr>
                 <tr style={{ background: "#475569", color: "#fff", fontSize: "12px" }}>
                   {/* รอบ 1 */}
@@ -2059,27 +2107,29 @@ export function AthleticsScoresheet({
                           {item.expandableLanes ? (
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
                               <span>— แข่งขันรอบชิงชนะเลิศทันที (ส่งได้มากกว่า 1 คน/โรงเรียน · ปัจจุบัน {item.r3Lanes.length} ลู่) —</span>
-                              <button
-                                type="button"
-                                className="no-print"
-                                onClick={() => handleAddLane(item.id, "r3")}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "4px",
-                                  padding: "2px 8px",
-                                  borderRadius: "4px",
-                                  border: "1px solid #3b82f6",
-                                  background: "#eff6ff",
-                                  color: "#1d4ed8",
-                                  fontSize: "11px",
-                                  fontWeight: 700,
-                                  cursor: "pointer",
-                                  fontStyle: "normal",
-                                }}
-                              >
-                                <Plus size={12} /> เพิ่มลู่ (ลู่ที่ {item.r3Lanes.length + 1})
-                              </button>
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  className="no-print"
+                                  onClick={() => handleAddLane(item.id, "r3")}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    padding: "2px 8px",
+                                    borderRadius: "4px",
+                                    border: "1px solid #3b82f6",
+                                    background: "#eff6ff",
+                                    color: "#1d4ed8",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    fontStyle: "normal",
+                                  }}
+                                >
+                                  <Plus size={12} /> เพิ่มลู่ (ลู่ที่ {item.r3Lanes.length + 1})
+                                </button>
+                              )}
                             </div>
                           ) : (
                             "— แข่งขันรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก 1 และ 2) —"
@@ -2095,8 +2145,8 @@ export function AthleticsScoresheet({
                             return (
                               <td
                                 key={`r1-${idx}`}
-                                onClick={() => openCellModal(item.id, "r1", idx)}
-                                title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
+                                onClick={() => canEdit && openCellModal(item.id, "r1", idx)}
+                                title={canEdit ? "คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว" : undefined}
                                 style={{
                                   padding: "4px",
                                   borderRight: "1px solid #e2e8f0",
@@ -2112,7 +2162,7 @@ export function AthleticsScoresheet({
                                             ? "#eff6ff"
                                             : "transparent",
                                   fontSize: "12px",
-                                  cursor: "pointer",
+                                  cursor: canEdit ? "pointer" : "default",
                                   transition: "background 0.15s",
                                 }}
                               >
@@ -2153,7 +2203,9 @@ export function AthleticsScoresheet({
                                     ) : null}
                                   </div>
                                 ) : (
-                                  <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
+                                  <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>
+                                    {canEdit ? "+ จัดลู่" : "-"}
+                                  </span>
                                 )}
                               </td>
                             );
@@ -2167,8 +2219,8 @@ export function AthleticsScoresheet({
                             return (
                               <td
                                 key={`r2-${idx}`}
-                                onClick={() => openCellModal(item.id, "r2", idx)}
-                                title="คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว"
+                                onClick={() => canEdit && openCellModal(item.id, "r2", idx)}
+                                title={canEdit ? "คลิกเพื่อบันทึกอันดับ หรือแจ้งฟาล์ว" : undefined}
                                 style={{
                                   padding: "4px",
                                   borderRight: "1px solid #e2e8f0",
@@ -2184,7 +2236,7 @@ export function AthleticsScoresheet({
                                             ? "#eff6ff"
                                             : "transparent",
                                   fontSize: "12px",
-                                  cursor: "pointer",
+                                  cursor: canEdit ? "pointer" : "default",
                                   transition: "background 0.15s",
                                 }}
                               >
@@ -2225,7 +2277,9 @@ export function AthleticsScoresheet({
                                     ) : null}
                                   </div>
                                 ) : (
-                                  <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
+                                  <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>
+                                    {canEdit ? "+ จัดลู่" : "-"}
+                                  </span>
                                 )}
                               </td>
                             );
@@ -2244,8 +2298,8 @@ export function AthleticsScoresheet({
                         return (
                           <td
                             key={`r3-${idx}`}
-                            onClick={() => openCellModal(item.id, "r3", idx)}
-                            title="คลิกเพื่อบันทึกอันดับเหรียญรางวัล หรือแจ้งฟาล์ว"
+                            onClick={() => canEdit && openCellModal(item.id, "r3", idx)}
+                            title={canEdit ? "คลิกเพื่อบันทึกอันดับเหรียญรางวัล หรือแจ้งฟาล์ว" : undefined}
                             style={{
                               padding: "4px",
                               borderRight: "1px solid #e2e8f0",
@@ -2261,7 +2315,7 @@ export function AthleticsScoresheet({
                                         ? "#f0fdf4"
                                         : "transparent",
                               fontSize: "12px",
-                              cursor: "pointer",
+                              cursor: canEdit ? "pointer" : "default",
                               transition: "background 0.15s",
                               verticalAlign: "top",
                             }}
@@ -2306,7 +2360,9 @@ export function AthleticsScoresheet({
                                 ) : null}
                               </div>
                             ) : (
-                              <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>+ จัดลู่</span>
+                              <span className="no-print" style={{ color: "#94a3b8", fontSize: "11px" }}>
+                                {canEdit ? "+ จัดลู่" : "-"}
+                              </span>
                             )}
 
                             {/* แสดงลู่ที่ 7 เป็นต้นไปสำหรับมินิมาราธอนในช่องลู่ 6 */}
@@ -2332,7 +2388,7 @@ export function AthleticsScoresheet({
                                       key={realIdx}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        openCellModal(item.id, "r3", realIdx);
+                                        if (canEdit) openCellModal(item.id, "r3", realIdx);
                                       }}
                                       style={{
                                         padding: "2px 4px",
@@ -2358,7 +2414,11 @@ export function AthleticsScoresheet({
                                       }}
                                     >
                                       ลู่ {exLane.lane}:{" "}
-                                      {exSchool ? getDisplaySchoolName(exSchool) : "+ จัดลู่"}
+                                      {exSchool
+                                        ? getDisplaySchoolName(exSchool)
+                                        : canEdit
+                                          ? "+ จัดลู่"
+                                          : "-"}
                                       {exLane.isFoul
                                         ? " [ฟาล์ว]"
                                         : exGold
@@ -2380,54 +2440,56 @@ export function AthleticsScoresheet({
                       })}
 
                       {/* Actions */}
-                      <td className="no-print" style={{ padding: "6px" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
-                          <button
-                            type="button"
-                            className="ui-button-outline ui-button-sm"
-                            style={{
-                              fontSize: "12px",
-                              padding: "4px 8px",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              color: "#0f766e",
-                              borderColor: "#0f766e",
-                              width: "100%",
-                              justifyContent: "center",
-                            }}
-                            onClick={() => {
-                              setActiveEventId(item.id);
-                              setActiveRound(item.directFinal ? "r3" : "r1");
-                              setSubTab("register");
-                            }}
-                          >
-                            <Edit3 size={13} /> จัดลู่
-                          </button>
-                          {item.expandableLanes && (
+                      {canEdit && (
+                        <td className="no-print" style={{ padding: "6px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
                             <button
                               type="button"
                               className="ui-button-outline ui-button-sm"
                               style={{
-                                fontSize: "11px",
-                                padding: "2px 6px",
+                                fontSize: "12px",
+                                padding: "4px 8px",
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: "3px",
-                                color: "#1d4ed8",
-                                borderColor: "#3b82f6",
-                                background: "#eff6ff",
+                                gap: "4px",
+                                color: "#0f766e",
+                                borderColor: "#0f766e",
                                 width: "100%",
                                 justifyContent: "center",
-                                fontWeight: 700,
                               }}
-                              onClick={() => handleAddLane(item.id, "r3")}
+                              onClick={() => {
+                                setActiveEventId(item.id);
+                                setActiveRound(item.directFinal ? "r3" : "r1");
+                                setSubTab("register");
+                              }}
                             >
-                              <Plus size={12} /> เพิ่มลู่ ({item.r3Lanes.length + 1})
+                              <Edit3 size={13} /> จัดลู่
                             </button>
-                          )}
-                        </div>
-                      </td>
+                            {item.expandableLanes && (
+                              <button
+                                type="button"
+                                className="ui-button-outline ui-button-sm"
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "2px 6px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                  color: "#1d4ed8",
+                                  borderColor: "#3b82f6",
+                                  background: "#eff6ff",
+                                  width: "100%",
+                                  justifyContent: "center",
+                                  fontWeight: 700,
+                                }}
+                                onClick={() => handleAddLane(item.id, "r3")}
+                              >
+                                <Plus size={12} /> เพิ่มลู่ ({item.r3Lanes.length + 1})
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

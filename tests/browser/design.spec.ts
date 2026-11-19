@@ -62,12 +62,14 @@ test("mobile menu exposes only viewer pages and keyboard focus is visible", asyn
   await expect(navigation.getByRole("button")).toHaveText([
     "ภาพรวม",
     "ตารางแข่งขัน",
+    "กรีฑา",
     "ตารางคะแนน",
     "เหรียญรางวัล",
     "โรงเรียน / บัญชี",
+    "ผลการแข่งขัน",
   ]);
   await expect(navigation.getByRole("button", { name: "กรีฑา" })).toHaveCount(
-    0,
+    1,
   );
   await page.getByRole("button", { name: "ตารางแข่งขัน", exact: true }).click();
   await expect(page.locator("#page-title")).toHaveText("ตารางแข่งขัน");

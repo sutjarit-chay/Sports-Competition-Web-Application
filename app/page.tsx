@@ -139,7 +139,7 @@ const tabs = [
   "เกียรติบัตร",
   "ผลการแข่งขัน",
 ];
-const viewerTabIndices = [0, 2, 5, 6, 7, 12];
+const viewerTabIndices = [0, 2, 4, 5, 6, 7, 12];
 function availableTabIndices(role: string) {
   if (role === "viewer") return viewerTabIndices;
   if (role === "recorder" || role === "referee")
