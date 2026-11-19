@@ -1959,9 +1959,11 @@ export default function Home() {
           {tab === 4 && (
             <>
               <AthleticsScoresheet schools={allDirectSchools} />
-              {filter}
-              <section className="panel">
-                <h2>กรีฑา · ฮีตและรอบชิง</h2>
+              {Boolean(0) && (
+                <>
+                  {filter}
+                  <section className="panel">
+                    <h2>กรีฑา · ฮีตและรอบชิง</h2>
                 {
                   <label>
                     รายการกรีฑาที่มีอยู่
@@ -2358,6 +2360,8 @@ export default function Home() {
                   ])}
                 />
               </section>
+                </>
+              )}
             </>
           )}
           {tab === 5 && (
