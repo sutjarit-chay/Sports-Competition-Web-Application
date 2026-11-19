@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Printer,
   UserPlus,
@@ -16,6 +16,7 @@ import {
   Trash2,
   AlertTriangle,
   Plus,
+  Eye,
   X,
 } from "lucide-react";
 
@@ -44,8 +45,8 @@ export type AthleticsRow = {
   name: string;
   grade: string;
   type: string;
-  directFinal?: boolean; // แข่งรอบชิงชนะเลิศทันที (ไม่มีรอบคัดเลือก รอบ 1 และ รอบ 2)
-  expandableLanes?: boolean; // สามารถกดเพิ่มลู่ได้เรื่อยๆ (เช่น มินิมาราธอน ที่แต่ละโรงเรียนส่งได้มากกว่า 1 คน)
+  directFinal?: boolean; // แข่งรอบชิงชนะเลิศทันที (มินิมาราธอน 1-4)
+  expandableLanes?: boolean; // สามารถกดเพิ่มลู่ได้เรื่อยๆ (มินิมาราธอน ที่แต่ละโรงเรียนส่งได้มากกว่า 1 คน)
   r1: string[]; // 5 lanes (ชื่อโรงเรียน)
   r2: string[]; // 5 lanes (ชื่อโรงเรียน)
   r3: string[]; // 6+ lanes (finals) (ชื่อโรงเรียน)
@@ -103,7 +104,7 @@ export function defaultLanes(count: number): LaneEntry[] {
   }));
 }
 
-// ข้อมูล 20 รายการกรีฑาตามสูจิบัตร นครโกสัมพีเกมส์ 2569 (ใช้เลขอารบิกทั้งหมด)
+// ข้อมูลรายการกรีฑาตามสูจิบัตร นครโกสัมพีเกมส์ 2569 (ใช้เลขอารบิกทั้งหมด)
 export const INITIAL_ATHLETICS_DATA: AthleticsRow[] = [
   { id: 1, no: "1", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", directFinal: true, expandableLanes: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
   { id: 2, no: "2", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", directFinal: true, expandableLanes: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
@@ -119,12 +120,12 @@ export const INITIAL_ATHLETICS_DATA: AthleticsRow[] = [
   { id: 12, no: "12", sourceNumber: 125, name: "วิ่ง 100 เมตร", grade: "ป.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
   { id: 13, no: "13", sourceNumber: 130, name: "วิ่ง 100 เมตร", grade: "ป.4-6", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
   { id: 14, no: "14", sourceNumber: 131, name: "วิ่ง 100 เมตร", grade: "ป.4-6", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 15, no: "15", sourceNumber: 132, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 16, no: "16", sourceNumber: 133, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 15, no: "15", sourceNumber: 132, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 16, no: "16", sourceNumber: 133, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
   { id: 17, no: "17", sourceNumber: 138, name: "วิ่ง 200 เมตร", grade: "ป.4-6", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
   { id: 18, no: "18", sourceNumber: 139, name: "วิ่ง 200 เมตร", grade: "ป.4-6", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 19, no: "19", sourceNumber: 140, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 20, no: "20", sourceNumber: 141, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 19, no: "19", sourceNumber: 140, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
+  { id: 20, no: "20", sourceNumber: 141, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
 ];
 
 /**
@@ -211,7 +212,6 @@ export function assignUniqueRankInLanes(
         isFoul,
       };
     }
-    // ล้างอันดับซ้ำจากลู่อื่น (ยกเว้น "" หรือ "DQ")
     if (cleanRank && cleanRank !== "DQ" && lane.rank === cleanRank) {
       return {
         ...lane,
@@ -224,8 +224,6 @@ export function assignUniqueRankInLanes(
 
 /**
  * คำนวณผู้ชนะเหรียญรางวัล (อันดับ 1, 2, 3) จากข้อมูลลู่วิ่งในรอบชิงชนะเลิศ (`r3Lanes`)
- * จะคืนค่าเฉพาะลู่ที่ไม่ฟาล์ว มีชื่อโรงเรียน และระบุ rank เป็น "1", "2", "3" เท่านั้น
- * ไม่ดึงลู่ 1-3 ที่ยังไม่ได้แข่งมาเป็นเหรียญรางวัลล่วงหน้า
  */
 export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
   return [1, 2, 3].map((rankNum) => {
@@ -247,7 +245,6 @@ export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
 
 /**
  * ส่งผู้เข้ารอบ 1, 2, 3 จากรอบ 1 และ รอบ 2 ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ 3, 2, 1, 1, 2, 3)
- * และหากอันดับใดถูกยกเลิกหรือปรับฟาล์ว จะล้างช่องลู่ในรอบชิงที่ผูกกับโควตานั้นให้ถูกต้องเสมอ
  */
 export function syncQualifiersToFinals(row: AthleticsRow): {
   row: AthleticsRow;
@@ -426,6 +423,10 @@ export function AthleticsScoresheet({
   // Modal สำหรับบันทึกผลทั้งฮีต/รอบ
   const [roundModal, setRoundModal] = useState<RoundModalData | null>(null);
 
+  // Modal แสดงตัวอย่างก่อนพิมพ์ A4 แนวตั้ง (Print Preview)
+  const [showPrintPreview, setShowPrintPreview] = useState<boolean>(false);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
+
   // Available school list (database prop or fallback)
   const schoolOptions =
     schools && schools.length > 0
@@ -486,6 +487,89 @@ export function AthleticsScoresheet({
     saveRows(rows, "บันทึกข้อมูลการจัดลู่วิ่งเรียบร้อยแล้ว");
   }
 
+  // สั่งพิมพ์จากหน้าต่างตัวอย่าง A4 แนวตั้ง ด้วย iframe เฉพาะ ताकिได้กระดาษ A4 แนวตั้งที่สะอาด 100%
+  function executeA4PortraitPrint() {
+    if (!previewContainerRef.current) {
+      window.print();
+      return;
+    }
+    const htmlContent = previewContainerRef.current.innerHTML;
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <title>รายงานสรุปผลการแข่งขันกรีฑา - นครโกสัมพีเกมส์ 2569</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 10mm 14mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: "Sarabun", "TH SarabunPSK", sans-serif;
+      color: #0f172a;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
+    .a4-sheet {
+      width: 100% !important;
+      min-height: auto !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      page-break-after: always;
+      break-after: page;
+    }
+    .a4-sheet:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .sheet-badge {
+      display: none !important;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+  </style>
+</head>
+<body>
+  ${htmlContent}
+</body>
+</html>`);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }, 250);
+  }
+
   // Active event object
   const activeEvent = rows.find((r) => r.id === activeEventId) || rows[0];
 
@@ -533,7 +617,6 @@ export function AthleticsScoresheet({
     const updatedLane = { ...currentLanes[index], [field]: val };
     currentLanes[index] = updatedLane;
 
-    // Sync school name to the main display cell array
     const roundCells = [...activeEvent[roundKey]];
     if (field === "schoolName") {
       roundCells[index] = val;
@@ -555,7 +638,7 @@ export function AthleticsScoresheet({
     saveRows(nextRows);
   }
 
-  // Open Modal from cell click in the scoresheet (loads all lanes of that round with focus on clicked lane)
+  // Open Modal from cell click in the scoresheet
   function openCellModal(rowId: number, roundKey: "r1" | "r2" | "r3", subIndex: number) {
     const targetRow = rows.find((r) => r.id === rowId);
     if (!targetRow) return;
@@ -638,12 +721,10 @@ export function AthleticsScoresheet({
       idx === laneIdx ? { ...l, ...patch } : l,
     );
 
-    // If rank was updated, ensure uniqueness across the heat/final
     if (patch.rank !== undefined) {
       nextLanes = assignUniqueRankInLanes(nextLanes, laneIdx, patch.rank);
     }
 
-    // If marked as foul, set rank to "DQ"
     if (patch.isFoul === true) {
       nextLanes[laneIdx] = {
         ...nextLanes[laneIdx],
@@ -761,6 +842,13 @@ export function AthleticsScoresheet({
   // Calculate school standings with medal breakdown and tie-breaker rules
   const rankedSchools = calculateSchoolAthleticsStandings(rows);
 
+  // แบ่งหน้ากระดาษ A4 แนวตั้งสำหรับตัวอย่างก่อนพิมพ์ (หน้าละ 7 รายการ ตามสูจิบัตรหน้า 31-33 และหน้า 4 สรุปผลรวมตามสูจิบัตรหน้า 34)
+  const a4EventPages: AthleticsRow[][] = [
+    rows.slice(0, 7),
+    rows.slice(7, 14),
+    rows.slice(14),
+  ].filter((page) => page.length > 0);
+
   const activeLanes =
     activeRound === "r1"
       ? activeEvent.r1Lanes
@@ -768,7 +856,7 @@ export function AthleticsScoresheet({
         ? activeEvent.r2Lanes
         : activeEvent.r3Lanes;
 
-  // Duplicate school warning in current registration round (skip for Mini Marathon where schools can send > 1 athlete)
+  // Duplicate school warning in current registration round (skip for Mini Marathon)
   const assignedSchoolsInActiveRound = activeLanes
     .map((l) => l.schoolName)
     .filter(Boolean);
@@ -784,7 +872,7 @@ export function AthleticsScoresheet({
 
   return (
     <div className="athletics-container" style={{ marginTop: "1rem" }}>
-      {/* Print Stylesheet for both Scoresheet (Landscape) and Summary Report (Portrait) */}
+      {/* Print Stylesheet */}
       <style>{`
         @media print {
           .no-print, .athletics-subtabs {
@@ -852,7 +940,7 @@ export function AthleticsScoresheet({
             onClick={() => setSubTab("sheet")}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <ClipboardList size={16} /> 2. ใบบันทึกผลการแข่งขัน (ตาราง 20 รายการ)
+            <ClipboardList size={16} /> 2. ใบบันทึกผลการแข่งขัน (ตาราง {rows.length} รายการ)
           </button>
           <button
             type="button"
@@ -865,17 +953,29 @@ export function AthleticsScoresheet({
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>
-          {(subTab === "sheet" || subTab === "summary") && (
+          {subTab === "sheet" && (
             <button
               type="button"
               className="ui-button-outline ui-button-sm"
               onClick={() => window.print()}
               style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
-              <Printer size={15} />{" "}
-              {subTab === "sheet"
-                ? "พิมพ์ตารางใบบันทึกผล (A4)"
-                : "พิมพ์รายงานสรุปผล (A4 / PDF)"}
+              <Printer size={15} /> พิมพ์ตารางใบบันทึกผล (A4)
+            </button>
+          )}
+          {subTab === "summary" && (
+            <button
+              type="button"
+              className="primary ui-button-sm"
+              onClick={() => setShowPrintPreview(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                background: "#0f766e",
+              }}
+            >
+              <Eye size={15} /> พิมพ์รายงานสรุปผล (ตัวอย่าง A4 แนวตั้ง)
             </button>
           )}
           <button
@@ -1195,7 +1295,7 @@ export function AthleticsScoresheet({
             </div>
           </div>
 
-          {/* Duplicate school notice (only for standard track events, not Mini Marathon) */}
+          {/* Duplicate school notice */}
           {duplicateSchoolsInActiveRound.length > 0 && (
             <div
               style={{
@@ -1255,7 +1355,6 @@ export function AthleticsScoresheet({
                       background: idx % 2 === 0 ? "#ffffff" : "#f8fafc",
                     }}
                   >
-                    {/* Lane Number */}
                     <td
                       style={{
                         padding: "10px",
@@ -1268,7 +1367,6 @@ export function AthleticsScoresheet({
                       ลู่ {lane.lane}
                     </td>
 
-                    {/* School Selection (Full School Name) */}
                     <td style={{ padding: "8px 10px" }}>
                       <select
                         value={lane.schoolName}
@@ -1297,7 +1395,6 @@ export function AthleticsScoresheet({
                       </select>
                     </td>
 
-                    {/* Athlete Name */}
                     <td style={{ padding: "8px 10px" }}>
                       <input
                         type="text"
@@ -1316,7 +1413,6 @@ export function AthleticsScoresheet({
                       />
                     </td>
 
-                    {/* Remove Lane Button for Mini Marathon */}
                     {activeEvent.expandableLanes && (
                       <td style={{ padding: "8px", textAlign: "center" }}>
                         <button
@@ -1426,7 +1522,6 @@ export function AthleticsScoresheet({
               </span>
             </div>
 
-            {/* Quick Switch to Scoresheet */}
             <div style={{ display: "flex", gap: "8px" }}>
               <button
                 type="button"
@@ -1434,15 +1529,15 @@ export function AthleticsScoresheet({
                 onClick={() => setSubTab("sheet")}
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
-                <ClipboardList size={15} /> ดูในใบบันทึกผล 20 รายการ →
+                <ClipboardList size={15} /> ดูในใบบันทึกผล →
               </button>
             </div>
           </div>
 
-          {/* Quick Grid of all 20 Events */}
+          {/* Quick Grid of Events */}
           <div>
             <h3 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: "#334155" }}>
-              ภาพรวมและเลือกรายการแข่งขัน (20 รายการตามสูจิบัตร):
+              ภาพรวมและเลือกรายการแข่งขัน:
             </h3>
             <div
               style={{
@@ -1519,7 +1614,7 @@ export function AthleticsScoresheet({
       )}
 
       {/* ========================================================================= */}
-      {/* ==================== TAB 2: SCORESHEET (20 ROWS) ======================= */}
+      {/* ==================== TAB 2: SCORESHEET ================================= */}
       {/* ========================================================================= */}
       {subTab === "sheet" && (
         <section className="panel printable-area" aria-label="ตารางบันทึกการแข่งขันกรีฑา">
@@ -1755,7 +1850,7 @@ export function AthleticsScoresheet({
                         {item.type || "-"}
                       </td>
 
-                      {/* กรณีรายการที่แข่งรอบชิงทันที (ไม่มีรอบคัดเลือก รอบ 1 และ รอบ 2) */}
+                      {/* กรณีมินิมาราธอนที่แข่งรอบชิงทันที */}
                       {item.directFinal ? (
                         <td
                           colSpan={10}
@@ -1770,7 +1865,7 @@ export function AthleticsScoresheet({
                         >
                           {item.expandableLanes ? (
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
-                              <span>— แข่งขันรอบชิงชนะเลิศทันที (แต่ละโรงเรียนส่งได้มากกว่า 1 คน · ปัจจุบัน {item.r3Lanes.length} ลู่) —</span>
+                              <span>— แข่งขันรอบชิงชนะเลิศทันที (ส่งได้มากกว่า 1 คน/โรงเรียน · ปัจจุบัน {item.r3Lanes.length} ลู่) —</span>
                               <button
                                 type="button"
                                 className="no-print"
@@ -1799,7 +1894,7 @@ export function AthleticsScoresheet({
                         </td>
                       ) : (
                         <>
-                          {/* รอบ 1: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
+                          {/* รอบ 1: ลู่ 1-5 */}
                           {item.r1.map((schoolName, idx) => {
                             const lane = item.r1Lanes?.[idx];
                             const isFoul = lane?.isFoul;
@@ -1871,7 +1966,7 @@ export function AthleticsScoresheet({
                             );
                           })}
 
-                          {/* รอบ 2: ลู่ 1-5 (คลิกเพื่อเปิด Modal กรอกอันดับ/ฟาล์ว) */}
+                          {/* รอบ 2: ลู่ 1-5 */}
                           {item.r2.map((schoolName, idx) => {
                             const lane = item.r2Lanes?.[idx];
                             const isFoul = lane?.isFoul;
@@ -2091,7 +2186,7 @@ export function AthleticsScoresheet({
                         );
                       })}
 
-                      {/* Actions: Switch to Registration Tab or Add Lane */}
+                      {/* Actions */}
                       <td className="no-print" style={{ padding: "6px" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
                           <button
@@ -2154,6 +2249,48 @@ export function AthleticsScoresheet({
       {/* ========================================================================= */}
       {subTab === "summary" && (
         <div className="printable-report printable-area" style={{ background: "#fff", padding: "16px" }}>
+          {/* Top Action Bar for Print Preview */}
+          <div
+            className="no-print"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              borderRadius: "10px",
+              padding: "12px 16px",
+              marginBottom: "20px",
+            }}
+          >
+            <div>
+              <strong style={{ color: "#166534", fontSize: "14px" }}>
+                📄 รายงานสรุปผลการแข่งขันกรีฑา (รูปแบบมาตรฐาน A4 แนวตั้ง)
+              </strong>
+              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#15803d" }}>
+                สามารถกดดูตัวอย่างกระดาษ A4 แนวตั้ง (4 หน้า ตามแบบสูจิบัตร) ก่อนสั่งพิมพ์ออกเครื่องพิมพ์หรือบันทึกเป็น PDF
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setShowPrintPreview(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                background: "#0f766e",
+                padding: "8px 18px",
+                fontSize: "14px",
+                fontWeight: 700,
+              }}
+            >
+              <Eye size={16} /> แสดงตัวอย่างก่อนพิมพ์ (A4 แนวตั้ง)
+            </button>
+          </div>
+
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: "20px" }}>
             <h2 style={{ fontSize: "1.3rem", fontWeight: 700, margin: "0 0 6px" }}>
@@ -2165,7 +2302,7 @@ export function AthleticsScoresheet({
             </p>
           </div>
 
-          {/* 20 Events Grid */}
+          {/* Events Grid on Screen */}
           <div
             style={{
               display: "grid",
@@ -2240,7 +2377,7 @@ export function AthleticsScoresheet({
             })}
           </div>
 
-          {/* Page 34: Summary Score Table */}
+          {/* Summary Score Table */}
           <div
             style={{
               pageBreakBefore: "always",
@@ -2353,6 +2490,408 @@ export function AthleticsScoresheet({
               <div style={{ textAlign: "center", lineHeight: "1.8", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
                 <p>ลงชื่อ......................................................ประธานฝ่ายจัดการแข่งขัน</p>
                 <p>(...............................................................)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ====== MODAL: ตัวอย่างก่อนพิมพ์รายงานสรุปผล (A4 แนวตั้ง 210 x 297 มม.) ====== */}
+      {/* ========================================================================= */}
+      {showPrintPreview && (
+        <div
+          className="no-print"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.85)",
+            zIndex: 11000,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {/* Top Preview Control Bar */}
+          <div
+            style={{
+              background: "#0f172a",
+              color: "#fff",
+              padding: "12px 24px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+              borderBottom: "1px solid #334155",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span
+                style={{
+                  background: "#0f766e",
+                  color: "#fff",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                }}
+              >
+                A4 แนวตั้ง (210 × 297 มม.)
+              </span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "16px" }}>
+                  ตัวอย่างก่อนพิมพ์: รายงานสรุปผลการแข่งขันกรีฑา (จำนวน {a4EventPages.length + 1} แผ่น)
+                </h3>
+                <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>
+                  จัดหน้าตามแบบมาตรฐานสูจิบัตร (แผ่นละ 7 รายการ และแผ่นสรุปคะแนนรวมพร้อมช่องลงลายมือชื่อ)
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                type="button"
+                className="primary"
+                onClick={executeA4PortraitPrint}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  background: "#16a34a",
+                  color: "#fff",
+                  padding: "9px 20px",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  borderRadius: "8px",
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(22, 163, 74, 0.4)",
+                }}
+              >
+                <Printer size={17} /> สั่งพิมพ์ / บันทึกเป็น PDF (A4 แนวตั้ง)
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPrintPreview(false)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "#334155",
+                  color: "#fff",
+                  padding: "9px 16px",
+                  fontSize: "14px",
+                  borderRadius: "8px",
+                  border: "1px solid #475569",
+                  cursor: "pointer",
+                }}
+              >
+                <X size={17} /> ปิดหน้าต่างตัวอย่าง
+              </button>
+            </div>
+          </div>
+
+          {/* Scrollable Desk Area holding A4 Portrait Sheets */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "28px 16px 60px",
+              background: "#475569",
+            }}
+          >
+            <div ref={previewContainerRef}>
+              {/* แผ่นที่ 1 ถึง 3: ตารางสรุปผลการแข่งขันกรีฑารายรายการ (แผ่นละ 7 รายการ แนวตั้ง) */}
+              {a4EventPages.map((pageRows, pageIdx) => (
+                <div
+                  key={`a4-page-${pageIdx}`}
+                  className="a4-sheet"
+                  style={{
+                    width: "210mm",
+                    minHeight: "297mm",
+                    background: "#ffffff",
+                    margin: "0 auto 28px",
+                    padding: "12mm 16mm",
+                    boxShadow: "0 12px 32px rgba(0, 0, 0, 0.4)",
+                    position: "relative",
+                    boxSizing: "border-box",
+                    color: "#0f172a",
+                  }}
+                >
+                  {/* Page indicator badge on screen */}
+                  <div
+                    className="sheet-badge"
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "12px",
+                      background: "#f1f5f9",
+                      color: "#475569",
+                      border: "1px solid #cbd5e1",
+                      padding: "2px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    แผ่นที่ {pageIdx + 1} / {a4EventPages.length + 1} (A4 แนวตั้ง)
+                  </div>
+
+                  {pageIdx === 0 && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <div style={{ fontSize: "15px", fontWeight: 700 }}>
+                        ตารางสรุปผลการแข่งขันกรีฑา
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Stacked Single-Column Event Tables matching Handbook pp. 31-33 */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {pageRows.map((r) => {
+                      const winners = computeFinalsWinners(r.r3Lanes || []);
+                      return (
+                        <div key={r.id} style={{ width: "100%" }}>
+                          <div
+                            style={{
+                              textAlign: "center",
+                              fontWeight: 700,
+                              fontSize: "13px",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            รายการที่ {r.sourceNumber || r.no} {r.name} {r.grade} {r.type}
+                          </div>
+                          <table
+                            style={{
+                              width: "100%",
+                              borderCollapse: "collapse",
+                              fontSize: "12px",
+                              textAlign: "center",
+                              border: "1px solid #1e293b",
+                            }}
+                          >
+                            <thead>
+                              <tr style={{ background: "#f49ac2", color: "#000", fontWeight: 700 }}>
+                                <th style={{ border: "1px solid #1e293b", padding: "3px 4px", width: "11%" }}>
+                                  ลำดับที่
+                                </th>
+                                <th style={{ border: "1px solid #1e293b", padding: "3px 6px", width: "35%" }}>
+                                  ชื่อ - นามสกุล
+                                </th>
+                                <th style={{ border: "1px solid #1e293b", padding: "3px 6px", width: "28%" }}>
+                                  โรงเรียน
+                                </th>
+                                <th style={{ border: "1px solid #1e293b", padding: "3px 4px", width: "11%" }}>
+                                  คะแนน
+                                </th>
+                                <th style={{ border: "1px solid #1e293b", padding: "3px 4px", width: "15%" }}>
+                                  หมายเหตุ
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[1, 2, 3].map((rank, i) => {
+                                const w = winners[i];
+                                const defaultPts = rank === 1 ? "3" : rank === 2 ? "2" : "1";
+                                return (
+                                  <tr key={rank}>
+                                    <td style={{ border: "1px solid #1e293b", padding: "3px 4px", fontWeight: 600 }}>
+                                      {rank}
+                                    </td>
+                                    <td style={{ border: "1px solid #1e293b", padding: "3px 8px", textAlign: "left" }}>
+                                      {w?.athleteName || ""}
+                                    </td>
+                                    <td style={{ border: "1px solid #1e293b", padding: "3px 8px", textAlign: "left" }}>
+                                      {w?.schoolName ? getDisplaySchoolName(w.schoolName) : ""}
+                                    </td>
+                                    <td style={{ border: "1px solid #1e293b", padding: "3px 4px", fontWeight: 700 }}>
+                                      {defaultPts}
+                                    </td>
+                                    <td style={{ border: "1px solid #1e293b", padding: "3px 4px", color: "#334155" }}>
+                                      {w?.time || ""}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* แผ่นที่ 4: สรุปผลรวมการแข่งขันกรีฑานักเรียน & ลายเซ็นคณะกรรมการ (ตามสูจิบัตรหน้า 34) */}
+              <div
+                className="a4-sheet"
+                style={{
+                  width: "210mm",
+                  minHeight: "297mm",
+                  background: "#ffffff",
+                  margin: "0 auto 28px",
+                  padding: "16mm 18mm",
+                  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.4)",
+                  position: "relative",
+                  boxSizing: "border-box",
+                  color: "#0f172a",
+                }}
+              >
+                <div
+                  className="sheet-badge"
+                  style={{
+                    position: "absolute",
+                    top: "8px",
+                    right: "12px",
+                    background: "#f1f5f9",
+                    color: "#475569",
+                    border: "1px solid #cbd5e1",
+                    padding: "2px 10px",
+                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                  }}
+                >
+                  แผ่นที่ {a4EventPages.length + 1} / {a4EventPages.length + 1} (A4 แนวตั้ง)
+                </div>
+
+                {/* ตารางที่ 1: สรุปผลการแข่งขันกรีฑา (3 อันดับแรก) */}
+                <h3 style={{ textAlign: "center", fontSize: "16px", fontWeight: 700, margin: "8px 0 12px" }}>
+                  สรุปผลการแข่งขันกรีฑา
+                </h3>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: "13px",
+                    textAlign: "center",
+                    border: "1px solid #1e293b",
+                    marginBottom: "32px",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: "#f49ac2", color: "#000", fontWeight: 700 }}>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "12%" }}>ลำดับที่</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "38%" }}>โรงเรียน</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "20%" }}>เหรียญ (ทอง/เงิน/ทองแดง)</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "14%" }}>คะแนนรวม</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "16%" }}>หมายเหตุ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[0, 1, 2].map((idx) => {
+                      const s = rankedSchools[idx];
+                      return (
+                        <tr key={idx}>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px", fontWeight: 700 }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px 10px", textAlign: "left", fontWeight: 600 }}>
+                            {s ? s.schoolName : ""}
+                          </td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}>
+                            {s ? `${s.gold} / ${s.silver} / ${s.bronze}` : ""}
+                          </td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px", fontWeight: 700 }}>
+                            {s ? s.totalScore : ""}
+                          </td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}>
+                            {s && s.place === 1 ? "ชนะเลิศ" : ""}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {/* ตารางที่ 2: สรุปผลรวมการแข่งขันกรีฑานักเรียน (ทุกโรงเรียนที่มีคะแนน) */}
+                <h3 style={{ textAlign: "center", fontSize: "16px", fontWeight: 700, margin: "0 0 12px" }}>
+                  สรุปผลรวมการแข่งขันกรีฑานักเรียน
+                </h3>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: "13px",
+                    textAlign: "center",
+                    border: "1px solid #1e293b",
+                    marginBottom: "48px",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: "#f49ac2", color: "#000", fontWeight: 700 }}>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "11%" }}>ลำดับที่</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "35%" }}>โรงเรียน</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "9%" }}>ทอง</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "9%" }}>เงิน</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "10%" }}>ทองแดง</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "12%" }}>คะแนน</th>
+                      <th style={{ border: "1px solid #1e293b", padding: "6px", width: "14%" }}>หมายเหตุ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankedSchools.length === 0 ? (
+                      [1, 2, 3].map((num) => (
+                        <tr key={num}>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px", fontWeight: 600 }}>{num}</td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}></td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}></td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}></td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}></td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}></td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}></td>
+                        </tr>
+                      ))
+                    ) : (
+                      rankedSchools.map((s) => (
+                        <tr key={s.schoolName}>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px", fontWeight: 700 }}>
+                            {s.place}
+                          </td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px 10px", textAlign: "left", fontWeight: 600 }}>
+                            {s.schoolName}
+                          </td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}>{s.gold}</td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}>{s.silver}</td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}>{s.bronze}</td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px", fontWeight: 700 }}>
+                            {s.totalScore}
+                          </td>
+                          <td style={{ border: "1px solid #1e293b", padding: "6px" }}>
+                            {s.place === 1 ? "ชนะเลิศคะแนนรวม" : ""}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                {/* ช่องลงลายมือชื่อตามแบบหน้า 34 ในสูจิบัตร */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "24px",
+                    marginTop: "36px",
+                    fontSize: "14px",
+                    lineHeight: "1.9",
+                  }}
+                >
+                  <div style={{ textAlign: "center" }}>
+                    <div>ลงชื่อ......................................................คณะกรรมการ</div>
+                    <div>(...............................................................)</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div>ลงชื่อ......................................................คณะกรรมการ</div>
+                    <div>(...............................................................)</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div>ลงชื่อ......................................................ประธานฝ่ายจัดการแข่งขัน</div>
+                    <div>(...............................................................)</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2526,7 +3065,6 @@ export function AthleticsScoresheet({
                                     : "#fff",
                             }}
                           >
-                            {/* Lane Number */}
                             <td
                               style={{
                                 padding: "8px",
@@ -2538,7 +3076,6 @@ export function AthleticsScoresheet({
                               ลู่ {lane.lane}
                             </td>
 
-                            {/* School Select */}
                             <td style={{ padding: "6px 8px" }}>
                               <select
                                 value={lane.schoolName}
@@ -2563,7 +3100,6 @@ export function AthleticsScoresheet({
                               </select>
                             </td>
 
-                            {/* Athlete Name */}
                             <td style={{ padding: "6px 8px" }}>
                               <input
                                 type="text"
@@ -2582,7 +3118,6 @@ export function AthleticsScoresheet({
                               />
                             </td>
 
-                            {/* Rank Select */}
                             <td style={{ padding: "6px 8px", textAlign: "center" }}>
                               <select
                                 disabled={lane.isFoul}
@@ -2640,7 +3175,6 @@ export function AthleticsScoresheet({
                               </select>
                             </td>
 
-                            {/* Foul Checkbox & Reason */}
                             <td style={{ padding: "6px 8px" }}>
                               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                                 <label
@@ -2687,7 +3221,6 @@ export function AthleticsScoresheet({
                               </div>
                             </td>
 
-                            {/* Time / Stat */}
                             <td style={{ padding: "6px 8px" }}>
                               <input
                                 type="text"
@@ -2707,7 +3240,6 @@ export function AthleticsScoresheet({
                               />
                             </td>
 
-                            {/* Delete button for Mini Marathon */}
                             {modalRow.expandableLanes && (
                               <td style={{ padding: "6px", textAlign: "center" }}>
                                 <button

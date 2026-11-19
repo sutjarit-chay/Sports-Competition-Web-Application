@@ -17,7 +17,7 @@ test("athletics data contains 20 canonical events and marks direct-final and exp
   const directIds = INITIAL_ATHLETICS_DATA.filter((r) => r.directFinal).map(
     (r) => r.id,
   );
-  assert.deepEqual(directIds, [1, 2, 3, 4, 15, 16, 19, 20]);
+  assert.deepEqual(directIds, [1, 2, 3, 4]);
   const expandableIds = INITIAL_ATHLETICS_DATA.filter(
     (r) => r.expandableLanes,
   ).map((r) => r.id);
