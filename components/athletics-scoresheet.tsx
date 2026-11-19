@@ -109,6 +109,7 @@ export function AthleticsScoresheet({
   const [search, setSearch] = useState("");
   const [activeEventId, setActiveEventId] = useState<number>(1);
   const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r1");
+  const [selectedQualifiers, setSelectedQualifiers] = useState<number[]>([0, 1, 2]);
   const [toast, setToast] = useState<string | null>(null);
 
   // Available school list (database prop or fallback)
@@ -220,7 +221,7 @@ export function AthleticsScoresheet({
     saveRows(next);
   }
 
-  // Advance top 3 qualifiers from Round 1 or Round 2 to the next round
+  // Advance selected qualifiers from Round 1 or Round 2 to the next round
   function advanceQualifiers(sourceRound: "r1" | "r2", targetRound: "r2" | "r3") {
     const sourceLanes =
       sourceRound === "r1" ? activeEvent.r1Lanes : activeEvent.r2Lanes;
@@ -228,24 +229,24 @@ export function AthleticsScoresheet({
     const targetCells = [...activeEvent[targetRound]];
     const nextTargetLanes = [...activeEvent[targetLanesKey]];
 
-    // Find top 3 (ranks "1", "2", "3")
-    const qualifiers = sourceLanes
-      .filter((l) => ["1", "2", "3", "ที่ 1", "ที่ 2", "ที่ 3"].includes(l.rank || ""))
-      .sort((a, b) => (parseInt(a.rank || "99") || 99) - (parseInt(b.rank || "99") || 99));
+    // Get qualifiers from selectedQualifiers indices that have a school assigned
+    const selectedEntries = selectedQualifiers
+      .map((idx) => sourceLanes[idx])
+      .filter((l) => l && l.schoolName);
 
-    if (qualifiers.length === 0) {
-      alert("กรุณาระบุอันดับเข้าเส้นชัย (๑, ๒, ๓) ในลู่วิ่งของรอบนี้ก่อนส่งไปรอบถัดไป");
+    if (selectedEntries.length === 0) {
+      alert("กรุณาเลือกอย่างน้อย ๑ ลู่ที่มีโรงเรียนลงทะเบียนเพื่อส่งไปรอบถัดไป");
       return;
     }
 
-    qualifiers.forEach((q, idx) => {
+    selectedEntries.forEach((q, idx) => {
       if (idx < nextTargetLanes.length) {
         nextTargetLanes[idx] = {
           ...nextTargetLanes[idx],
           schoolName: q.schoolName,
           athleteName: q.athleteName,
           rank: "",
-          time: "",
+          time: q.time || "",
         };
         targetCells[idx] = q.schoolName;
       }
@@ -263,6 +264,50 @@ export function AthleticsScoresheet({
       `ส่งผู้เข้ารอบเข้าสู่ ${targetRound === "r2" ? "รอบ ๒" : "รอบชิงชนะเลิศ"} เรียบร้อย`,
     );
     setActiveRound(targetRound);
+  }
+
+  // Update finals medal winner (1st = Gold, 2nd = Silver, 3rd = Bronze)
+  function updateWinner(rankNum: 1 | 2 | 3, laneIndex: number | "none") {
+    const currentWinners = activeEvent.winners ? [...activeEvent.winners] : [];
+    const lane = typeof laneIndex === "number" ? activeEvent.r3Lanes[laneIndex] : null;
+
+    // Filter out existing holder of this rank
+    const nextWinners = currentWinners.filter((w) => w.rank !== rankNum);
+
+    if (lane && lane.schoolName) {
+      nextWinners.push({
+        rank: rankNum,
+        athleteName: lane.athleteName || "",
+        schoolName: lane.schoolName,
+        score: rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1,
+        time: lane.time || "",
+      });
+    }
+
+    // Also update rank tag on r3Lanes for medal highlights
+    const updatedR3Lanes = activeEvent.r3Lanes.map((l, idx) => {
+      if (laneIndex === idx) {
+        return { ...l, rank: String(rankNum) };
+      }
+      if (l.rank === String(rankNum)) {
+        return { ...l, rank: "" };
+      }
+      return l;
+    });
+
+    const updatedEvent: AthleticsRow = {
+      ...activeEvent,
+      r3Lanes: updatedR3Lanes,
+      winners: nextWinners.sort((a, b) => a.rank - b.rank),
+    };
+
+    const nextRows = rows.map((r) => (r.id === activeEvent.id ? updatedEvent : r));
+    saveRows(
+      nextRows,
+      lane
+        ? `บันทึก${rankNum === 1 ? "เหรียญทอง" : rankNum === 2 ? "เหรียญเงิน" : "เหรียญทองแดง"}: ${lane.schoolName}`
+        : undefined,
+    );
   }
 
   // Clear lanes in active round
@@ -595,15 +640,13 @@ export function AthleticsScoresheet({
             <div>
               {activeRound === "r3" ? (
                 <>
-                  🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> เลือกโรงเรียนและระบุชื่อนักกีฬาประจำลู่ เมื่อแข่งขันเสร็จ เลือก{" "}
-                  <strong>อันดับ ๑ (ทอง/๓ แต้ม), อันดับ ๒ (เงิน/๒ แต้ม), อันดับ ๓ (ทองแดง/๑ แต้ม)</strong>{" "}
-                  เพื่อคำนวณคะแนนรวมชิงแชมป์กรีฑาให้อัตโนมัติ
+                  🏆 <strong>รอบชิงชนะเลิศ (๖ ลู่):</strong> กำหนดชื่อโรงเรียนและนักกีฬาประจำลู่ ๑–๖
+                  และระบุผู้ได้รับเหรียญทอง เงิน ทองแดง ในส่วนบันทึกผลด้านล่างเพื่อสรุปคะแนนอัตโนมัติ
                 </>
               ) : (
                 <>
                   📋 <strong>{activeRound === "r1" ? "รอบ ๑ (๕ ลู่)" : "รอบ ๒ (๕ ลู่)"}:</strong>{" "}
-                  เลือกชื่อโรงเรียนและกรอกชื่อนักกีฬาในแต่ละลู่ เมื่อวิ่งเสร็จให้เลือกลำดับ 1, 2, 3 แล้วคลิกปุ่ม{" "}
-                  <strong>"ส่งอันดับ 1-3 เข้ารอบถัดไป"</strong>
+                  ลงทะเบียนชื่อโรงเรียนและนักกีฬาประจำลู่ ๑–๕ เมื่อวิ่งเสร็จเลือกลู่ที่ผ่านเข้ารอบเพื่อส่งตัวไปรอบถัดไป
                 </>
               )}
             </div>
@@ -638,162 +681,223 @@ export function AthleticsScoresheet({
               <thead>
                 <tr style={{ background: "#1e293b", color: "#fff" }}>
                   <th style={{ padding: "10px", width: "90px", textAlign: "center" }}>ลู่วิ่ง</th>
-                  <th style={{ padding: "10px", minWidth: "250px", textAlign: "left" }}>
+                  <th style={{ padding: "10px", minWidth: "260px", textAlign: "left" }}>
                     ชื่อโรงเรียน (เลือกจากรายชื่อ)
                   </th>
-                  <th style={{ padding: "10px", minWidth: "200px", textAlign: "left" }}>
+                  <th style={{ padding: "10px", minWidth: "220px", textAlign: "left" }}>
                     ชื่อ - นามสกุล นักกีฬา
                   </th>
-                  <th style={{ padding: "10px", width: "140px", textAlign: "center" }}>
+                  <th style={{ padding: "10px", width: "160px", textAlign: "center" }}>
                     สถิติเวลา/ผล (ถ้ามี)
-                  </th>
-                  <th style={{ padding: "10px", width: "170px", textAlign: "center" }}>
-                    {activeRound === "r3" ? "อันดับเหรียญรางวัล" : "อันดับเข้าเส้นชัย"}
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {activeLanes.map((lane, idx) => {
-                  const isGold = lane.rank === "1";
-                  const isSilver = lane.rank === "2";
-                  const isBronze = lane.rank === "3";
-                  return (
-                    <tr
-                      key={idx}
+                {activeLanes.map((lane, idx) => (
+                  <tr
+                    key={idx}
+                    style={{
+                      borderBottom: "1px solid #e2e8f0",
+                      background: idx % 2 === 0 ? "#ffffff" : "#f8fafc",
+                    }}
+                  >
+                    {/* Lane Number */}
+                    <td
                       style={{
-                        borderBottom: "1px solid #e2e8f0",
-                        background: isGold
-                          ? "#fef9c3"
-                          : isSilver
-                            ? "#f1f5f9"
-                            : isBronze
-                              ? "#fed7aa"
-                              : idx % 2 === 0
-                                ? "#ffffff"
-                                : "#f8fafc",
+                        padding: "10px",
+                        textAlign: "center",
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        color: "#0f766e",
                       }}
                     >
-                      {/* Lane Number */}
-                      <td
+                      ลู่ {lane.lane}
+                    </td>
+
+                    {/* School Selection (Full School Name) */}
+                    <td style={{ padding: "8px 10px" }}>
+                      <select
+                        value={lane.schoolName}
+                        onChange={(e) =>
+                          updateLane(activeRound, idx, "schoolName", e.target.value)
+                        }
                         style={{
-                          padding: "10px",
-                          textAlign: "center",
-                          fontWeight: 700,
-                          fontSize: "15px",
-                          color: "#0f766e",
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: "6px",
+                          border: lane.schoolName
+                            ? "1.5px solid #0f766e"
+                            : "1px solid #cbd5e1",
+                          fontSize: "14px",
+                          fontWeight: lane.schoolName ? 600 : 400,
+                          color: lane.schoolName ? "#0f172a" : "#64748b",
+                          background: "#fff",
                         }}
                       >
-                        ลู่ {lane.lane}
-                      </td>
+                        <option value="">-- เลือกโรงเรียนประจำลู่ --</option>
+                        {schoolOptions.map((schoolName) => (
+                          <option key={schoolName} value={schoolName}>
+                            {schoolName}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
 
-                      {/* School Selection (Full School Name) */}
-                      <td style={{ padding: "8px 10px" }}>
-                        <select
-                          value={lane.schoolName}
-                          onChange={(e) =>
-                            updateLane(activeRound, idx, "schoolName", e.target.value)
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "8px 10px",
-                            borderRadius: "6px",
-                            border: lane.schoolName
-                              ? "1.5px solid #0f766e"
-                              : "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: lane.schoolName ? 600 : 400,
-                            color: lane.schoolName ? "#0f172a" : "#64748b",
-                            background: "#fff",
-                          }}
-                        >
-                          <option value="">-- เลือกโรงเรียนประจำลู่ --</option>
-                          {schoolOptions.map((schoolName) => (
-                            <option key={schoolName} value={schoolName}>
-                              {schoolName}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
+                    {/* Athlete Name */}
+                    <td style={{ padding: "8px 10px" }}>
+                      <input
+                        type="text"
+                        placeholder="ชื่อ-สกุล นักกีฬา (ถ้ามี)"
+                        value={lane.athleteName}
+                        onChange={(e) =>
+                          updateLane(activeRound, idx, "athleteName", e.target.value)
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "14px",
+                        }}
+                      />
+                    </td>
 
-                      {/* Athlete Name */}
-                      <td style={{ padding: "8px 10px" }}>
-                        <input
-                          type="text"
-                          placeholder="ชื่อ-สกุล นักกีฬา (ถ้ามี)"
-                          value={lane.athleteName}
-                          onChange={(e) =>
-                            updateLane(activeRound, idx, "athleteName", e.target.value)
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "8px 10px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                          }}
-                        />
-                      </td>
-
-                      {/* Time / Mark */}
-                      <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                        <input
-                          type="text"
-                          placeholder="เช่น 12.45 วิ"
-                          value={lane.time || ""}
-                          onChange={(e) =>
-                            updateLane(activeRound, idx, "time", e.target.value)
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "8px 10px",
-                            textAlign: "center",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13px",
-                          }}
-                        />
-                      </td>
-
-                      {/* Finish Rank / Medal */}
-                      <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                        <select
-                          value={lane.rank || ""}
-                          onChange={(e) =>
-                            updateLane(activeRound, idx, "rank", e.target.value)
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "8px 10px",
-                            borderRadius: "6px",
-                            border: lane.rank ? "2px solid #ca8a04" : "1px solid #cbd5e1",
-                            fontSize: "13px",
-                            fontWeight: lane.rank ? 700 : 400,
-                            background: "#fff",
-                            color:
-                              lane.rank === "1"
-                                ? "#ca8a04"
-                                : lane.rank === "2"
-                                  ? "#475569"
-                                  : lane.rank === "3"
-                                    ? "#c2410c"
-                                    : "#1e293b",
-                          }}
-                        >
-                          <option value="">- เข้าเส้นชัย -</option>
-                          <option value="1">🥇 ที่ ๑ (ทอง · ๓ แต้ม)</option>
-                          <option value="2">🥈 ที่ ๒ (เงิน · ๒ แต้ม)</option>
-                          <option value="3">🥉 ที่ ๓ (ทองแดง · ๑ แต้ม)</option>
-                          <option value="4">ที่ ๔</option>
-                          <option value="5">ที่ ๕</option>
-                          {activeRound === "r3" && <option value="6">ที่ ๖</option>}
-                        </select>
-                      </td>
-                    </tr>
-                  );
-                })}
+                    {/* Time / Mark */}
+                    <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                      <input
+                        type="text"
+                        placeholder="เช่น 12.45 วิ"
+                        value={lane.time || ""}
+                        onChange={(e) =>
+                          updateLane(activeRound, idx, "time", e.target.value)
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          textAlign: "center",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "13px",
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
+
+          {/* Finals Winners Recording Panel */}
+          {activeRound === "r3" && (
+            <div
+              style={{
+                background: "#fefce8",
+                border: "1.5px solid #fde047",
+                borderRadius: "10px",
+                padding: "16px",
+                marginBottom: "20px",
+              }}
+            >
+              <h4
+                style={{
+                  margin: "0 0 12px",
+                  color: "#854d0e",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <Trophy size={18} color="#ca8a04" /> บันทึกผลผู้ได้รับเหรียญรางวัล (รอบชิงชนะเลิศ):
+              </h4>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: "14px",
+                }}
+              >
+                {/* Gold */}
+                <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #fde047" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#854d0e", marginBottom: "6px" }}>
+                    🥇 เหรียญทอง (ชนะเลิศ · ๓ แต้ม)
+                  </label>
+                  <select
+                    value={
+                      activeEvent.r3Lanes.findIndex(
+                        (l) => l.schoolName && l.schoolName === activeEvent.winners?.find((w) => w.rank === 1)?.schoolName,
+                      )
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateWinner(1, val === "-1" ? "none" : Number(val));
+                    }}
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  >
+                    <option value="-1">-- เลือกลู่ที่ชนะเลิศ --</option>
+                    {activeEvent.r3Lanes.map((l, idx) => (
+                      <option key={idx} value={idx} disabled={!l.schoolName}>
+                        ลู่ {l.lane}: {l.schoolName ? `${getDisplaySchoolName(l.schoolName)} ${l.athleteName ? `(${l.athleteName})` : ""}` : "(ยังไม่มีผู้ลงแข่ง)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Silver */}
+                <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
+                    🥈 เหรียญเงิน (รองชนะเลิศ อันดับ ๑ · ๒ แต้ม)
+                  </label>
+                  <select
+                    value={
+                      activeEvent.r3Lanes.findIndex(
+                        (l) => l.schoolName && l.schoolName === activeEvent.winners?.find((w) => w.rank === 2)?.schoolName,
+                      )
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateWinner(2, val === "-1" ? "none" : Number(val));
+                    }}
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  >
+                    <option value="-1">-- เลือกลู่รองชนะเลิศอันดับ ๑ --</option>
+                    {activeEvent.r3Lanes.map((l, idx) => (
+                      <option key={idx} value={idx} disabled={!l.schoolName}>
+                        ลู่ {l.lane}: {l.schoolName ? `${getDisplaySchoolName(l.schoolName)} ${l.athleteName ? `(${l.athleteName})` : ""}` : "(ยังไม่มีผู้ลงแข่ง)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Bronze */}
+                <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #fed7aa" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#9a3412", marginBottom: "6px" }}>
+                    🥉 เหรียญทองแดง (รองชนะเลิศ อันดับ ๒ · ๑ แต้ม)
+                  </label>
+                  <select
+                    value={
+                      activeEvent.r3Lanes.findIndex(
+                        (l) => l.schoolName && l.schoolName === activeEvent.winners?.find((w) => w.rank === 3)?.schoolName,
+                      )
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateWinner(3, val === "-1" ? "none" : Number(val));
+                    }}
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  >
+                    <option value="-1">-- เลือกลู่รองชนะเลิศอันดับ ๒ --</option>
+                    {activeEvent.r3Lanes.map((l, idx) => (
+                      <option key={idx} value={idx} disabled={!l.schoolName}>
+                        ลู่ {l.lane}: {l.schoolName ? `${getDisplaySchoolName(l.schoolName)} ${l.athleteName ? `(${l.athleteName})` : ""}` : "(ยังไม่มีผู้ลงแข่ง)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Action Row */}
           <div
@@ -810,9 +914,46 @@ export function AthleticsScoresheet({
               marginBottom: "24px",
             }}
           >
-            {/* Advance Qualifiers Button */}
+            {/* Advance Qualifiers Selectors & Button */}
             {activeRound !== "r3" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>
+                  เลือกลู่ที่ผ่านเข้ารอบ:
+                </span>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {activeLanes.map((lane, idx) => {
+                    const isChecked = selectedQualifiers.includes(idx);
+                    return (
+                      <label
+                        key={idx}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          fontSize: "13px",
+                          padding: "3px 8px",
+                          borderRadius: "4px",
+                          border: isChecked ? "1px solid #0f766e" : "1px solid #cbd5e1",
+                          background: isChecked ? "#f0fdf4" : "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedQualifiers((prev) => [...prev, idx]);
+                            } else {
+                              setSelectedQualifiers((prev) => prev.filter((i) => i !== idx));
+                            }
+                          }}
+                        />
+                        ลู่ {lane.lane} {lane.schoolName ? `(${getDisplaySchoolName(lane.schoolName)})` : ""}
+                      </label>
+                    );
+                  })}
+                </div>
                 <button
                   type="button"
                   className="primary"
@@ -829,12 +970,9 @@ export function AthleticsScoresheet({
                     )
                   }
                 >
-                  ส่งอันดับ 1-3 เข้าสู่ {activeRound === "r1" ? "รอบ ๒" : "รอบชิงชนะเลิศ"}{" "}
+                  ส่งลู่ที่เลือกเข้าสู่ {activeRound === "r1" ? "รอบ ๒" : "รอบชิงชนะเลิศ"}{" "}
                   <ArrowRight size={15} />
                 </button>
-                <span style={{ fontSize: "12px", color: "#64748b" }}>
-                  *คัดลอกโรงเรียนและนักกีฬาอันดับ 1-3 ไปจัดลู่วิ่งในรอบถัดไป
-                </span>
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -848,7 +986,7 @@ export function AthleticsScoresheet({
                     color: "#0f766e",
                   }}
                 >
-                  <Medal size={16} /> บันทึกเหรียญและคะแนน ๓, ๒, ๑ เรียบร้อยแล้ว
+                  <Medal size={16} /> บันทึกเหรียญและคะแนน ๓, ๒, ๑ เพื่อออกรายงานเรียบร้อยแล้ว
                 </span>
               </div>
             )}
