@@ -1,7 +1,7 @@
 # รายการงานและสิ่งที่ต้องทำ (TODO / Backlog) — นครโกสัมพีเกมส์ 2569
 
 > เอกสารติดตามสถานะงาน สิ่งที่เสร็จแล้ว และงานที่ต้องทำต่อ
-> อัปเดตล่าสุด: 2026-11-18 (หลังเสร็จสิ้นฟีเจอร์ "ผลอันดับโดยตรง" commit `3ea9418`)
+> อัปเดตล่าสุด: 2026-11-20 (หลัง deploy ระบบซิงก์กรีฑา commit `acb4ad7`)
 
 ---
 
@@ -9,9 +9,10 @@
 
 ### งานเร่งด่วน / เตรียมความพร้อม Production
 - [x] **เชื่อมต่อระบบใบบันทึกผลกรีฑา (Athletics Scoresheet หน้า 29–34) กับฐานข้อมูล Supabase จริง:** เพิ่ม `lib/athletics-scoresheet-store.ts` และ `app/api/athletics-scoresheet/route.ts` จัดเก็บลง Supabase Storage (`team-files/athletics-scoresheet`) แบบ Immutable CAS Versioning และเชื่อมผลเหรียญกรีฑาทั้ง 20 รายการเข้ากับตารางสรุปเหรียญรางวัลรวมของระบบ (`calculatedAwards` ใน `app/page.tsx`) พร้อมทดสอบกับ Hosted Supabase จริงและชุดทดสอบ 287 ข้อผ่านทั้งหมด
-- [ ] **ตรวจสอบ Deployment บน Vercel:** ตรวจสอบว่าหลังจาก push commit ล่าสุดขึ้น `main` แล้ว Vercel ทำการ build และ deploy สำเร็จ เปิดใช้งานหน้าเว็บได้ตามปกติ
-- [ ] **ทดสอบ E2E (Playwright) บนเครื่องทดสอบ:** รัน `npm run test:e2e` ให้ผ่านทั้งหมด (ก่อนหน้านี้ติดพอร์ต 3000 ที่ชนกับ dev server)
+- [x] **ตรวจสอบ Deployment บน Vercel:** commit `acb4ad7` deploy สำเร็จ หน้า production และ `GET /api/athletics-scoresheet` ตอบ HTTP 200
+- [ ] **แก้ Regression E2E ทั้งระบบ:** ล่าสุดผ่าน 29/45; E2E เฉพาะกรีฑาผ่าน 3/3 แต่ยังมี 16 ข้อเดิมที่ล้มเหลวใน competition integration, design, hosted, registration, school medal และ workflow
 - [ ] **ตรวจสอบ RLS และ Migration สำหรับ Referee Workflow:** ตรวจสอบความถูกต้องของ RLS policy บน Supabase hosted จริง ตามคำแนะนำใน `docs/PRODUCTION-READINESS.md`
+- [ ] **อัปเกรด Next.js หลังประเมินผลกระทบ:** เวอร์ชัน 16.4.4 มีคำเตือนช่องโหว่ที่ทราบอยู่ ต้องอ่าน migration/security notes และรัน regression ก่อน deploy
 
 ### งานปรับปรุงโค้ดและระบบ (Refactor & Enhancement)
 - [ ] **Refactor `app/page.tsx`:** ปัจจุบันไฟล์มีขนาดใหญ่ (~2,700 บรรทัด) ควรแยก logic และ UI ส่วนต่างๆ ออกเป็น component หรือ hook ย่อยเพื่อความอ่านง่ายและการดูแลระยะยาว
@@ -21,6 +22,12 @@
 ---
 
 ## ✅ งานที่ทำเสร็จแล้ว (Completed)
+
+- [x] **ทำให้การซิงก์ใบบันทึกผลกรีฑาปลอดภัยและพร้อมใช้บน Production** (`acb4ad7`):
+  - แยกโมดูล client-safe `lib/athletics-scoresheet-model.ts` ออกจาก Storage/server code แก้ production build ที่เคยดึง `node:crypto` เข้าฝั่ง client
+  - บังคับใช้ `expectedVersion` ทุกครั้ง รวมการบันทึกครั้งแรก และแก้ `409 Conflict` ให้โหลดข้อมูลล่าสุดโดยไม่ retry เขียนทับข้อมูล
+  - serialize การบันทึกและคิวการแก้ไขระหว่าง request ป้องกัน response เก่าย้อนทับข้อมูลใหม่
+  - ตรวจผ่าน unit/SQL/route 287/287, typecheck, production build และ Playwright เฉพาะกรีฑา 3/3
 
 - [x] **ระบบลงทะเบียนนักกีฬา จัดลู่วิ่ง และใบบันทึกผลกรีฑา (พร้อมแก้บั๊กหมวด 1 และปรับปรุง UX หมวด 2):**
   - พัฒนาคอมโพเนนต์ `components/athletics-scoresheet.tsx` ติดตั้งในแท็บ 4 ("กรีฑา") ของ `app/page.tsx` พร้อมชุดทดสอบ `tests/athletics-scoresheet.test.ts` (รวม 282 ข้อ ผ่านทั้งหมด)
