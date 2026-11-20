@@ -20,386 +20,20 @@ import {
   X,
 } from "lucide-react";
 
-export type LaneEntry = {
-  lane: number;
-  schoolName: string; // ชื่อโรงเรียน เช่น โรงเรียนบ้านหนองแดน
-  athleteName: string; // ชื่อ-สกุล นักกีฬา
-  time?: string; // สถิติเวลา/ผล (ถ้ามี)
-  rank?: string; // "1", "2", "3", "4", "5", "6", ..., "DQ"
-  isFoul?: boolean; // ฟาล์วหรือไม่
-  foulReason?: string; // รายละเอียดฟาล์ว (ถ้ามี)
+import {
+  DEFAULT_SCHOOLS, FOUL_REASONS, INITIAL_ATHLETICS_DATA,
+  addLaneToEventRound, assignUniqueRankInLanes, calculateSchoolAthleticsStandings,
+  computeFinalsWinners, defaultLanes, getDisplaySchoolName, removeLaneFromEventRound,
+  syncQualifiersToFinals, type AthleticsRow, type LaneEntry,
+  type SchoolAthleticsStanding, type WinnerEntry,
+} from "@/lib/athletics-scoresheet-model";
+export {
+  DEFAULT_SCHOOLS, FOUL_REASONS, INITIAL_ATHLETICS_DATA,
+  addLaneToEventRound, assignUniqueRankInLanes, calculateSchoolAthleticsStandings,
+  computeFinalsWinners, defaultLanes, getDisplaySchoolName, removeLaneFromEventRound,
+  syncQualifiersToFinals,
 };
-
-export type WinnerEntry = {
-  rank: number;
-  athleteName: string;
-  schoolName: string;
-  score: number;
-  time?: string;
-};
-
-export type AthleticsRow = {
-  id: number;
-  no: string;
-  sourceNumber?: number;
-  name: string;
-  grade: string;
-  type: string;
-  directFinal?: boolean; // แข่งรอบชิงชนะเลิศทันที (มินิมาราธอน 1-4)
-  expandableLanes?: boolean; // สามารถกดเพิ่มลู่ได้เรื่อยๆ (มินิมาราธอน ที่แต่ละโรงเรียนส่งได้มากกว่า 1 คน)
-  r1: string[]; // 5 lanes (ชื่อโรงเรียน)
-  r2: string[]; // 5 lanes (ชื่อโรงเรียน)
-  r3: string[]; // 6+ lanes (finals) (ชื่อโรงเรียน)
-  r1Lanes: LaneEntry[];
-  r2Lanes: LaneEntry[];
-  r3Lanes: LaneEntry[];
-  winners?: WinnerEntry[];
-};
-
-export type SchoolAthleticsStanding = {
-  schoolName: string;
-  gold: number;
-  silver: number;
-  bronze: number;
-  totalScore: number;
-  place: number;
-};
-
-export const DEFAULT_SCHOOLS = [
-  "โรงเรียนบ้านหนองแดน",
-  "โรงเรียนบ้านโนนสมบูรณ์",
-  "โรงเรียนบ้านคลองเมือง",
-  "โรงเรียนบ้านมะเดื่อชุมพร",
-  "โรงเรียนอนุบาลโกสัมพีนคร(บ้านท่าคูณ)",
-  "โรงเรียนบ้านดงซ่อม",
-  "โรงเรียนบ้านหนองวัวดำ",
-  "โรงเรียนบ้านไร่ลำปาง",
-  "โรงเรียนบ้านโกสัมพี(วิเศษน้อมมิตรอนุกูล)",
-  "โรงเรียนบ้านหนองแดน สาขาโละโคะ",
-  "โรงเรียนโกสัมพีวิทยา",
-];
-
-export const FOUL_REASONS = [
-  "เหยียบเส้น / ล้ำลู่",
-  "ออกตัวก่อนปล่อยสัญญาณ (False Start)",
-  "ทำไม้หล่น / ส่งไม้ผิดกติกา",
-  "วิ่งตัดหน้า / กีดขวางคู่แข่ง",
-  "ผิดกติกาการแข่งขันทั่วไป",
-];
-
-export function getDisplaySchoolName(fullName: string): string {
-  if (!fullName) return "";
-  return fullName.replace(/^โรงเรียน/, "").trim();
-}
-
-export function defaultLanes(count: number): LaneEntry[] {
-  return Array.from({ length: count }, (_, i) => ({
-    lane: i + 1,
-    schoolName: "",
-    athleteName: "",
-    time: "",
-    rank: "",
-    isFoul: false,
-    foulReason: "",
-  }));
-}
-
-// ข้อมูลรายการกรีฑาตามสูจิบัตร นครโกสัมพีเกมส์ 2569 (ใช้เลขอารบิกทั้งหมด)
-export const INITIAL_ATHLETICS_DATA: AthleticsRow[] = [
-  { id: 1, no: "1", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "ชาย", directFinal: true, expandableLanes: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 2, no: "2", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "ประถม", type: "หญิง", directFinal: true, expandableLanes: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 3, no: "3", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "ชาย", directFinal: true, expandableLanes: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 4, no: "4", sourceNumber: 101, name: "วิ่ง มินิมาราธอน", grade: "มัธยม", type: "หญิง", directFinal: true, expandableLanes: true, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 5, no: "5", sourceNumber: 106, name: "วิ่ง 50 เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 6, no: "6", sourceNumber: 107, name: "วิ่ง 50 เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 7, no: "7", sourceNumber: 112, name: "วิ่ง 80 เมตร", grade: "อนุบาล", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 8, no: "8", sourceNumber: 113, name: "วิ่ง 80 เมตร", grade: "อนุบาล", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 9, no: "9", sourceNumber: 118, name: "วิ่ง 60 เมตร", grade: "ป.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 10, no: "10", sourceNumber: 119, name: "วิ่ง 60 เมตร", grade: "ป.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 11, no: "11", sourceNumber: 124, name: "วิ่ง 100 เมตร", grade: "ป.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 12, no: "12", sourceNumber: 125, name: "วิ่ง 100 เมตร", grade: "ป.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 13, no: "13", sourceNumber: 130, name: "วิ่ง 100 เมตร", grade: "ป.4-6", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 14, no: "14", sourceNumber: 131, name: "วิ่ง 100 เมตร", grade: "ป.4-6", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 15, no: "15", sourceNumber: 132, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 16, no: "16", sourceNumber: 133, name: "วิ่ง 100 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 17, no: "17", sourceNumber: 138, name: "วิ่ง 200 เมตร", grade: "ป.4-6", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 18, no: "18", sourceNumber: 139, name: "วิ่ง 200 เมตร", grade: "ป.4-6", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 19, no: "19", sourceNumber: 140, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "หญิง", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-  { id: 20, no: "20", sourceNumber: 141, name: "วิ่ง 200 เมตร", grade: "ม.1-3", type: "ชาย", directFinal: false, r1: ["", "", "", "", ""], r2: ["", "", "", "", ""], r3: ["", "", "", "", "", ""], r1Lanes: defaultLanes(5), r2Lanes: defaultLanes(5), r3Lanes: defaultLanes(6) },
-];
-
-/**
- * เพิ่มลู่วิ่งใหม่ต่อท้ายในรอบที่กำหนด (สำหรับรายการมินิมาราธอนที่กดเพิ่มลู่ได้เรื่อยๆ)
- */
-export function addLaneToEventRound(
-  row: AthleticsRow,
-  roundKey: "r1" | "r2" | "r3" = "r3",
-): AthleticsRow {
-  const lanesKey =
-    roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
-  const currentLanes = [...(row[lanesKey] || [])];
-  const nextLaneNumber = currentLanes.length + 1;
-  const newLane: LaneEntry = {
-    lane: nextLaneNumber,
-    schoolName: "",
-    athleteName: "",
-    time: "",
-    rank: "",
-    isFoul: false,
-    foulReason: "",
-  };
-  const updatedLanes = [...currentLanes, newLane];
-  const updatedCells = [...(row[roundKey] || []), ""];
-
-  return {
-    ...row,
-    [lanesKey]: updatedLanes,
-    [roundKey]: updatedCells,
-  };
-}
-
-/**
- * ลบลู่วิ่งตามลำดับ index และจัดเรียงเลขลู่ 1..N ใหม่อัตโนมัติ
- */
-export function removeLaneFromEventRound(
-  row: AthleticsRow,
-  roundKey: "r1" | "r2" | "r3",
-  laneIndex: number,
-): AthleticsRow {
-  const lanesKey =
-    roundKey === "r1" ? "r1Lanes" : roundKey === "r2" ? "r2Lanes" : "r3Lanes";
-  const currentLanes = [...(row[lanesKey] || [])];
-  if (currentLanes.length <= 1) return row;
-
-  const filteredLanes = currentLanes
-    .filter((_, idx) => idx !== laneIndex)
-    .map((l, idx) => ({
-      ...l,
-      lane: idx + 1,
-    }));
-  const updatedCells = filteredLanes.map((l) => l.schoolName || "");
-
-  const updatedRow: AthleticsRow = {
-    ...row,
-    [lanesKey]: filteredLanes,
-    [roundKey]: updatedCells,
-  };
-
-  if (roundKey === "r3") {
-    updatedRow.winners = computeFinalsWinners(filteredLanes);
-  }
-
-  return updatedRow;
-}
-
-/**
- * ป้องกันอันดับซ้ำในรอบเดียวกัน:
- * หากตั้งอันดับ (เช่น "1", "2", "3", "4", "5", "6") ให้กับ targetLaneIdx
- * ลู่อื่นในรอบเดียวกันที่เคยถือครองอันดับนั้นจะถูกล้าง rank เป็น "" อัตโนมัติ
- */
-export function assignUniqueRankInLanes(
-  lanes: LaneEntry[],
-  targetLaneIdx: number,
-  newRank: string,
-): LaneEntry[] {
-  const cleanRank = newRank.trim();
-  return lanes.map((lane, idx) => {
-    if (idx === targetLaneIdx) {
-      const isFoul = cleanRank === "DQ" ? true : lane.isFoul;
-      return {
-        ...lane,
-        rank: cleanRank,
-        isFoul,
-      };
-    }
-    if (cleanRank && cleanRank !== "DQ" && lane.rank === cleanRank) {
-      return {
-        ...lane,
-        rank: "",
-      };
-    }
-    return lane;
-  });
-}
-
-/**
- * คำนวณผู้ชนะเหรียญรางวัล (อันดับ 1, 2, 3) จากข้อมูลลู่วิ่งในรอบชิงชนะเลิศ (`r3Lanes`)
- */
-export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
-  return [1, 2, 3].map((rankNum) => {
-    const matchingLane = r3Lanes.find(
-      (l) =>
-        !l.isFoul &&
-        Boolean(l.schoolName) &&
-        (l.rank === String(rankNum) || l.rank === `ที่ ${rankNum}`),
-    );
-    return {
-      rank: rankNum,
-      athleteName: matchingLane?.athleteName || "",
-      schoolName: matchingLane?.schoolName || "",
-      score: matchingLane?.schoolName ? (rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1) : 0,
-      time: matchingLane?.time || "",
-    };
-  });
-}
-
-/**
- * ส่งผู้เข้ารอบ 1, 2, 3 จากรอบ 1 และ รอบ 2 ไปจัดลู่รอบชิงชนะเลิศ (เรียงลู่ 3, 2, 1, 1, 2, 3)
- */
-export function syncQualifiersToFinals(row: AthleticsRow): {
-  row: AthleticsRow;
-  newlyAdvanced: boolean;
-} {
-  if (row.directFinal) {
-    return { row, newlyAdvanced: false };
-  }
-
-  const nextR3Lanes = [...row.r3Lanes];
-  const nextR3Cells = [...row.r3];
-
-  const findQualifier = (lanes: LaneEntry[], targetRank: string) => {
-    return lanes.find(
-      (l) =>
-        !l.isFoul &&
-        Boolean(l.schoolName) &&
-        (l.rank === targetRank || l.rank === `ที่ ${targetRank}`),
-    );
-  };
-
-  const r1First = findQualifier(row.r1Lanes, "1");
-  const r1Second = findQualifier(row.r1Lanes, "2");
-  const r1Third = findQualifier(row.r1Lanes, "3");
-
-  const r2First = findQualifier(row.r2Lanes, "1");
-  const r2Second = findQualifier(row.r2Lanes, "2");
-  const r2Third = findQualifier(row.r2Lanes, "3");
-
-  // Seeding order across lanes 1-6: 3, 2, 1, 1, 2, 3
-  const mapping: [number, LaneEntry | undefined][] = [
-    [0, r1Third],  // ลู่ 1: อันดับ 3 รอบ 1
-    [1, r1Second], // ลู่ 2: อันดับ 2 รอบ 1
-    [2, r1First],  // ลู่ 3: อันดับ 1 รอบ 1
-    [3, r2First],  // ลู่ 4: อันดับ 1 รอบ 2
-    [4, r2Second], // ลู่ 5: อันดับ 2 รอบ 2
-    [5, r2Third],  // ลู่ 6: อันดับ 3 รอบ 2
-  ];
-
-  let newlyAdvanced = false;
-  mapping.forEach(([targetLaneIdx, qualifier]) => {
-    const prevLane = nextR3Lanes[targetLaneIdx];
-    if (qualifier && qualifier.schoolName) {
-      const changed =
-        prevLane.schoolName !== qualifier.schoolName ||
-        prevLane.athleteName !== (qualifier.athleteName || "");
-      if (changed) {
-        newlyAdvanced = true;
-      }
-      nextR3Lanes[targetLaneIdx] = {
-        ...prevLane,
-        lane: targetLaneIdx + 1,
-        schoolName: qualifier.schoolName,
-        athleteName: qualifier.athleteName || "",
-        isFoul: changed ? false : prevLane.isFoul,
-        foulReason: changed ? "" : prevLane.foulReason,
-        rank: changed ? "" : prevLane.rank || "",
-        time: changed ? "" : prevLane.time || "",
-      };
-      nextR3Cells[targetLaneIdx] = qualifier.schoolName;
-    } else {
-      nextR3Lanes[targetLaneIdx] = {
-        lane: targetLaneIdx + 1,
-        schoolName: "",
-        athleteName: "",
-        time: "",
-        rank: "",
-        isFoul: false,
-        foulReason: "",
-      };
-      nextR3Cells[targetLaneIdx] = "";
-    }
-  });
-
-  const winners = computeFinalsWinners(nextR3Lanes);
-
-  return {
-    row: {
-      ...row,
-      r3Lanes: nextR3Lanes,
-      r3: nextR3Cells,
-      winners,
-    },
-    newlyAdvanced,
-  };
-}
-
-/**
- * คำนวณตารางคะแนนรวมกรีฑาของทุกโรงเรียน พร้อมจำนวนเหรียญ ทอง/เงิน/ทองแดง
- * และจัดอันดับด้วยกฎ Tie-break: คะแนนรวม > เหรียญทอง > เหรียญเงิน > เหรียญทองแดง > ชื่อโรงเรียน
- */
-export function calculateSchoolAthleticsStandings(
-  rows: AthleticsRow[],
-): SchoolAthleticsStanding[] {
-  const statsMap: Record<
-    string,
-    { gold: number; silver: number; bronze: number; totalScore: number }
-  > = {};
-
-  rows.forEach((r) => {
-    const winners = r.winners || computeFinalsWinners(r.r3Lanes || []);
-    winners.forEach((w) => {
-      if (!w.schoolName) return;
-      if (!statsMap[w.schoolName]) {
-        statsMap[w.schoolName] = { gold: 0, silver: 0, bronze: 0, totalScore: 0 };
-      }
-      const entry = statsMap[w.schoolName];
-      if (w.rank === 1) {
-        entry.gold += 1;
-        entry.totalScore += 3;
-      } else if (w.rank === 2) {
-        entry.silver += 1;
-        entry.totalScore += 2;
-      } else if (w.rank === 3) {
-        entry.bronze += 1;
-        entry.totalScore += 1;
-      }
-    });
-  });
-
-  const sorted = Object.entries(statsMap)
-    .map(([schoolName, s]) => ({
-      schoolName,
-      ...s,
-      place: 1,
-    }))
-    .sort((a, b) => {
-      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-      if (b.gold !== a.gold) return b.gold - a.gold;
-      if (b.silver !== a.silver) return b.silver - a.silver;
-      if (b.bronze !== a.bronze) return b.bronze - a.bronze;
-      return a.schoolName.localeCompare(b.schoolName, "th");
-    });
-
-  for (let i = 0; i < sorted.length; i++) {
-    if (i === 0) {
-      sorted[i].place = 1;
-    } else {
-      const prev = sorted[i - 1];
-      const curr = sorted[i];
-      if (
-        curr.totalScore === prev.totalScore &&
-        curr.gold === prev.gold &&
-        curr.silver === prev.silver &&
-        curr.bronze === prev.bronze
-      ) {
-        curr.place = prev.place;
-      } else {
-        curr.place = i + 1;
-      }
-    }
-  }
-
-  return sorted;
-}
+export type { AthleticsRow, LaneEntry, SchoolAthleticsStanding, WinnerEntry };
 
 type RoundModalData = {
   rowId: number;
@@ -432,6 +66,7 @@ export function AthleticsScoresheet({
   const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r3");
   const [toast, setToast] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "local" | "error">("idle");
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Modal สำหรับบันทึกผลทั้งฮีต/รอบ
   const [roundModal, setRoundModal] = useState<RoundModalData | null>(null);
@@ -442,6 +77,11 @@ export function AthleticsScoresheet({
   const versionRef = useRef<string | null>(initialVersion);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRowsRef = useRef<AthleticsRow[]>(rows);
+  const syncInFlightRef = useRef(false);
+  const pendingSyncRef = useRef<{
+    rows: AthleticsRow[];
+    message?: string;
+  } | null>(null);
 
   // Available school list (database prop or fallback)
   const schoolOptions =
@@ -493,11 +133,16 @@ export function AthleticsScoresheet({
     }
   }, [initialRows, initialVersion]);
 
-  async function syncToSupabase(targetRows: AthleticsRow[], showToastMsg?: string) {
+  async function persistToSupabase(
+    targetRows: AthleticsRow[],
+    showToastMsg?: string,
+  ): Promise<boolean> {
     if (!accessToken || !canEdit) {
       setSyncState("local");
-      return;
+      if (canEdit) setSyncError("กรุณาเข้าสู่ระบบใหม่ก่อนบันทึกข้อมูลกรีฑา");
+      return false;
     }
+    setSyncError(null);
     setSyncState("syncing");
     try {
       const res = await fetch("/api/athletics-scoresheet", {
@@ -508,41 +153,72 @@ export function AthleticsScoresheet({
         },
         body: JSON.stringify({
           rows: targetRows,
-          expectedVersion: versionRef.current ?? undefined,
+          expectedVersion: versionRef.current,
         }),
       });
       if (res.status === 409) {
-        // Retry once without strict expectedVersion lock so server merges with latest CAS version
-        const retryRes = await fetch("/api/athletics-scoresheet", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ rows: targetRows }),
+        const latestRes = await fetch("/api/athletics-scoresheet", {
+          cache: "no-store",
         });
-        const retryBody = await retryRes.json().catch(() => ({}));
-        if (retryRes.ok && Array.isArray(retryBody.rows)) {
-          versionRef.current = retryBody.version ?? null;
-          setSyncState("synced");
-          onRowsChange?.(retryBody.rows, versionRef.current);
-          return;
+        const latestBody = await latestRes.json().catch(() => ({}));
+        if (latestRes.ok && Array.isArray(latestBody.rows)) {
+          const latestRows = normalizeLoadedRows(latestBody.rows);
+          versionRef.current = latestBody.version ?? null;
+          setRows(latestRows);
+          latestRowsRef.current = latestRows;
+          onRowsChange?.(latestRows, versionRef.current);
+          setSyncState("error");
+          setSyncError("ข้อมูลมีการแก้ไขจากอุปกรณ์อื่น ระบบโหลดข้อมูลล่าสุดแล้ว กรุณาตรวจสอบและบันทึกอีกครั้ง");
+          return false;
         }
+        setSyncState("error");
+        setSyncError("ข้อมูลมีการแก้ไขจากอุปกรณ์อื่น และโหลดข้อมูลล่าสุดไม่สำเร็จ กรุณารีเฟรชหน้าเว็บก่อนบันทึกอีกครั้ง");
+        return false;
       }
       const body = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(body.rows)) {
         versionRef.current = body.version ?? null;
         setSyncState("synced");
-        onRowsChange?.(body.rows, versionRef.current);
+        onRowsChange?.(
+          pendingSyncRef.current ? latestRowsRef.current : body.rows,
+          versionRef.current,
+        );
         if (showToastMsg) {
           setToast(showToastMsg);
           setTimeout(() => setToast(null), 2500);
         }
+        return true;
       } else {
         setSyncState("error");
+        setSyncError(body.error || "บันทึกข้อมูลกรีฑาไม่สำเร็จ กรุณาลองใหม่");
+        return false;
       }
     } catch {
       setSyncState("error");
+      setSyncError("เชื่อมต่อ Supabase ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่");
+      return false;
+    }
+  }
+
+  async function syncToSupabase(
+    targetRows: AthleticsRow[],
+    showToastMsg?: string,
+  ) {
+    pendingSyncRef.current = { rows: targetRows, message: showToastMsg };
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
+    try {
+      while (pendingSyncRef.current) {
+        const pending = pendingSyncRef.current;
+        pendingSyncRef.current = null;
+        const saved = await persistToSupabase(pending.rows, pending.message);
+        if (!saved) {
+          pendingSyncRef.current = null;
+          break;
+        }
+      }
+    } finally {
+      syncInFlightRef.current = false;
     }
   }
 
@@ -611,7 +287,7 @@ export function AthleticsScoresheet({
     try {
       localStorage.setItem("nkg2569_athletics_preview", JSON.stringify(next));
     } catch {}
-    if (msg) {
+    if (msg && !immediate) {
       setToast(msg);
       setTimeout(() => setToast(null), 2500);
     }
@@ -620,7 +296,7 @@ export function AthleticsScoresheet({
       debounceTimerRef.current = null;
     }
     if (immediate) {
-      void syncToSupabase(next);
+      void syncToSupabase(next, msg);
     } else {
       debounceTimerRef.current = setTimeout(() => {
         void syncToSupabase(latestRowsRef.current);
@@ -1066,6 +742,12 @@ export function AthleticsScoresheet({
           }}
         >
           <Check size={16} color="#4ade80" /> {toast}
+        </div>
+      )}
+
+      {syncError && (
+        <div role="alert" className="no-print" style={{ marginBottom: "16px", padding: "10px 14px", border: "1px solid #fca5a5", borderRadius: "8px", background: "#fef2f2", color: "#991b1b", fontSize: "14px" }}>
+          {syncError}
         </div>
       )}
 

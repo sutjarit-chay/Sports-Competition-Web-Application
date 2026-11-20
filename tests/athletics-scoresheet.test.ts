@@ -13,14 +13,16 @@ import {
   syncQualifiersToFinals,
 } from "../components/athletics-scoresheet";
 import {
-  athleticsScoresheetAwards,
-  matchAthleticsRowToCompetition,
-  matchSchoolByName,
-  mergeAthleticsScoresheetAwards,
   readAthleticsScoresheet,
   validateAthleticsScoresheetRows,
   writeAthleticsScoresheet,
 } from "../lib/athletics-scoresheet-store";
+import {
+  athleticsScoresheetAwards,
+  matchAthleticsRowToCompetition,
+  matchSchoolByName,
+  mergeAthleticsScoresheetAwards,
+} from "../lib/athletics-scoresheet-model";
 import {
   GET as scoresheetGet,
   PUT as scoresheetPut,
@@ -449,6 +451,19 @@ test("/api/athletics-scoresheet route enforces role permissions and persists via
     assert.equal(
       savedBody.rows[0].winners[0].schoolName,
       "โรงเรียนบ้านหนองแดน",
+    );
+
+    const unlockedRes = await scoresheetPut(
+      new Request("https://app.invalid/api/athletics-scoresheet", {
+        method: "PUT",
+        headers: { Authorization: "Bearer valid" },
+        body: JSON.stringify({ rows: INITIAL_ATHLETICS_DATA }),
+      }),
+    );
+    assert.equal(unlockedRes.status, 400);
+    assert.match(
+      String((await unlockedRes.json()).error),
+      /เวอร์ชันข้อมูล/,
     );
 
     // 4. Public GET returns persisted version and winners

@@ -99,7 +99,7 @@ import {
 import {
   athleticsScoresheetAwards,
   mergeAthleticsScoresheetAwards,
-} from "@/lib/athletics-scoresheet-store";
+} from "@/lib/athletics-scoresheet-model";
 import {
   applyDirectPlacements,
   directPlacementsEnabled,
