@@ -22,6 +22,7 @@ import {
   matchAthleticsRowToCompetition,
   matchSchoolByName,
   mergeAthleticsScoresheetAwards,
+  mergeConcurrentAthleticsRows,
 } from "../lib/athletics-scoresheet-model";
 import {
   GET as scoresheetGet,
@@ -108,6 +109,25 @@ test("assignUniqueRankInLanes clears duplicate rank from previous lane in the sa
   lanes = assignUniqueRankInLanes(lanes, 1, "1");
   assert.equal(lanes[0].rank, "");
   assert.equal(lanes[1].rank, "1");
+});
+
+test("concurrent athletics merge keeps unrelated edits and latest Supabase wins the same field", () => {
+  const base = structuredClone(INITIAL_ATHLETICS_DATA);
+  const local = structuredClone(base);
+  const remote = structuredClone(base);
+
+  local[0].r3Lanes[0].athleteName = "ชื่อจากเครื่องนี้";
+  local[0].r3Lanes[1].time = "12.34";
+  remote[0].r3Lanes[0].schoolName = "โรงเรียนบ้านหนองแดน";
+  remote[0].r3Lanes[1].time = "12.20";
+  remote[1].r3Lanes[0].athleteName = "ชื่อจาก Supabase";
+
+  const merged = mergeConcurrentAthleticsRows(base, local, remote);
+
+  assert.equal(merged[0].r3Lanes[0].schoolName, "โรงเรียนบ้านหนองแดน");
+  assert.equal(merged[0].r3Lanes[0].athleteName, "ชื่อจากเครื่องนี้");
+  assert.equal(merged[0].r3Lanes[1].time, "12.20");
+  assert.equal(merged[1].r3Lanes[0].athleteName, "ชื่อจาก Supabase");
 });
 
 test("syncQualifiersToFinals seeds 3-2-1-1-2-3 and clears finals lane when qualifier fouls or loses rank", () => {

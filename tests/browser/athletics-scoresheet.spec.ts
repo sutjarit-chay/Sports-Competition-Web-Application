@@ -41,7 +41,7 @@ test("empty Supabase scoresheet ignores stale device-local athletics data", asyn
   await expect(page.getByText(/บันทึกในเครื่อง|โหมดบันทึกในเครื่อง/)).toHaveCount(0);
 });
 
-test("stale athletics save reloads the latest Supabase version without an unlocked retry", async ({
+test("stale athletics save merges unrelated edits and latest Supabase wins the same field", async ({
   page,
 }) => {
   await fixture(page);
@@ -50,6 +50,10 @@ test("stale athletics save reloads the latest Supabase version without an unlock
   let putCount = 0;
   let getCount = 0;
   let latestSchool = "";
+  const putBodies: Array<{
+    rows: AthleticsRow[];
+    expectedVersion: string | null;
+  }> = [];
 
   await page.route("**/api/athletics-scoresheet", async (route) => {
     if (route.request().method() === "GET") {
@@ -58,6 +62,8 @@ test("stale athletics save reloads the latest Supabase version without an unlock
       return;
     }
     putCount += 1;
+    const body = route.request().postDataJSON();
+    putBodies.push(body);
     if (putCount === 1) {
       rows = cloneRows();
       rows[0].r3Lanes[0] = {
@@ -73,6 +79,8 @@ test("stale athletics save reloads the latest Supabase version without an unlock
       });
       return;
     }
+    rows = structuredClone(body.rows);
+    version = "version-3";
     await route.fulfill({ json: { ok: true, rows, version } });
   });
 
@@ -98,18 +106,31 @@ test("stale athletics save reloads the latest Supabase version without an unlock
     .first()
     .fill("ข้อมูลที่ล้าสมัย");
   await panel
+    .getByPlaceholder("ชื่อ-สกุล นักกีฬา (ถ้ามี)")
+    .nth(1)
+    .fill("ข้อมูลอีกลู่จากเครื่องนี้");
+  await panel
     .getByRole("button", { name: "บันทึก", exact: true })
     .first()
     .click();
 
-  await expect(
-    page.getByText(/ข้อมูลมีการแก้ไขจากอุปกรณ์อื่น ระบบโหลดข้อมูลล่าสุดแล้ว/),
-  ).toBeVisible();
+  await expect(page.getByText("✓ ซิงค์ Supabase แล้ว", { exact: true })).toBeVisible();
   await expect(schoolSelect).toHaveValue(latestSchool);
   await expect(
     panel.getByPlaceholder("ชื่อ-สกุล นักกีฬา (ถ้ามี)").first(),
   ).toHaveValue("ข้อมูลล่าสุดจากกรรมการอีกคน");
-  expect(putCount).toBe(1);
+  await expect(
+    panel.getByPlaceholder("ชื่อ-สกุล นักกีฬา (ถ้ามี)").nth(1),
+  ).toHaveValue("ข้อมูลอีกลู่จากเครื่องนี้");
+  expect(putCount).toBe(2);
+  expect(putBodies[1].expectedVersion).toBe("version-2");
+  expect(putBodies[1].rows[0].r3Lanes[0].schoolName).toBe(latestSchool);
+  expect(putBodies[1].rows[0].r3Lanes[0].athleteName).toBe(
+    "ข้อมูลล่าสุดจากกรรมการอีกคน",
+  );
+  expect(putBodies[1].rows[0].r3Lanes[1].athleteName).toBe(
+    "ข้อมูลอีกลู่จากเครื่องนี้",
+  );
   expect(getCount).toBeGreaterThanOrEqual(2);
 });
 

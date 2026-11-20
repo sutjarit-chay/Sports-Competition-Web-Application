@@ -10,6 +10,10 @@
 ### งานเร่งด่วน / เตรียมความพร้อม Production
 - [x] **เชื่อมต่อระบบใบบันทึกผลกรีฑา (Athletics Scoresheet หน้า 29–34) กับฐานข้อมูล Supabase จริง:** เพิ่ม `lib/athletics-scoresheet-store.ts` และ `app/api/athletics-scoresheet/route.ts` จัดเก็บลง Supabase Storage (`team-files/athletics-scoresheet`) แบบ Immutable CAS Versioning และเชื่อมผลเหรียญกรีฑาทั้ง 20 รายการเข้ากับตารางสรุปเหรียญรางวัลรวมของระบบ (`calculatedAwards` ใน `app/page.tsx`) พร้อมทดสอบกับ Hosted Supabase จริงและชุดทดสอบ 287 ข้อผ่านทั้งหมด
 - [x] **ตรวจสอบ Deployment บน Vercel:** commit `acb4ad7` deploy สำเร็จ หน้า production และ `GET /api/athletics-scoresheet` ตอบ HTTP 200
+- [x] **แก้ปัญหาการซิงก์กรีฑาและรวมข้อมูลอัตโนมัติเมื่อแก้ไขพร้อมกัน (Three-way Concurrent Merge & Rebase):**
+  - พัฒนา `mergeConcurrentAthleticsRows` ใน `lib/athletics-scoresheet-model.ts` เพื่อรวมข้อมูลที่แก้ไขพร้อมกันจากหลายอุปกรณ์อย่างแม่นยำ ไม่ทำข้อมูลที่แก้ไขคนละช่องหาย
+  - รองรับการ rebase และ retry อัตโนมัติเมื่อเกิด HTTP 409 Conflict ใน `components/athletics-scoresheet.tsx`
+  - เพิ่มชุดทดสอบ unit test และ browser test (รวมผ่าน 288/288 ข้อ)
 - [ ] **แก้ Regression E2E ทั้งระบบ:** ล่าสุดผ่าน 29/45; E2E เฉพาะกรีฑาผ่าน 3/3 แต่ยังมี 16 ข้อเดิมที่ล้มเหลวใน competition integration, design, hosted, registration, school medal และ workflow
 - [ ] **ตรวจสอบ RLS และ Migration สำหรับ Referee Workflow:** ตรวจสอบความถูกต้องของ RLS policy บน Supabase hosted จริง ตามคำแนะนำใน `docs/PRODUCTION-READINESS.md`
 - [ ] **อัปเกรด Next.js หลังประเมินผลกระทบ:** เวอร์ชัน 16.4.4 มีคำเตือนช่องโหว่ที่ทราบอยู่ ต้องอ่าน migration/security notes และรัน regression ก่อน deploy

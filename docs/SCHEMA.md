@@ -172,3 +172,10 @@
 - `r2Lanes` (LaneEntry[]): ข้อมูลจัดลู่วิ่งรอบ ๒ (๕ ลู่)
 - `r3Lanes` (LaneEntry[]): ข้อมูลจัดลู่วิ่งรอบชิงชนะเลิศ (๖ ลู่)
 - `winners` (array): ผลคะแนนเหรียญรางวัลในรอบชิงชนะเลิศ (อันดับ 1 = 3 คะแนน, อันดับ 2 = 2 คะแนน, อันดับ 3 = 1 คะแนน คำนวณผ่าน `computeFinalsWinners`)
+
+### การรวมข้อมูลเมื่อมีการแก้ไขพร้อมกัน (Concurrent Merge Model)
+เมื่อมีการบันทึกข้อมูลจากหลายอุปกรณ์พร้อมกันจนเกิด HTTP 409 Conflict ระบบใช้ `mergeConcurrentAthleticsRows(baseRows, localRows, remoteRows)` ใน `lib/athletics-scoresheet-model.ts` เพื่อรวมข้อมูลระดับฟิลด์ในแต่ละลู่วิ่ง (`mergeConcurrentLane`):
+- ฟิลด์ที่แก้ไขเฉพาะฝั่ง Local จะถูกคงไว้
+- ฟิลด์ที่แก้ไขเฉพาะฝั่ง Remote จะถูกนำมาใช้
+- หากแก้ไขฟิลด์เดียวกันทั้งสองฝั่ง ข้อมูลบน Supabase (Remote) จะเป็นฝ่ายชนะ
+- คำนวณลู่รอบชิงชนะเลิศ (`syncQualifiersToFinals`) และเหรียญรางวัล (`computeFinalsWinners`) ใหม่จากผลลัพธ์ที่รวมแล้ว

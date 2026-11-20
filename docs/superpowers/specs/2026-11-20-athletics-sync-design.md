@@ -10,8 +10,17 @@ Make the athletics page production-buildable and keep its 20-event lane/result d
 - Do not change database schema, constraints, or RLS.
 - Keep Storage access and cryptographic/versioning code on the server.
 - Browser code may import only client-safe types and pure calculations.
-- A stale edit must reload the latest server document and ask the user to retry; it must not bypass CAS.
+- A stale edit must never discard either the latest server document or unrelated fields in the local draft.
+- When both devices changed the same field, the value already persisted in the latest Supabase version wins.
 
 ## Approach
 
-Use the existing in-progress `lib/athletics-scoresheet-model.ts` extraction as the shared client-safe boundary. Move medal projection into that module, keep validation and Storage persistence in `lib/athletics-scoresheet-store.ts`, and import the shared model from both the component and page. The API remains the only browser-to-Storage write path. This is preferred over bundler aliases or crypto polyfills because it enforces the actual server/client boundary.
+Use `lib/athletics-scoresheet-model.ts` as the shared client-safe boundary and keep validation and Storage persistence in `lib/athletics-scoresheet-store.ts`. The API remains the only browser-to-Storage write path.
+
+For concurrent edits, keep the rows acknowledged with the current version as the merge base. On `409`, read the latest Supabase document and perform a three-way merge of base, local draft, and latest server rows. A field changed only locally is retained, a field changed only remotely is retained, and a field changed differently on both sides uses the remote value. Derived lane arrays, finalists, and winners are recalculated after merging. Retry the merged draft against the new server version with a finite retry limit.
+
+Alternatives rejected:
+
+- Replacing the whole local draft with the server document loses unrelated work from the current device.
+- Retrying the whole local draft as last-writer-wins can overwrite previously saved work from another device.
+- Manual conflict dialogs for every collision are unnecessary because the owner selected latest-Supabase-wins for the same field.

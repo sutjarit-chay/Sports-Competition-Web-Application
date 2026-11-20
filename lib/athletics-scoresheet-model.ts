@@ -585,6 +585,115 @@ export function syncQualifiersToFinals(row: AthleticsRow): {
   };
 }
 
+const MERGED_LANE_FIELDS = [
+  "schoolName",
+  "athleteName",
+  "time",
+  "rank",
+  "isFoul",
+  "foulReason",
+] as const satisfies readonly (keyof LaneEntry)[];
+
+function mergeConcurrentValue<T>(base: T, local: T, remote: T): T {
+  if (Object.is(local, base)) return remote;
+  if (Object.is(remote, base)) return local;
+  if (Object.is(local, remote)) return local;
+  return remote;
+}
+
+function laneEquals(a: LaneEntry | undefined, b: LaneEntry | undefined) {
+  if (!a || !b) return a === b;
+  return MERGED_LANE_FIELDS.every((field) => Object.is(a[field], b[field]));
+}
+
+function mergeConcurrentLane(
+  base: LaneEntry | undefined,
+  local: LaneEntry | undefined,
+  remote: LaneEntry | undefined,
+  lane: number,
+): LaneEntry | undefined {
+  if (!local) {
+    if (!base) return remote ? { ...remote, lane } : undefined;
+    return laneEquals(remote, base) ? undefined : remote ? { ...remote, lane } : undefined;
+  }
+  if (!remote) {
+    if (!base) return { ...local, lane };
+    return undefined;
+  }
+
+  const merged: LaneEntry = {
+    lane,
+    schoolName: "",
+    athleteName: "",
+  };
+  for (const field of MERGED_LANE_FIELDS) {
+    const value = mergeConcurrentValue(
+      base?.[field],
+      local[field],
+      remote[field],
+    );
+    Object.assign(merged, { [field]: value });
+  }
+  return merged;
+}
+
+function mergeConcurrentLanes(
+  base: LaneEntry[],
+  local: LaneEntry[],
+  remote: LaneEntry[],
+): LaneEntry[] {
+  const length = Math.max(base.length, local.length, remote.length);
+  return Array.from({ length }, (_, index) =>
+    mergeConcurrentLane(base[index], local[index], remote[index], index + 1),
+  )
+    .filter((lane): lane is LaneEntry => Boolean(lane))
+    .map((lane, index) => ({ ...lane, lane: index + 1 }));
+}
+
+export function mergeConcurrentAthleticsRows(
+  baseRows: AthleticsRow[],
+  localRows: AthleticsRow[],
+  remoteRows: AthleticsRow[],
+): AthleticsRow[] {
+  const baseById = new Map(baseRows.map((row) => [row.id, row]));
+  const localById = new Map(localRows.map((row) => [row.id, row]));
+
+  return remoteRows.map((remote) => {
+    const base = baseById.get(remote.id) || remote;
+    const local = localById.get(remote.id) || base;
+    const r1Lanes = mergeConcurrentLanes(
+      base.r1Lanes,
+      local.r1Lanes,
+      remote.r1Lanes,
+    );
+    const r2Lanes = mergeConcurrentLanes(
+      base.r2Lanes,
+      local.r2Lanes,
+      remote.r2Lanes,
+    );
+    const r3Lanes = mergeConcurrentLanes(
+      base.r3Lanes,
+      local.r3Lanes,
+      remote.r3Lanes,
+    );
+    const merged: AthleticsRow = {
+      ...remote,
+      r1Lanes,
+      r2Lanes,
+      r3Lanes,
+      r1: r1Lanes.map((lane) => lane.schoolName || ""),
+      r2: r2Lanes.map((lane) => lane.schoolName || ""),
+      r3: r3Lanes.map((lane) => lane.schoolName || ""),
+      winners: computeFinalsWinners(r3Lanes),
+    };
+    const synced = syncQualifiersToFinals(merged).row;
+    return {
+      ...synced,
+      winners: computeFinalsWinners(synced.r3Lanes),
+    };
+  });
+}
+
 export function calculateSchoolAthleticsStandings(
   rows: AthleticsRow[],
 ): SchoolAthleticsStanding[] {

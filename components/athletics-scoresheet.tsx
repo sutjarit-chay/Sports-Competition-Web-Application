@@ -24,7 +24,7 @@ import {
   DEFAULT_SCHOOLS, FOUL_REASONS, INITIAL_ATHLETICS_DATA,
   addLaneToEventRound, assignUniqueRankInLanes, calculateSchoolAthleticsStandings,
   computeFinalsWinners, defaultLanes, getDisplaySchoolName, removeLaneFromEventRound,
-  syncQualifiersToFinals, type AthleticsRow, type LaneEntry,
+  mergeConcurrentAthleticsRows, syncQualifiersToFinals, type AthleticsRow, type LaneEntry,
   type SchoolAthleticsStanding, type WinnerEntry,
 } from "@/lib/athletics-scoresheet-model";
 export {
@@ -77,6 +77,7 @@ export function AthleticsScoresheet({
   const versionRef = useRef<string | null>(initialVersion);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRowsRef = useRef<AthleticsRow[]>(rows);
+  const baseRowsRef = useRef<AthleticsRow[]>(rows);
   const syncInFlightRef = useRef(false);
   const pendingSyncRef = useRef<{
     rows: AthleticsRow[];
@@ -136,11 +137,11 @@ export function AthleticsScoresheet({
   async function persistToSupabase(
     targetRows: AthleticsRow[],
     showToastMsg?: string,
-  ): Promise<boolean> {
+  ): Promise<"saved" | "rebased" | "failed"> {
     if (!accessToken || !canEdit) {
       setSyncState("error");
       if (canEdit) setSyncError("กรุณาเข้าสู่ระบบใหม่ก่อนบันทึกข้อมูลกรีฑา");
-      return false;
+      return "failed";
     }
     setSyncError(null);
     setSyncState("syncing");
@@ -163,21 +164,32 @@ export function AthleticsScoresheet({
         const latestBody = await latestRes.json().catch(() => ({}));
         if (latestRes.ok && Array.isArray(latestBody.rows)) {
           const latestRows = normalizeLoadedRows(latestBody.rows);
+          const mergedRows = mergeConcurrentAthleticsRows(
+            baseRowsRef.current,
+            latestRowsRef.current,
+            latestRows,
+          );
           versionRef.current = latestBody.version ?? null;
-          setRows(latestRows);
-          latestRowsRef.current = latestRows;
-          onRowsChange?.(latestRows, versionRef.current);
-          setSyncState("error");
-          setSyncError("ข้อมูลมีการแก้ไขจากอุปกรณ์อื่น ระบบโหลดข้อมูลล่าสุดแล้ว กรุณาตรวจสอบและบันทึกอีกครั้ง");
-          return false;
+          baseRowsRef.current = latestRows;
+          setRows(mergedRows);
+          latestRowsRef.current = mergedRows;
+          onRowsChange?.(mergedRows, versionRef.current);
+          pendingSyncRef.current = {
+            rows: mergedRows,
+            message: pendingSyncRef.current?.message || showToastMsg,
+          };
+          setSyncState("syncing");
+          return "rebased";
         }
         setSyncState("error");
         setSyncError("ข้อมูลมีการแก้ไขจากอุปกรณ์อื่น และโหลดข้อมูลล่าสุดไม่สำเร็จ กรุณารีเฟรชหน้าเว็บก่อนบันทึกอีกครั้ง");
-        return false;
+        return "failed";
       }
       const body = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(body.rows)) {
+        const savedRows = normalizeLoadedRows(body.rows);
         versionRef.current = body.version ?? null;
+        baseRowsRef.current = savedRows;
         setSyncState("synced");
         onRowsChange?.(
           pendingSyncRef.current ? latestRowsRef.current : body.rows,
@@ -187,16 +199,16 @@ export function AthleticsScoresheet({
           setToast(showToastMsg);
           setTimeout(() => setToast(null), 2500);
         }
-        return true;
+        return "saved";
       } else {
         setSyncState("error");
         setSyncError(body.error || "บันทึกข้อมูลกรีฑาไม่สำเร็จ กรุณาลองใหม่");
-        return false;
+        return "failed";
       }
     } catch {
       setSyncState("error");
       setSyncError("เชื่อมต่อ Supabase ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่");
-      return false;
+      return "failed";
     }
   }
 
@@ -207,14 +219,26 @@ export function AthleticsScoresheet({
     pendingSyncRef.current = { rows: targetRows, message: showToastMsg };
     if (syncInFlightRef.current) return;
     syncInFlightRef.current = true;
+    let conflictCount = 0;
     try {
       while (pendingSyncRef.current) {
         const pending = pendingSyncRef.current;
         pendingSyncRef.current = null;
-        const saved = await persistToSupabase(pending.rows, pending.message);
-        if (!saved) {
+        const result = await persistToSupabase(pending.rows, pending.message);
+        if (result === "failed") {
           pendingSyncRef.current = null;
           break;
+        }
+        if (result === "rebased") {
+          conflictCount += 1;
+          if (conflictCount >= 3) {
+            pendingSyncRef.current = null;
+            setSyncState("error");
+            setSyncError("มีการบันทึกพร้อมกันหลายครั้ง ระบบรวมข้อมูลล่าสุดไว้บนหน้าจอแล้ว กรุณากดบันทึกอีกครั้ง");
+            break;
+          }
+        } else {
+          conflictCount = 0;
         }
       }
     } finally {
@@ -243,6 +267,7 @@ export function AthleticsScoresheet({
         if (Array.isArray(body.rows)) {
           const normalized = normalizeLoadedRows(body.rows);
           versionRef.current = body.version ?? null;
+          baseRowsRef.current = normalized;
           setRows(normalized);
           latestRowsRef.current = normalized;
           setSyncState("synced");
