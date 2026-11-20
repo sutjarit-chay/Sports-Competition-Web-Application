@@ -505,7 +505,7 @@ export function computeFinalsWinners(
     let score = 0;
     if (matchingLane?.schoolName) {
       if (isMini) {
-        score = rankNum === 1 ? 5 : rankNum === 2 ? 3 : 1;
+        score = rankNum === 1 ? 5 : rankNum === 2 ? 3 : 2;
       } else {
         score = rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1;
       }

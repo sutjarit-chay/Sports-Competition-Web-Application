@@ -2372,7 +2372,7 @@ export function AthleticsScoresheet({
                   {rankedSchools.length === 0 ? (
                     <tr>
                       <td colSpan={7} style={{ padding: "16px", color: "#94a3b8" }}>
-                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับในรอบชิง: มินิมาราธอน 1=5, 2=3, 3=1 แต้ม / วิ่งลู่ทั่วไป 1=3, 2=2, 3=1 แต้ม)
+                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับในรอบชิง: มินิมาราธอน 1=5, 2=3, 3=2 แต้ม / วิ่งลู่ทั่วไป 1=3, 2=2, 3=1 แต้ม)
                       </td>
                     </tr>
                   ) : (
@@ -2639,7 +2639,7 @@ export function AthleticsScoresheet({
                               {[1, 2, 3].map((rank, i) => {
                                 const w = winners[i];
                                 const defaultPts = w?.score || (isMini
-                                  ? rank === 1 ? "5" : rank === 2 ? "3" : "1"
+                                  ? rank === 1 ? "5" : rank === 2 ? "3" : "2"
                                   : rank === 1 ? "3" : rank === 2 ? "2" : "1");
                                 return (
                                   <tr key={rank}>
@@ -2943,7 +2943,7 @@ export function AthleticsScoresheet({
                       <>
                         🏆 <strong>{roundTitle}:</strong> เลือกอันดับ{" "}
                         {isMiniMarathonRow(modalRow) ? (
-                          <strong>ที่ 1 (ทอง 5 แต้ม), ที่ 2 (เงิน 3 แต้ม), ที่ 3 (ทองแดง 1 แต้ม)</strong>
+                          <strong>ที่ 1 (ทอง 5 แต้ม), ที่ 2 (เงิน 3 แต้ม), ที่ 3 (ทองแดง 2 แต้ม)</strong>
                         ) : (
                           <strong>ที่ 1 (ทอง 3 แต้ม), ที่ 2 (เงิน 2 แต้ม), ที่ 3 (ทองแดง 1 แต้ม)</strong>
                         )}{" "}
@@ -3107,7 +3107,7 @@ export function AthleticsScoresheet({
                                       <>
                                         <option value="1">🥇 ที่ 1 (ทอง · 5 แต้ม)</option>
                                         <option value="2">🥈 ที่ 2 (เงิน · 3 แต้ม)</option>
-                                        <option value="3">🥉 ที่ 3 (ทองแดง · 1 แต้ม)</option>
+                                        <option value="3">🥉 ที่ 3 (ทองแดง · 2 แต้ม)</option>
                                       </>
                                     ) : (
                                       <>

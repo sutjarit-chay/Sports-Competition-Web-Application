@@ -97,7 +97,7 @@ test("computeFinalsWinners does not award premature medals to unranked lanes", (
   assert.equal(afterRace[2].score, 1);
 });
 
-test("computeFinalsWinners awards 5, 3, 1 points for mini-marathon events", () => {
+test("computeFinalsWinners awards 5, 3, 2 points for mini-marathon events", () => {
   const lanes = defaultLanes(6);
   lanes[0].schoolName = "โรงเรียนบ้านหนองแดน";
   lanes[1].schoolName = "โรงเรียนบ้านดงซ่อม";
@@ -114,7 +114,7 @@ test("computeFinalsWinners awards 5, 3, 1 points for mini-marathon events", () =
   assert.equal(afterRace[1].schoolName, "โรงเรียนบ้านหนองแดน");
   assert.equal(afterRace[1].score, 3);
   assert.equal(afterRace[2].schoolName, "โรงเรียนบ้านดงซ่อม");
-  assert.equal(afterRace[2].score, 1);
+  assert.equal(afterRace[2].score, 2);
 });
 
 test("assignUniqueRankInLanes clears duplicate rank from previous lane in the same heat", () => {
@@ -206,10 +206,10 @@ test("calculateSchoolAthleticsStandings breaks score ties by gold, silver, bronz
   assert.equal(standings[1].place, 2);
 });
 
-test("calculateSchoolAthleticsStandings correctly aggregates mini-marathon points (5, 3, 1)", () => {
+test("calculateSchoolAthleticsStandings correctly aggregates mini-marathon points (5, 3, 2)", () => {
   const rows = structuredClone(INITIAL_ATHLETICS_DATA);
 
-  // Mini-marathon Event 1: Gold = 5 pts, Silver = 3 pts, Bronze = 1 pt
+  // Mini-marathon Event 1: Gold = 5 pts, Silver = 3 pts, Bronze = 2 pts
   rows[0].r3Lanes[0] = { lane: 1, schoolName: "โรงเรียนบ้านหนองแดน", athleteName: "M1", rank: "1", isFoul: false };
   rows[0].r3Lanes[1] = { lane: 2, schoolName: "โรงเรียนบ้านดงซ่อม", athleteName: "M2", rank: "2", isFoul: false };
   rows[0].r3Lanes[2] = { lane: 3, schoolName: "โรงเรียนบ้านคลองเมือง", athleteName: "M3", rank: "3", isFoul: false };
@@ -225,7 +225,7 @@ test("calculateSchoolAthleticsStandings correctly aggregates mini-marathon point
   assert.equal(standings[1].silver, 1);
 
   assert.equal(standings[2].schoolName, "โรงเรียนบ้านคลองเมือง");
-  assert.equal(standings[2].totalScore, 1);
+  assert.equal(standings[2].totalScore, 2);
   assert.equal(standings[2].bronze, 1);
 });
 
