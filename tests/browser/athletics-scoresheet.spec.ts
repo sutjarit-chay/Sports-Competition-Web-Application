@@ -7,6 +7,40 @@ import { enter, fixture, login, sid, sid2 } from "./helpers/production-fixture";
 
 const cloneRows = (): AthleticsRow[] => structuredClone(INITIAL_ATHLETICS_DATA);
 
+test("empty Supabase scoresheet ignores stale device-local athletics data", async ({
+  page,
+}) => {
+  await page.addInitScript((staleRows) => {
+    localStorage.setItem("nkg2569_athletics_preview", JSON.stringify(staleRows));
+  }, (() => {
+    const staleRows = cloneRows();
+    staleRows[0].r3Lanes[0] = {
+      ...staleRows[0].r3Lanes[0],
+      schoolName: "โรงเรียนบ้านหนองแดน",
+      athleteName: "ข้อมูลเฉพาะเครื่องเก่า",
+    };
+    staleRows[0].r3[0] = "โรงเรียนบ้านหนองแดน";
+    return staleRows;
+  })());
+  await fixture(page);
+  await page.route("**/api/athletics-scoresheet", async (route) => {
+    await route.fulfill({ json: { rows: cloneRows(), version: null } });
+  });
+
+  await enter(page);
+  await login(page);
+  await page.getByRole("button", { name: "กรีฑา", exact: true }).click();
+
+  const panel = page.getByRole("region", {
+    name: "หน้าลงทะเบียนและจัดลู่วิ่งกรีฑา",
+  });
+  await expect(panel.locator("tbody select").first()).toHaveValue("");
+  await expect(
+    panel.getByPlaceholder("ชื่อ-สกุล นักกีฬา (ถ้ามี)").first(),
+  ).toHaveValue("");
+  await expect(page.getByText(/บันทึกในเครื่อง|โหมดบันทึกในเครื่อง/)).toHaveCount(0);
+});
+
 test("stale athletics save reloads the latest Supabase version without an unlocked retry", async ({
   page,
 }) => {

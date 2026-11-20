@@ -141,3 +141,10 @@ Env: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (หรือ `
 - ผลตรวจล่าสุด: `npm test` 287/287 ผ่าน, `npm run typecheck` ผ่าน, `npm run build -- --webpack` ผ่าน, Playwright เฉพาะกรีฑา 3/3 ผ่าน
 - Playwright ทั้งระบบยังผ่าน 29/45; 16 ข้อที่เหลือเป็นชุดเดิมใน competition integration, design, hosted, registration, school medal และ workflow ซึ่งต้องปรับ fixture/UI แยกจากงานกรีฑา
 - Next.js 16.4.4 แสดงคำเตือนช่องโหว่ที่ทราบอยู่ ควรวางแผนอัปเกรดและทดสอบ regression แยกต่างหากก่อนเปลี่ยนเวอร์ชัน
+
+## 15. แก้ข้อมูลกรีฑาแยกกันระหว่างอุปกรณ์ (2026-11-20)
+- ต้นเหตุคือ `app/page.tsx` และ `components/athletics-scoresheet.tsx` เคยนำ `localStorage` key `nkg2569_athletics_preview` มาแทนข้อมูลจาก API เมื่อ Supabase ตอบข้อมูลเริ่มต้นที่ยังไม่มี version ทำให้แต่ละเครื่องเห็นข้อมูลคนละชุด
+- ตัด localStorage ออกจากทั้งการโหลดและการบันทึกกรีฑาแล้ว; `GET /api/athletics-scoresheet` เป็นแหล่งข้อมูลหลักเพียงแห่งเดียว แม้ `version` ยังเป็น `null` ก่อนการบันทึกครั้งแรก
+- หากบันทึกไม่สำเร็จ UI จะแสดง `ยังไม่บันทึกลงระบบ` พร้อมสาเหตุจริง ไม่อ้างว่าได้บันทึกไว้ในเครื่องหรือกำลังรอซิงก์
+- เพิ่ม E2E regression ที่ใส่ข้อมูล local เก่าจงใจ แล้วตรวจว่าข้อมูลเริ่มต้นจาก Supabase ชนะเสมอ
+- ผลตรวจ: unit 287/287, typecheck, production build และ Playwright กรีฑา 4/4 ผ่าน

@@ -65,7 +65,7 @@ export function AthleticsScoresheet({
   const [activeEventId, setActiveEventId] = useState<number>(1);
   const [activeRound, setActiveRound] = useState<"r1" | "r2" | "r3">("r3");
   const [toast, setToast] = useState<string | null>(null);
-  const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "local" | "error">("idle");
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Modal สำหรับบันทึกผลทั้งฮีต/รอบ
@@ -138,7 +138,7 @@ export function AthleticsScoresheet({
     showToastMsg?: string,
   ): Promise<boolean> {
     if (!accessToken || !canEdit) {
-      setSyncState("local");
+      setSyncState("error");
       if (canEdit) setSyncError("กรุณาเข้าสู่ระบบใหม่ก่อนบันทึกข้อมูลกรีฑา");
       return false;
     }
@@ -222,20 +222,11 @@ export function AthleticsScoresheet({
     }
   }
 
-  // Load from Supabase (with localStorage fallback) on mount
+  // Supabase is the only shared source of truth. Device-local data must never
+  // replace an empty-but-successful server document because each device would
+  // otherwise display a different competition state.
   useEffect(() => {
     let cancelled = false;
-    let localRows: AthleticsRow[] | null = null;
-    try {
-      const saved = localStorage.getItem("nkg2569_athletics_preview");
-      if (saved) {
-        localRows = normalizeLoadedRows(JSON.parse(saved));
-        if (!initialRows || initialRows.length === 0) {
-          setRows(localRows);
-          latestRowsRef.current = localRows;
-        }
-      }
-    } catch {}
 
     if (initialRows && initialRows.length > 0) {
       return;
@@ -249,25 +240,19 @@ export function AthleticsScoresheet({
         if (!res.ok) return;
         const body = await res.json();
         if (cancelled) return;
-        if (body.version && Array.isArray(body.rows)) {
+        if (Array.isArray(body.rows)) {
           const normalized = normalizeLoadedRows(body.rows);
-          versionRef.current = body.version;
+          versionRef.current = body.version ?? null;
           setRows(normalized);
           latestRowsRef.current = normalized;
           setSyncState("synced");
-          onRowsChange?.(normalized, body.version);
-          try {
-            localStorage.setItem(
-              "nkg2569_athletics_preview",
-              JSON.stringify(normalized),
-            );
-          } catch {}
-        } else if (localRows) {
-          setSyncState("local");
-          onRowsChange?.(localRows, null);
+          onRowsChange?.(normalized, versionRef.current);
         }
       } catch {
-        if (!cancelled) setSyncState("local");
+        if (!cancelled) {
+          setSyncState("error");
+          setSyncError("โหลดข้อมูลกรีฑาจาก Supabase ไม่สำเร็จ กรุณารีเฟรชหน้าเว็บ");
+        }
       }
     })();
 
@@ -284,9 +269,6 @@ export function AthleticsScoresheet({
     setRows(next);
     latestRowsRef.current = next;
     onRowsChange?.(next, versionRef.current);
-    try {
-      localStorage.setItem("nkg2569_athletics_preview", JSON.stringify(next));
-    } catch {}
     if (msg && !immediate) {
       setToast(msg);
       setTimeout(() => setToast(null), 2500);
@@ -846,8 +828,8 @@ export function AthleticsScoresheet({
                 : syncState === "syncing"
                   ? "⟳ กำลังบันทึกลง Supabase..."
                   : syncState === "error"
-                    ? "⚠ บันทึกในเครื่อง (รอซิงค์)"
-                    : "โหมดบันทึกในเครื่อง"}
+                    ? "⚠ ยังไม่บันทึกลงระบบ"
+                    : ""}
             </span>
           ) : null}
           {subTab === "sheet" && (

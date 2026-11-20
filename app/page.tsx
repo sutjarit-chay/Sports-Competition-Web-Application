@@ -383,22 +383,8 @@ export default function Home() {
         Array.isArray(athleticsBody.rows) &&
         athleticsBody.rows.length > 0
       ) {
-        if (athleticsBody.version) {
-          setAthleticsRows(athleticsBody.rows);
-          setAthleticsVersion(athleticsBody.version);
-        } else {
-          try {
-            const localSaved = localStorage.getItem(
-              "nkg2569_athletics_preview",
-            );
-            if (localSaved) {
-              const parsed = JSON.parse(localSaved);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setAthleticsRows(parsed);
-              }
-            }
-          } catch {}
-        }
+        setAthleticsRows(athleticsBody.rows);
+        setAthleticsVersion(athleticsBody.version ?? null);
       }
     }
     const extras = new Map<string, Record<string, unknown>>(
