@@ -2306,7 +2306,7 @@ export function AthleticsScoresheet({
                               {w?.schoolName ? getDisplaySchoolName(w.schoolName) : "-"}
                             </td>
                             <td style={{ padding: "5px 4px", fontWeight: 700 }}>
-                              {w?.schoolName ? (rank === 1 ? "3" : rank === 2 ? "2" : "1") : "-"}
+                              {w?.schoolName ? w.score : "-"}
                             </td>
                             <td style={{ padding: "5px 4px", color: "#64748b" }}>
                               {w?.time || "-"}
