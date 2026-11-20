@@ -442,7 +442,7 @@ export function removeLaneFromEventRound(
   };
 
   if (roundKey === "r3") {
-    updatedRow.winners = computeFinalsWinners(filteredLanes);
+    updatedRow.winners = computeFinalsWinners(filteredLanes, row);
   }
 
   return updatedRow;
@@ -473,7 +473,28 @@ export function assignUniqueRankInLanes(
   });
 }
 
-export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
+export function isMiniMarathonRow(
+  rowOrMeta?:
+    | boolean
+    | { id?: number; name?: string; expandableLanes?: boolean }
+    | null,
+): boolean {
+  if (typeof rowOrMeta === "boolean") return rowOrMeta;
+  if (!rowOrMeta) return false;
+  return Boolean(
+    (typeof rowOrMeta.id === "number" && rowOrMeta.id >= 1 && rowOrMeta.id <= 4) ||
+    rowOrMeta.expandableLanes ||
+    (typeof rowOrMeta.name === "string" && rowOrMeta.name.includes("มินิมาราธอน"))
+  );
+}
+
+export function computeFinalsWinners(
+  r3Lanes: LaneEntry[],
+  isMiniMarathonOrRow?:
+    | boolean
+    | { id?: number; name?: string; expandableLanes?: boolean },
+): WinnerEntry[] {
+  const isMini = isMiniMarathonRow(isMiniMarathonOrRow);
   return [1, 2, 3].map((rankNum) => {
     const matchingLane = r3Lanes.find(
       (l) =>
@@ -481,17 +502,19 @@ export function computeFinalsWinners(r3Lanes: LaneEntry[]): WinnerEntry[] {
         Boolean(l.schoolName) &&
         (l.rank === String(rankNum) || l.rank === `ที่ ${rankNum}`),
     );
+    let score = 0;
+    if (matchingLane?.schoolName) {
+      if (isMini) {
+        score = rankNum === 1 ? 5 : rankNum === 2 ? 3 : 1;
+      } else {
+        score = rankNum === 1 ? 3 : rankNum === 2 ? 2 : 1;
+      }
+    }
     return {
       rank: rankNum,
       athleteName: matchingLane?.athleteName || "",
       schoolName: matchingLane?.schoolName || "",
-      score: matchingLane?.schoolName
-        ? rankNum === 1
-          ? 3
-          : rankNum === 2
-            ? 2
-            : 1
-        : 0,
+      score,
       time: matchingLane?.time || "",
     };
   });
@@ -572,7 +595,7 @@ export function syncQualifiersToFinals(row: AthleticsRow): {
     }
   });
 
-  const nextWinners = computeFinalsWinners(nextR3Lanes);
+  const nextWinners = computeFinalsWinners(nextR3Lanes, row);
 
   return {
     row: {
@@ -684,12 +707,12 @@ export function mergeConcurrentAthleticsRows(
       r1: r1Lanes.map((lane) => lane.schoolName || ""),
       r2: r2Lanes.map((lane) => lane.schoolName || ""),
       r3: r3Lanes.map((lane) => lane.schoolName || ""),
-      winners: computeFinalsWinners(r3Lanes),
+      winners: computeFinalsWinners(r3Lanes, remote),
     };
     const synced = syncQualifiersToFinals(merged).row;
     return {
       ...synced,
-      winners: computeFinalsWinners(synced.r3Lanes),
+      winners: computeFinalsWinners(synced.r3Lanes, synced),
     };
   });
 }
@@ -703,7 +726,7 @@ export function calculateSchoolAthleticsStandings(
   > = {};
 
   rows.forEach((r) => {
-    const winners = computeFinalsWinners(r.r3Lanes || []);
+    const winners = computeFinalsWinners(r.r3Lanes || [], r);
     winners.forEach((w) => {
       if (w.schoolName && w.score > 0) {
         if (!tally[w.schoolName]) {
@@ -862,7 +885,7 @@ export function athleticsScoresheetAwards(
 ): Award[] {
   const awards: Award[] = [];
   for (const row of rows) {
-    const winners = computeFinalsWinners(row.r3Lanes);
+    const winners = computeFinalsWinners(row.r3Lanes, row);
     const competition = matchAthleticsRowToCompetition(row, competitions);
     for (const winner of winners) {
       if (!winner.schoolName) continue;

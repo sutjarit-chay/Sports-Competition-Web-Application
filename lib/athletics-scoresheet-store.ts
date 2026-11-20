@@ -28,7 +28,7 @@ export function defaultAthleticsScoresheetDocument(): AthleticsScoresheetDocumen
       r1Lanes: row.r1Lanes.map((l) => ({ ...l })),
       r2Lanes: row.r2Lanes.map((l) => ({ ...l })),
       r3Lanes: row.r3Lanes.map((l) => ({ ...l })),
-      winners: computeFinalsWinners(row.r3Lanes),
+      winners: computeFinalsWinners(row.r3Lanes, row),
     })),
     updatedAt: null,
     updatedBy: null,
@@ -134,7 +134,7 @@ export function validateAthleticsScoresheetRows(input: unknown): AthleticsRow[] 
         r1Lanes: canonical.r1Lanes.map((l) => ({ ...l })),
         r2Lanes: canonical.r2Lanes.map((l) => ({ ...l })),
         r3Lanes: canonical.r3Lanes.map((l) => ({ ...l })),
-        winners: computeFinalsWinners(canonical.r3Lanes),
+        winners: computeFinalsWinners(canonical.r3Lanes, canonical),
       };
     }
 
@@ -157,13 +157,13 @@ export function validateAthleticsScoresheetRows(input: unknown): AthleticsRow[] 
       r1Lanes,
       r2Lanes,
       r3Lanes,
-      winners: computeFinalsWinners(r3Lanes),
+      winners: computeFinalsWinners(r3Lanes, canonical),
     };
 
     const synced = syncQualifiersToFinals(draftRow).row;
     return {
       ...synced,
-      winners: computeFinalsWinners(synced.r3Lanes),
+      winners: computeFinalsWinners(synced.r3Lanes, synced),
     };
   });
 }

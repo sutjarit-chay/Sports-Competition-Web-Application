@@ -97,6 +97,26 @@ test("computeFinalsWinners does not award premature medals to unranked lanes", (
   assert.equal(afterRace[2].score, 1);
 });
 
+test("computeFinalsWinners awards 5, 3, 1 points for mini-marathon events", () => {
+  const lanes = defaultLanes(6);
+  lanes[0].schoolName = "โรงเรียนบ้านหนองแดน";
+  lanes[1].schoolName = "โรงเรียนบ้านดงซ่อม";
+  lanes[2].schoolName = "โรงเรียนบ้านคลองเมือง";
+
+  lanes[2].rank = "1";
+  lanes[0].rank = "2";
+  lanes[1].rank = "3";
+
+  const miniEvent = INITIAL_ATHLETICS_DATA[0]; // วิ่ง มินิมาราธอน ประถม ชาย
+  const afterRace = computeFinalsWinners(lanes, miniEvent);
+  assert.equal(afterRace[0].schoolName, "โรงเรียนบ้านคลองเมือง");
+  assert.equal(afterRace[0].score, 5);
+  assert.equal(afterRace[1].schoolName, "โรงเรียนบ้านหนองแดน");
+  assert.equal(afterRace[1].score, 3);
+  assert.equal(afterRace[2].schoolName, "โรงเรียนบ้านดงซ่อม");
+  assert.equal(afterRace[2].score, 1);
+});
+
 test("assignUniqueRankInLanes clears duplicate rank from previous lane in the same heat", () => {
   let lanes = defaultLanes(5);
   lanes[0].schoolName = "โรงเรียนบ้านหนองแดน";
@@ -163,11 +183,12 @@ test("syncQualifiersToFinals seeds 3-2-1-1-2-3 and clears finals lane when quali
 test("calculateSchoolAthleticsStandings breaks score ties by gold, silver, bronze counts", () => {
   const rows = structuredClone(INITIAL_ATHLETICS_DATA);
 
+  // Use track events (3, 2, 1 points)
   // School A: 1 Gold (3 pts)
-  rows[0].r3Lanes[0] = { lane: 1, schoolName: "โรงเรียนบ้านหนองแดน", athleteName: "A", rank: "1", isFoul: false };
+  rows[4].r3Lanes[0] = { lane: 1, schoolName: "โรงเรียนบ้านหนองแดน", athleteName: "A", rank: "1", isFoul: false };
   // School B: 1 Silver + 1 Bronze (2 + 1 = 3 pts)
-  rows[0].r3Lanes[1] = { lane: 2, schoolName: "โรงเรียนบ้านดงซ่อม", athleteName: "B1", rank: "2", isFoul: false };
-  rows[1].r3Lanes[0] = { lane: 1, schoolName: "โรงเรียนบ้านดงซ่อม", athleteName: "B2", rank: "3", isFoul: false };
+  rows[4].r3Lanes[1] = { lane: 2, schoolName: "โรงเรียนบ้านดงซ่อม", athleteName: "B1", rank: "2", isFoul: false };
+  rows[5].r3Lanes[0] = { lane: 1, schoolName: "โรงเรียนบ้านดงซ่อม", athleteName: "B2", rank: "3", isFoul: false };
 
   const standings = calculateSchoolAthleticsStandings(rows);
   assert.equal(standings.length, 2);
@@ -183,6 +204,29 @@ test("calculateSchoolAthleticsStandings breaks score ties by gold, silver, bronz
   assert.equal(standings[1].silver, 1);
   assert.equal(standings[1].bronze, 1);
   assert.equal(standings[1].place, 2);
+});
+
+test("calculateSchoolAthleticsStandings correctly aggregates mini-marathon points (5, 3, 1)", () => {
+  const rows = structuredClone(INITIAL_ATHLETICS_DATA);
+
+  // Mini-marathon Event 1: Gold = 5 pts, Silver = 3 pts, Bronze = 1 pt
+  rows[0].r3Lanes[0] = { lane: 1, schoolName: "โรงเรียนบ้านหนองแดน", athleteName: "M1", rank: "1", isFoul: false };
+  rows[0].r3Lanes[1] = { lane: 2, schoolName: "โรงเรียนบ้านดงซ่อม", athleteName: "M2", rank: "2", isFoul: false };
+  rows[0].r3Lanes[2] = { lane: 3, schoolName: "โรงเรียนบ้านคลองเมือง", athleteName: "M3", rank: "3", isFoul: false };
+
+  const standings = calculateSchoolAthleticsStandings(rows);
+  assert.equal(standings.length, 3);
+  assert.equal(standings[0].schoolName, "โรงเรียนบ้านหนองแดน");
+  assert.equal(standings[0].totalScore, 5);
+  assert.equal(standings[0].gold, 1);
+
+  assert.equal(standings[1].schoolName, "โรงเรียนบ้านดงซ่อม");
+  assert.equal(standings[1].totalScore, 3);
+  assert.equal(standings[1].silver, 1);
+
+  assert.equal(standings[2].schoolName, "โรงเรียนบ้านคลองเมือง");
+  assert.equal(standings[2].totalScore, 1);
+  assert.equal(standings[2].bronze, 1);
 });
 
 test("all 20 athletics scoresheet rows map 1-to-1 to the 20 Supabase athletics competitions and 11 schools", () => {

@@ -23,14 +23,14 @@ import {
 import {
   DEFAULT_SCHOOLS, FOUL_REASONS, INITIAL_ATHLETICS_DATA,
   addLaneToEventRound, assignUniqueRankInLanes, calculateSchoolAthleticsStandings,
-  computeFinalsWinners, defaultLanes, getDisplaySchoolName, removeLaneFromEventRound,
+  computeFinalsWinners, defaultLanes, getDisplaySchoolName, isMiniMarathonRow, removeLaneFromEventRound,
   mergeConcurrentAthleticsRows, syncQualifiersToFinals, type AthleticsRow, type LaneEntry,
   type SchoolAthleticsStanding, type WinnerEntry,
 } from "@/lib/athletics-scoresheet-model";
 export {
   DEFAULT_SCHOOLS, FOUL_REASONS, INITIAL_ATHLETICS_DATA,
   addLaneToEventRound, assignUniqueRankInLanes, calculateSchoolAthleticsStandings,
-  computeFinalsWinners, defaultLanes, getDisplaySchoolName, removeLaneFromEventRound,
+  computeFinalsWinners, defaultLanes, getDisplaySchoolName, isMiniMarathonRow, removeLaneFromEventRound,
   syncQualifiersToFinals,
 };
 export type { AthleticsRow, LaneEntry, SchoolAthleticsStanding, WinnerEntry };
@@ -116,7 +116,7 @@ export function AthleticsScoresheet({
         r2Lanes: found.r2Lanes || defaultLanes(5),
         r3Lanes,
         r3,
-        winners: computeFinalsWinners(r3Lanes),
+        winners: computeFinalsWinners(r3Lanes, canonical),
       };
     }).filter((item) => canonicalById.has(item.id));
   }
@@ -467,7 +467,7 @@ export function AthleticsScoresheet({
     };
 
     if (roundKey === "r3") {
-      updatedEvent.winners = computeFinalsWinners(currentLanes);
+      updatedEvent.winners = computeFinalsWinners(currentLanes, updatedEvent);
     } else {
       updatedEvent = syncQualifiersToFinals(updatedEvent).row;
     }
@@ -621,7 +621,7 @@ export function AthleticsScoresheet({
     } else if (roundKey === "r3") {
       updatedRow = {
         ...updatedRow,
-        winners: computeFinalsWinners(normalizedLanes),
+        winners: computeFinalsWinners(normalizedLanes, updatedRow),
       };
     }
 
@@ -652,7 +652,7 @@ export function AthleticsScoresheet({
       ...activeEvent,
       [lanesKey]: clearedLanes,
       [roundKey]: clearedCells,
-      winners: roundKey === "r3" ? computeFinalsWinners(clearedLanes) : activeEvent.winners,
+      winners: roundKey === "r3" ? computeFinalsWinners(clearedLanes, activeEvent) : activeEvent.winners,
     };
 
     if (roundKey === "r1" || roundKey === "r2") {
@@ -2256,7 +2256,7 @@ export function AthleticsScoresheet({
             }}
           >
             {rows.map((r) => {
-              const winners = computeFinalsWinners(r.r3Lanes || []);
+              const winners = computeFinalsWinners(r.r3Lanes || [], r);
 
               return (
                 <div
@@ -2372,7 +2372,7 @@ export function AthleticsScoresheet({
                   {rankedSchools.length === 0 ? (
                     <tr>
                       <td colSpan={7} style={{ padding: "16px", color: "#94a3b8" }}>
-                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับ 1=3 แต้ม, 2=2 แต้ม, 3=1 แต้ม ในรอบชิงชนะเลิศ)
+                        ยังไม่มีผลการแข่งขันกรีฑา (คะแนนจะสรุปจากอันดับในรอบชิง: มินิมาราธอน 1=5, 2=3, 3=1 แต้ม / วิ่งลู่ทั่วไป 1=3, 2=2, 3=1 แต้ม)
                       </td>
                     </tr>
                   ) : (
@@ -2593,7 +2593,8 @@ export function AthleticsScoresheet({
                   {/* Stacked Single-Column Event Tables matching Handbook pp. 31-33 */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {pageRows.map((r) => {
-                      const winners = computeFinalsWinners(r.r3Lanes || []);
+                      const winners = computeFinalsWinners(r.r3Lanes || [], r);
+                      const isMini = isMiniMarathonRow(r);
                       return (
                         <div key={r.id} style={{ width: "100%" }}>
                           <div
@@ -2637,7 +2638,9 @@ export function AthleticsScoresheet({
                             <tbody>
                               {[1, 2, 3].map((rank, i) => {
                                 const w = winners[i];
-                                const defaultPts = rank === 1 ? "3" : rank === 2 ? "2" : "1";
+                                const defaultPts = w?.score || (isMini
+                                  ? rank === 1 ? "5" : rank === 2 ? "3" : "1"
+                                  : rank === 1 ? "3" : rank === 2 ? "2" : "1");
                                 return (
                                   <tr key={rank}>
                                     <td style={{ border: "1px solid #1e293b", padding: "3px 4px", fontWeight: 600 }}>
@@ -2938,7 +2941,13 @@ export function AthleticsScoresheet({
                   <div>
                     {roundModal.roundKey === "r3" ? (
                       <>
-                        🏆 <strong>{roundTitle}:</strong> เลือกอันดับ <strong>ที่ 1 (ทอง 3 แต้ม), ที่ 2 (เงิน 2 แต้ม), ที่ 3 (ทองแดง 1 แต้ม)</strong> หรือระบุสถานะฟาล์วได้ครบทุกลู่ในหน้าต่างเดียว
+                        🏆 <strong>{roundTitle}:</strong> เลือกอันดับ{" "}
+                        {isMiniMarathonRow(modalRow) ? (
+                          <strong>ที่ 1 (ทอง 5 แต้ม), ที่ 2 (เงิน 3 แต้ม), ที่ 3 (ทองแดง 1 แต้ม)</strong>
+                        ) : (
+                          <strong>ที่ 1 (ทอง 3 แต้ม), ที่ 2 (เงิน 2 แต้ม), ที่ 3 (ทองแดง 1 แต้ม)</strong>
+                        )}{" "}
+                        หรือระบุสถานะฟาล์วได้ครบทุกลู่ในหน้าต่างเดียว
                       </>
                     ) : (
                       <>
@@ -3094,9 +3103,19 @@ export function AthleticsScoresheet({
                                 <option value="">- ไม่ระบุอันดับ -</option>
                                 {roundModal.roundKey === "r3" ? (
                                   <>
-                                    <option value="1">🥇 ที่ 1 (ทอง · 3 แต้ม)</option>
-                                    <option value="2">🥈 ที่ 2 (เงิน · 2 แต้ม)</option>
-                                    <option value="3">🥉 ที่ 3 (ทองแดง · 1 แต้ม)</option>
+                                    {isMiniMarathonRow(modalRow) ? (
+                                      <>
+                                        <option value="1">🥇 ที่ 1 (ทอง · 5 แต้ม)</option>
+                                        <option value="2">🥈 ที่ 2 (เงิน · 3 แต้ม)</option>
+                                        <option value="3">🥉 ที่ 3 (ทองแดง · 1 แต้ม)</option>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <option value="1">🥇 ที่ 1 (ทอง · 3 แต้ม)</option>
+                                        <option value="2">🥈 ที่ 2 (เงิน · 2 แต้ม)</option>
+                                        <option value="3">🥉 ที่ 3 (ทองแดง · 1 แต้ม)</option>
+                                      </>
+                                    )}
                                     {Array.from(
                                       { length: Math.max(0, maxRankOptions - 3) },
                                       (_, i) => i + 4,
